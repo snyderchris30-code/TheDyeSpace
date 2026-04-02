@@ -76,5 +76,9 @@ export default function Navbar({ user }: { user?: { avatar_url?: string } }) {
           onClick={handleSignOut}
         >
           Sign Out (Clear Session)
+        </button>
         {/* Theme toggle removed */}
       </div>
+    </nav>
+  );
+}
