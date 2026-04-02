@@ -117,6 +117,28 @@
   --site-panel-border: rgba(111, 255, 232, 0.18);
 }
 
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  overflow-x: hidden;
+}
+
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.site-shell,
+main,
+.navbar {
+  max-width: 100%;
+}
+
 
 body {
   font-family: var(--font-inter), var(--font-space-grotesk), system-ui, sans-serif;
@@ -233,6 +255,8 @@ html.light .site-shell::before {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   padding-left: 1.5rem;
   padding-right: 1.5rem;
   padding-top: 0.75rem;
@@ -303,6 +327,19 @@ html.light .site-shell::before {
 .avatar:hover {
   transform: scale(1.09) rotate(2deg);
   box-shadow: 0 0 32px #00ffd0cc, 0 0 12px #a259ff99;
+}
+
+@media (max-width: 640px) {
+  .navbar {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  .nav-link {
+    font-size: 0.875rem;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
 }
 
 /* Smooth transitions for theme changes */

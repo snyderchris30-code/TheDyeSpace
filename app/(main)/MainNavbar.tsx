@@ -139,11 +139,11 @@ export default function MainNavbar({ user }: { user?: { avatar_url?: string; dis
   };
 
   return (
-    <nav className="navbar mt-2 mb-6 relative">
-      <Link href="/" className="navbar-logo text-4xl tracking-widest select-none">
+    <nav className="navbar mt-2 mb-4 relative sm:mb-6">
+      <Link href="/" className="navbar-logo w-full text-center text-2xl tracking-wide select-none sm:w-auto sm:text-left sm:text-4xl sm:tracking-widest">
         TheDyeSpace
       </Link>
-      <div className="flex gap-2 items-center">
+      <div className="flex w-full flex-wrap items-center justify-center gap-1 sm:w-auto sm:justify-end sm:gap-2">
         {userCount !== null && (
           <div className="hidden items-center gap-2 rounded-full border border-cyan-300/30 bg-black/35 px-3 py-1 text-sm font-semibold text-cyan-100 shadow-[0_0_18px_rgba(22,255,220,0.16)] sm:flex">
             <Users size={16} className="text-cyan-300" />
@@ -153,11 +153,11 @@ export default function MainNavbar({ user }: { user?: { avatar_url?: string; dis
 
 
         {/* Home and Explore always visible */}
-        <Link href="/" className="nav-link flex items-center gap-1 cosmic-headline"><Home size={20} />Home</Link>
-        <Link href="/explore" className="nav-link flex items-center gap-1 cosmic-headline"><Compass size={20} />Explore</Link>
+        <Link href="/" className="nav-link flex items-center gap-1 cosmic-headline"><Home size={18} /><span className="text-xs sm:text-base">Home</span></Link>
+        <Link href="/explore" className="nav-link flex items-center gap-1 cosmic-headline"><Compass size={18} /><span className="text-xs sm:text-base">Explore</span></Link>
         {/* Create Post only if signed in */}
         {session && session.user && (
-          <Link href="/create" className="nav-link flex items-center gap-1 cosmic-headline"><PlusSquare size={20} />Create Post</Link>
+          <Link href="/create" className="nav-link flex items-center gap-1 cosmic-headline"><PlusSquare size={18} /><span className="text-xs sm:text-base">Create</span></Link>
         )}
 
         {/* Profile/Sign In button logic */}
@@ -167,7 +167,7 @@ export default function MainNavbar({ user }: { user?: { avatar_url?: string; dis
             href={`/profile/${session.user.user_metadata?.username || session.user.email}`}
             className="nav-link flex items-center gap-1 cosmic-headline px-3 py-1 rounded-lg bg-gradient-to-r from-cyan-700 via-teal-700 to-green-700 hover:from-cyan-500 hover:to-green-500 border border-sky-400 shadow-md"
           >
-            <User size={20} />Profile
+            <User size={18} /><span className="text-xs sm:text-base">Profile</span>
           </Link>
         )}
 
@@ -180,8 +180,8 @@ export default function MainNavbar({ user }: { user?: { avatar_url?: string; dis
               if (!notifDrop) refetch();
             }}
           >
-            <Bell size={20} />
-            Notifications
+            <Bell size={18} />
+            <span className="hidden sm:inline">Notifications</span>
             {unreadCount > 0 && (
               <span className="absolute -top-2 -right-2 bg-green-500 text-white text-xs rounded-full px-1.5 py-0.5 shadow-lg animate-pulse border border-sky-400">
                 {unreadCount}
@@ -189,7 +189,7 @@ export default function MainNavbar({ user }: { user?: { avatar_url?: string; dis
             )}
           </button>
           {notifDrop && (
-            <div className="absolute right-0 mt-2 w-[320px] bg-black/80 border border-sky-500 rounded-xl shadow-2xl z-50 p-3 animate-fade-in">
+            <div className="absolute right-0 mt-2 w-[min(92vw,320px)] bg-black/80 border border-sky-500 rounded-xl shadow-2xl z-50 p-3 animate-fade-in">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-cyan-200 font-semibold">Notifications</span>
                 <button onClick={markAllRead} className="text-xs text-green-200 hover:text-white">Mark all read</button>
@@ -220,14 +220,14 @@ export default function MainNavbar({ user }: { user?: { avatar_url?: string; dis
             className="nav-link flex items-center gap-1 cosmic-headline px-3 py-1 rounded-lg bg-gradient-to-r from-cyan-700 via-teal-700 to-green-700 hover:from-cyan-500 hover:to-green-500 border border-sky-400 shadow-md"
             onClick={handleSignOut}
           >
-            <LogOut size={18} /> Sign Out
+            <LogOut size={18} /> <span className="hidden sm:inline">Sign Out</span>
           </button>
         ) : (
           <Link
             href="/login"
             className="nav-link flex items-center gap-1 cosmic-headline px-3 py-1 rounded-lg bg-gradient-to-r from-cyan-700 via-teal-700 to-green-700 hover:from-cyan-500 hover:to-green-500 border border-sky-400 shadow-md"
           >
-            <User size={18} /> Sign In
+            <User size={18} /> <span className="hidden sm:inline">Sign In</span>
           </Link>
         )}
 
