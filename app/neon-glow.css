@@ -1,0 +1,23 @@
+/* Neon particle (for Neon Glow theme) */
+.neon-particle {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(2.5px);
+  z-index: 2;
+  background: radial-gradient(circle, #0fffc3 0%, #0ca678 80%, transparent 100%);
+  pointer-events: none;
+  left: var(--left, 0);
+  top: var(--top, 0);
+  width: var(--size, 20px);
+  height: var(--size, 20px);
+  opacity: var(--opacity, 0.3);
+}
+/* Neon Glow Fractal Background */
+.neon-glow-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  width: 100vw;
+  height: 100vh;
+
+  background: linear-gradient(135deg, #0f172a 0%, #0ca678 40%, #0fffc3 100%);

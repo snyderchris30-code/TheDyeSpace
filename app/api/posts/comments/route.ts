@@ -1,0 +1,202 @@
+import { randomUUID } from "crypto";
+import { NextRequest, NextResponse } from "next/server";
+import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  buildInteractionsByPost,
+  buildInteractionsFromRows,
+  getStoredPostComments,
+  getStoredPostReactions,
+  isMissingInteractionTablesError,
+  normalizeThemeSettings,
+  type InteractionProfileRow,
+  type RelationalPostCommentRow,
+  type RelationalPostReactionRow,
+} from "@/lib/post-interactions";
+
+type CommentBody = {
+  postId?: string;
+  content?: string;
+};
+
+function createAdminClient() {
+  const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!serviceUrl || !serviceKey) {
+    throw new Error("Server misconfiguration: service role key missing");
+  }
+
+  return createServiceClient(serviceUrl, serviceKey, {
+    auth: { persistSession: false },
+  });
+}
+
+async function loadLegacyInteraction(adminClient: ReturnType<typeof createAdminClient>, postId: string, viewerId?: string | null) {
+  const { data: profiles, error } = await adminClient
+    .from("profiles")
+    .select("id, username, display_name, avatar_url, theme_settings");
+
+  if (error) {
+    throw error;
+  }
+
+  return buildInteractionsByPost((profiles || []) as InteractionProfileRow[], [postId], viewerId)[postId];
+}
+
+async function loadRelationalInteraction(adminClient: ReturnType<typeof createAdminClient>, postId: string, viewerId?: string | null) {
+  const { data: comments, error: commentsError } = await adminClient
+    .from("post_comments")
+    .select("id, post_id, user_id, content, created_at")
+    .eq("post_id", postId)
+    .order("created_at", { ascending: true });
+
+  if (commentsError) {
+    throw commentsError;
+  }
+
+  const { data: reactions, error: reactionsError } = await adminClient
+    .from("post_reactions")
+    .select("post_id, user_id, emoji, created_at")
+    .eq("post_id", postId);
+
+  if (reactionsError) {
+    throw reactionsError;
+  }
+
+  const userIds = [...new Set([...(comments || []).map((comment) => comment.user_id), ...(reactions || []).map((reaction) => reaction.user_id)])];
+  let profiles: InteractionProfileRow[] = [];
+
+  if (userIds.length) {
+    const { data: profileRows, error: profilesError } = await adminClient
+      .from("profiles")
+      .select("id, username, display_name, avatar_url")
+      .in("id", userIds);
+
+    if (profilesError) {
+      throw profilesError;
+    }
+
+    profiles = (profileRows || []) as InteractionProfileRow[];
+  }
+
+  return buildInteractionsFromRows(
+    [postId],
+    (comments || []) as RelationalPostCommentRow[],
+    (reactions || []) as RelationalPostReactionRow[],
+    profiles,
+    viewerId
+  )[postId];
+}
+
+export async function POST(req: NextRequest) {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = (await req.json().catch(() => ({}))) as CommentBody;
+  const content = body.content?.trim();
+
+  if (!body.postId || !content) {
+    return NextResponse.json({ error: "Post ID and comment content are required." }, { status: 400 });
+  }
+
+  try {
+    const adminClient = createAdminClient();
+    const { data: post, error: postError } = await adminClient.from("posts").select("id").eq("id", body.postId).maybeSingle();
+
+    if (postError || !post) {
+      return NextResponse.json({ error: "Post not found." }, { status: 404 });
+    }
+
+    const { error: insertError } = await adminClient.from("post_comments").insert({
+      post_id: body.postId,
+      user_id: user.id,
+      content,
+    });
+
+    if (!insertError) {
+      const interaction = await loadRelationalInteraction(adminClient, body.postId, user.id);
+      const commentsCount = interaction?.comments.length ?? 0;
+
+      const { error: updatePostError } = await adminClient
+        .from("posts")
+        .update({ comments_count: commentsCount })
+        .eq("id", body.postId);
+
+      if (updatePostError) {
+        return NextResponse.json({ error: updatePostError.message }, { status: 500 });
+      }
+
+      return NextResponse.json({ interaction, commentsCount, storage: "relational" });
+    }
+
+    if (!isMissingInteractionTablesError(insertError)) {
+      return NextResponse.json({ error: insertError.message }, { status: 500 });
+    }
+
+    const { data: existingProfile } = await adminClient
+      .from("profiles")
+      .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings")
+      .eq("id", user.id)
+      .limit(1)
+      .maybeSingle();
+
+    const existingThemeSettings = normalizeThemeSettings(existingProfile?.theme_settings);
+    const nextComments = [
+      ...getStoredPostComments(existingThemeSettings),
+      {
+        id: randomUUID(),
+        post_id: body.postId,
+        content,
+        created_at: new Date().toISOString(),
+      },
+    ];
+
+    const { error: profileError } = await adminClient.from("profiles").upsert(
+      {
+        id: user.id,
+        username: existingProfile?.username ?? user.user_metadata?.username ?? user.email ?? "",
+        display_name: existingProfile?.display_name ?? "",
+        bio: existingProfile?.bio ?? "",
+        avatar_url: existingProfile?.avatar_url ?? null,
+        banner_url: existingProfile?.banner_url ?? null,
+        theme_settings: {
+          ...existingThemeSettings,
+          post_comments: nextComments,
+          post_reactions: getStoredPostReactions(existingThemeSettings),
+        },
+      },
+      { onConflict: "id", ignoreDuplicates: false }
+    );
+
+    if (profileError) {
+      return NextResponse.json({ error: profileError.message }, { status: 500 });
+    }
+
+    const interaction = await loadLegacyInteraction(adminClient, body.postId, user.id);
+    const commentsCount = interaction?.comments.length ?? 0;
+
+    const { error: updatePostError } = await adminClient
+      .from("posts")
+      .update({ comments_count: commentsCount })
+      .eq("id", body.postId);
+
+    if (updatePostError) {
+      return NextResponse.json({ error: updatePostError.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ interaction, commentsCount, storage: "legacy" });
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: typeof error?.message === "string" ? error.message : "Failed to save comment." },
+      { status: 500 }
+    );
+  }
+}
