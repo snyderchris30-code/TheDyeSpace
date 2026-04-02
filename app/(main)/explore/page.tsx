@@ -1,5 +1,7 @@
 "use client";
 
+import dynamic from "next/dynamic";
+
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
@@ -76,6 +78,8 @@ function applyPostThemeVars(element: HTMLElement | null, appearance?: ProfileApp
 }
 
 export default function ExplorePage() {
+  const LightboxModal = dynamic(() => import("../../LightboxModal"), { ssr: false });
+  const [lightbox, setLightbox] = useState<{ open: boolean; url: string | null }>({ open: false, url: null });
   const [tab, setTab] = useState<FeedCategory>("all");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
@@ -197,11 +201,11 @@ export default function ExplorePage() {
   };
 
   return (
-    <div className="relative min-h-screen px-4 pb-16 pt-10 sm:px-8">
+    <div className="relative min-h-screen px-3 pb-10 pt-6 sm:px-8 sm:pb-16 sm:pt-10">
       <div className="mx-auto max-w-6xl">
-        <div className="mb-8 rounded-3xl border border-cyan-300/25 bg-slate-950/55 p-8 shadow-2xl backdrop-blur-xl">
-          <h1 className="glow-text mb-3 text-4xl font-extrabold sm:text-6xl">Explore</h1>
-          <p className="text-cyan-100/85 text-lg">Real posts only. This feed stays empty until users create posts.</p>
+        <div className="mb-6 rounded-3xl border border-cyan-300/25 bg-slate-950/55 p-4 shadow-2xl backdrop-blur-xl sm:mb-8 sm:p-8">
+          <h1 className="glow-text mb-3 text-3xl font-extrabold sm:text-6xl">Explore</h1>
+          <p className="text-base text-cyan-100/85 sm:text-lg">Real posts only. This feed stays empty until users create posts.</p>
         </div>
 
         <div className="mb-5 flex flex-wrap gap-3">
@@ -244,13 +248,16 @@ export default function ExplorePage() {
           {posts.map((post) => (
             <article
               key={post.id}
-              className={`rounded-3xl border border-cyan-300/25 bg-slate-950/55 p-5 shadow-xl backdrop-blur-xl ${fontClass(post.author_theme?.font_style)}`}
+              className={`rounded-3xl border border-cyan-300/25 bg-slate-950/55 p-4 shadow-xl backdrop-blur-xl sm:p-5 ${fontClass(post.author_theme?.font_style)}`}
               ref={(element) => applyPostThemeVars(element, post.author_theme)}
             >
               {post.image_urls?.[0] ? (
-                <img src={post.image_urls[0]} alt="Post" className="mb-4 h-44 w-full rounded-2xl object-cover" />
+                  <button type="button" className="group relative mb-4 block aspect-[4/5] w-full overflow-hidden rounded-2xl sm:aspect-[4/3]" onClick={() => setLightbox({ open: true, url: post.image_urls![0] })}>
+                    <img src={post.image_urls[0]} alt="Post" className="h-full w-full rounded-2xl object-cover transition duration-200 group-hover:scale-105" />
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent px-3 py-4 text-left text-xs text-cyan-50/85 sm:text-sm">Tap to expand</div>
+                  </button>
               ) : null}
-              <p className="mb-3 whitespace-pre-wrap text-[color:var(--post-text)]/92">{stripCategoryTag(post.content) || "No description provided."}</p>
+                <p className="mb-3 whitespace-pre-wrap text-sm leading-6 text-[color:var(--post-text)]/92 sm:text-base sm:leading-7">{stripCategoryTag(post.content) || "No description provided."}</p>
               <div className="mb-3">
                 <Link
                   href={post.author_username ? `/profile/${post.author_username}` : '#'}
@@ -304,6 +311,7 @@ export default function ExplorePage() {
             </article>
           ))}
         </div>
+        {lightbox.open && lightbox.url ? <LightboxModal imageUrl={lightbox.url} onClose={() => setLightbox({ open: false, url: null })} /> : null}
       </div>
     </div>
   );

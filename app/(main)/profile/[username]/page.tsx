@@ -718,7 +718,7 @@ export default function ProfileEditor() {
         </Dialog.Panel>
       </Dialog>
 
-              <div className="relative flex min-h-[300px] items-start px-6 pb-6 pt-20 sm:min-h-[360px] sm:px-10 sm:pb-8 sm:pt-24">
+              <div className="relative flex min-h-[280px] items-start px-4 pb-5 pt-16 sm:min-h-[360px] sm:px-10 sm:pb-8 sm:pt-24">
                 <div className="flex w-full flex-col gap-5 sm:flex-row sm:items-start sm:gap-6">
                   <div className="relative shrink-0">
                     <div className="h-28 w-28 overflow-hidden rounded-full border-4 border-cyan-200/70 bg-slate-950 shadow-[0_0_40px_rgba(68,249,207,0.42),0_0_100px_rgba(97,67,255,0.20)] sm:h-32 sm:w-32">
@@ -731,11 +731,11 @@ export default function ProfileEditor() {
                   </div>
 
                   <div className="max-w-3xl pt-1 text-left text-white">
-                    <p className="text-xs uppercase tracking-[0.45em] text-[color:var(--profile-highlight)]/90">The Dye Space Profile</p>
-                    <h1 className="mt-2 text-3xl font-black text-[color:var(--profile-text)] drop-shadow-[0_0_18px_rgba(0,0,0,0.6)] sm:text-5xl">
+                    <p className="text-[10px] uppercase tracking-[0.28em] text-[color:var(--profile-highlight)]/90 sm:text-xs sm:tracking-[0.45em]">The Dye Space Profile</p>
+                    <h1 className="mt-2 text-2xl font-black leading-tight text-[color:var(--profile-text)] drop-shadow-[0_0_18px_rgba(0,0,0,0.6)] sm:text-5xl">
                       {profileDisplay.display_name || "Untitled Profile"}
                     </h1>
-                    <p className="mt-1 text-base font-medium text-[color:var(--profile-highlight)] drop-shadow-[0_0_12px_rgba(0,0,0,0.55)] sm:text-lg">
+                    <p className="mt-1 text-sm font-medium text-[color:var(--profile-highlight)] drop-shadow-[0_0_12px_rgba(0,0,0,0.55)] sm:text-lg">
                       @{profileDisplay.username || "username"}
                     </p>
                     <p className="mt-3 max-w-2xl whitespace-pre-wrap text-sm leading-6 text-[color:var(--profile-text)]/92 drop-shadow-[0_0_18px_rgba(0,0,0,0.55)] sm:text-base">
@@ -775,7 +775,7 @@ export default function ProfileEditor() {
                     return (
                       <article
                         key={post.id}
-                        className={`rounded-[1.75rem] border border-cyan-300/20 bg-[linear-gradient(180deg,rgba(9,19,37,0.82),rgba(7,12,24,0.88))] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-cyan-300/35 sm:p-6 ${fontClass(profileDisplay.font_style)}`}
+                        className={`rounded-[1.5rem] border border-cyan-300/20 bg-[linear-gradient(180deg,rgba(9,19,37,0.82),rgba(7,12,24,0.88))] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-cyan-300/35 sm:rounded-[1.75rem] sm:p-6 ${fontClass(profileDisplay.font_style)}`}
                         ref={(element) => applyProfileThemeVars(element, profileDisplay)}
                       >
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -792,24 +792,24 @@ export default function ProfileEditor() {
                           </div>
                         </div>
 
-                        <p className="mt-4 whitespace-pre-wrap text-lg leading-8 text-[color:var(--profile-text)]/92">{stripCategoryTag(post.content) || "No description provided."}</p>
+                        <p className="mt-4 whitespace-pre-wrap text-base leading-7 text-[color:var(--profile-text)]/92 sm:text-lg sm:leading-8">{stripCategoryTag(post.content) || "No description provided."}</p>
 
                         {post.image_urls && post.image_urls.length > 0 ? (
                           <div className="mt-5 grid gap-3 sm:grid-cols-2">
                             {post.image_urls.map((imageUrl, imageIndex) => (
-                              <div key={`${post.id}-${imageIndex}`} className="relative aspect-square w-full cursor-zoom-in group">
+                              <button key={`${post.id}-${imageIndex}`} type="button" className="group relative aspect-[4/5] w-full overflow-hidden rounded-[1.5rem] cursor-zoom-in sm:aspect-square" onClick={(e) => {
+                                e.stopPropagation();
+                                setLightbox({ open: true, url: imageUrl });
+                              }}>
                                 <img
                                   src={imageUrl}
                                   alt={`Post image ${imageIndex + 1}`}
-                                  className="absolute inset-0 h-full w-full rounded-[1.5rem] border border-cyan-300/20 object-cover shadow-lg transition duration-200 group-hover:scale-105"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setLightbox({ open: true, url: imageUrl });
-                                  }}
+                                  className="absolute inset-0 h-full w-full border border-cyan-300/20 object-cover shadow-lg transition duration-200 group-hover:scale-105"
                                   tabIndex={0}
                                   /* style moved to className */
                                 />
-                              </div>
+                                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent px-3 py-4 text-left text-xs text-cyan-50/85 sm:text-sm">Tap to expand</div>
+                              </button>
                             ))}
                           </div>
                         ) : null}

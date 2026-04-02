@@ -125,6 +125,10 @@ body {
   overflow-x: hidden;
 }
 
+html {
+  background: #060b14;
+}
+
 img,
 video,
 canvas,
@@ -137,6 +141,11 @@ svg {
 main,
 .navbar {
   max-width: 100%;
+}
+
+body {
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
 }
 
 
@@ -179,6 +188,7 @@ html.light .site-background {
 
 .site-shell {
   position: relative;
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
 }
 
 .site-shell::before {
@@ -339,6 +349,10 @@ html.light .site-shell::before {
     font-size: 0.875rem;
     padding-left: 0.5rem;
     padding-right: 0.5rem;
+  }
+
+  .cosmic-headline {
+    letter-spacing: 0.01em;
   }
 }
 

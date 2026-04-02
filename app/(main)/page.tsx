@@ -249,11 +249,11 @@ export default function MainFeedPage() {
   );
 
   return (
-    <div className="max-w-6xl mx-auto py-10 px-4 sm:px-8">
-      <h1 className="text-7xl mb-4 cosmic-headline">
-        TheDyeSpace;] <span className="cosmic-headline-sub">The Hub For Tie-Dye Loving Hippies.</span>
+    <div className="mx-auto max-w-6xl px-3 py-5 sm:px-6 sm:py-8 lg:px-8">
+      <h1 className="mb-3 text-4xl leading-tight cosmic-headline sm:mb-4 sm:text-6xl lg:text-7xl">
+        TheDyeSpace;] <span className="mt-2 block text-lg leading-snug cosmic-headline-sub sm:inline sm:text-[1.35rem]">The Hub For Tie-Dye Loving Hippies.</span>
       </h1>
-      <p className="mb-8 text-xl cosmic-subtext">
+      <p className="mb-5 text-base cosmic-subtext sm:mb-8 sm:text-xl">
         {/* Removed placeholder text. */}
       </p>
 
@@ -269,10 +269,10 @@ export default function MainFeedPage() {
           return (
           <article
             key={post.id}
-            className={`bg-gradient-to-br from-teal-900/40 via-blue-950/40 to-emerald-900/40 border fractal-border rounded-3xl p-5 transition hover:-translate-y-1 hover:shadow-2xl ${fontClass(post.author_theme?.font_style)}`}
+            className={`bg-gradient-to-br from-teal-900/40 via-blue-950/40 to-emerald-900/40 border fractal-border rounded-[1.5rem] p-4 transition hover:-translate-y-1 hover:shadow-2xl sm:rounded-3xl sm:p-5 ${fontClass(post.author_theme?.font_style)}`}
             ref={(element) => applyPostThemeVars(element, post.author_theme)}
           >
-            <header className="flex justify-between items-start gap-3 mb-3">
+            <header className="mb-3 flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
               <div>
                 <Link
                   href={post.author_username ? `/profile/${post.author_username}` : '#'}
@@ -290,29 +290,31 @@ export default function MainFeedPage() {
                 </Link>
                 <time className="block text-xs text-[color:var(--post-text)]/70">{new Date(post.created_at).toLocaleString()}</time>
               </div>
-              <span className="text-xs text-green-200 px-2 py-1 rounded-full bg-green-900/30">{post.is_for_sale ? "For Sale" : "Just Shared"}</span>
+              <span className="rounded-full bg-green-900/30 px-2 py-1 text-xs text-green-200">{post.is_for_sale ? "For Sale" : "Just Shared"}</span>
             </header>
             <button
               type="button"
               className="block w-full text-left"
               onClick={() => setExpandedComments((prev) => ({ ...prev, [post.id]: !prev[post.id] }))}
             >
-              <p className="mb-3 text-[color:var(--post-text)]/92">{post.content || "No description provided yet."}</p>
+              <p className="mb-3 text-sm leading-6 text-[color:var(--post-text)]/92 sm:text-base sm:leading-7">{post.content || "No description provided yet."}</p>
               {post.image_urls && post.image_urls.length > 0 && (
-                <div className="grid grid-cols-2 gap-2 mb-3">
+                <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
                   {post.image_urls.map((imgUrl, idx) => (
-                    <div key={idx} className="relative aspect-square w-full cursor-zoom-in group">
+                    <button key={idx} type="button" className="group relative aspect-[4/5] w-full overflow-hidden rounded-2xl cursor-zoom-in sm:aspect-[4/4]" onClick={(e) => {
+                      e.stopPropagation();
+                      setLightbox({ open: true, url: imgUrl });
+                    }}>
                       <img
                         src={imgUrl}
                         alt={`Post image ${idx + 1}`}
-                        className="absolute inset-0 h-full w-full rounded-2xl object-cover border border-cyan-500/40 transition duration-200 group-hover:scale-105"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setLightbox({ open: true, url: imgUrl });
-                        }}
+                        className="absolute inset-0 h-full w-full border border-cyan-500/40 object-cover transition duration-200 group-hover:scale-105"
                         tabIndex={0}
                       />
-                    </div>
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent px-3 py-4 text-left text-xs text-cyan-50/85 sm:text-sm">
+                        Tap to expand
+                      </div>
+                    </button>
                   ))}
                 </div>
               )}
@@ -320,7 +322,7 @@ export default function MainFeedPage() {
             {lightbox.open && lightbox.url && (
               <LightboxModal imageUrl={lightbox.url} onClose={() => setLightbox({ open: false, url: null })} />
             )}
-            <footer className="flex flex-col sm:flex-row justify-between text-sm text-cyan-200 gap-2 mt-8 border-t border-cyan-800 pt-4">
+            <footer className="mt-6 flex flex-col gap-3 border-t border-cyan-800 pt-4 text-sm text-cyan-200 sm:mt-8 sm:flex-row sm:justify-between">
               <div>
                 {session && session.user ? (
                   <div className="flex flex-wrap items-center gap-3">
@@ -334,7 +336,7 @@ export default function MainFeedPage() {
                         <span>{postInteraction.viewerReaction ? `Reacted ${postInteraction.viewerReaction}` : "Like / React"}</span>
                       </button>
                       {reactionPickerPostId === post.id ? (
-                        <div className="absolute left-full top-0 z-20 ml-2 flex flex-row gap-2 rounded-2xl border border-cyan-300/25 bg-slate-950/95 p-3 shadow-2xl backdrop-blur-xl">
+                        <div className="absolute left-0 top-full z-20 mt-2 flex max-w-[calc(100vw-4rem)] flex-row flex-wrap gap-2 rounded-2xl border border-cyan-300/25 bg-slate-950/95 p-3 shadow-2xl backdrop-blur-xl sm:left-full sm:top-0 sm:ml-2 sm:mt-0 sm:max-w-none">
                           {REACTION_EMOJIS.map((emoji) => (
                             <button
                               key={emoji}
