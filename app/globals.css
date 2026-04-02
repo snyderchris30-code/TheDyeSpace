@@ -111,7 +111,8 @@
 @tailwind utilities;
 
 :root {
-  --neon-starfield-image: url("https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=1800&q=80");
+  --neon-starfield-image: url("/background.jpg");
+  --bg-parallax-offset: 0px;
   --site-text: #e7fbff;
   --site-panel: rgba(6, 12, 24, 0.7);
   --site-panel-border: rgba(111, 255, 232, 0.18);
@@ -122,11 +123,14 @@ body {
   margin: 0;
   padding: 0;
   width: 100%;
+  height: 100%;
+  overflow: visible;
   overflow-x: hidden;
 }
 
 html {
   background: #060b14;
+  scroll-behavior: smooth;
 }
 
 img,
@@ -145,16 +149,20 @@ main,
 
 body {
   -webkit-tap-highlight-color: transparent;
-  overscroll-behavior-y: none;
-}
-
-
-body {
+  overscroll-behavior-y: auto;
   font-family: var(--font-inter), var(--font-space-grotesk), system-ui, sans-serif;
-  background: #060b14;
+  background-color: #060b14;
+  background-image: var(--neon-starfield-image);
+  background-position: center top;
+  background-repeat: no-repeat;
+  background-size: contain;
   color: var(--site-text);
   position: relative;
   min-height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 html.light {
@@ -168,22 +176,52 @@ html.light {
   inset: 0;
   z-index: 0;
   background-image:
-    linear-gradient(180deg, rgba(7, 14, 28, 0.36), rgba(9, 18, 34, 0.5)),
-    radial-gradient(circle at top, rgba(0, 255, 208, 0.22), transparent 36%),
-    radial-gradient(circle at 80% 20%, rgba(162, 89, 255, 0.3), transparent 30%),
+    linear-gradient(180deg, rgba(4, 9, 20, 0.54), rgba(5, 10, 24, 0.62)),
+    radial-gradient(circle at 15% 18%, rgba(0, 255, 208, 0.12), transparent 45%),
+    radial-gradient(circle at 82% 14%, rgba(162, 89, 255, 0.16), transparent 36%),
     var(--neon-starfield-image);
-  background-position: center;
-  background-size: cover;
-  filter: saturate(1.12) contrast(1.08) brightness(1.08);
+  background-position:
+    center center,
+    15% 18%,
+    82% 14%,
+    center calc(50% + var(--bg-parallax-offset));
+  background-size:
+    cover,
+    cover,
+    cover,
+    contain;
+  background-repeat: no-repeat;
+  filter: saturate(1.06) contrast(1.02) brightness(0.94);
 }
 
 html.light .site-background {
   background-image:
-    linear-gradient(180deg, rgba(24, 42, 74, 0.14), rgba(58, 91, 136, 0.2)),
-    radial-gradient(circle at top, rgba(0, 255, 208, 0.12), transparent 36%),
-    radial-gradient(circle at 80% 20%, rgba(162, 89, 255, 0.16), transparent 30%),
+    linear-gradient(180deg, rgba(18, 32, 58, 0.46), rgba(29, 45, 76, 0.4)),
+    radial-gradient(circle at top, rgba(0, 255, 208, 0.07), transparent 42%),
+    radial-gradient(circle at 80% 20%, rgba(162, 89, 255, 0.11), transparent 36%),
     var(--neon-starfield-image);
-  filter: saturate(1.02) brightness(1.16);
+  filter: saturate(1.02) brightness(0.96);
+}
+
+@media (max-width: 768px) {
+  .site-background {
+    background-size:
+      cover,
+      cover,
+      cover,
+      contain;
+    background-position:
+      center center,
+      12% 12%,
+      86% 12%,
+      center calc(48% + var(--bg-parallax-offset));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --bg-parallax-offset: 0px;
+  }
 }
 
 .site-shell {
@@ -359,4 +397,48 @@ html.light .site-shell::before {
 /* Smooth transitions for theme changes */
 html, body, .site-background {
   transition: background 0.7s cubic-bezier(0.4,0,0.2,1), color 0.7s cubic-bezier(0.4,0,0.2,1);
+}
+
+/* Mobile and PWA scrolling fixes */
+@supports (padding: max(0px)) {
+  body {
+    padding-left: max(0px, env(safe-area-inset-left));
+    padding-right: max(0px, env(safe-area-inset-right));
+    padding-top: max(0px, env(safe-area-inset-top));
+  }
+}
+
+/* Ensure scrollable content areas on mobile */
+@media (max-width: 640px) {
+  html, body {
+    height: auto;
+    min-height: 100vh;
+  }
+  
+  main {
+    overflow-y: auto !important;
+    overflow-x: hidden;
+  }
+  
+  /* Enable scrolling on all major containers */
+  [role="main"], .min-h-screen {
+    min-height: auto !important;
+  }
+}
+
+/* PWA viewport and scrolling */
+@media (display-mode: standalone) {
+  body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  main, [role="main"] {
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex: 1;
+  }
 }

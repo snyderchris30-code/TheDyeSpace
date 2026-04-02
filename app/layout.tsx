@@ -11,10 +11,10 @@ export const metadata: Metadata = {
   manifest: '/manifest.json',
   icons: {
     icon: [
-      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-      { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+      { url: '/logo.png', sizes: '512x512', type: 'image/png' },
     ],
-    apple: [{ url: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+    apple: [{ url: '/logo.png', sizes: '180x180', type: 'image/png' }],
+    shortcut: [{ url: '/logo.png', type: 'image/png' }],
   },
   appleWebApp: {
     capable: true,
@@ -33,6 +33,7 @@ export const viewport: Viewport = {
 
 import { Providers } from './providers';
 import PWARegister from './PWARegister';
+import BackgroundParallax from './BackgroundParallax';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -42,12 +43,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="DyeSpace" />
+        <link rel="apple-touch-icon" href="/logo.png" />
       </head>
-      <body className={`min-h-screen text-white ${inter.variable} ${spaceGrotesk.variable} font-sans`}>
+      <body className={`flex flex-col min-h-screen text-white overflow-hidden ${inter.variable} ${spaceGrotesk.variable} font-sans`}>
         <Providers>
           <PWARegister />
+          <BackgroundParallax />
           <div className="site-background" />
-          <main className="site-shell relative z-10 flex flex-col min-h-screen pt-20">
+          <main className="site-shell relative z-10 flex flex-col flex-1 pt-20 overflow-y-auto overflow-x-hidden">
             {children}
           </main>
         </Providers>

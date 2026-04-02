@@ -81,7 +81,7 @@ async function fetchPosts({ pageParam }: { pageParam?: string | null }) {
     .in("id", userIds);
 
   if (profilesError) {
-    console.error("Failed to load post author profiles", profilesError);
+    // Suppress noisy error; gracefully continue with default names
     return posts.map((post) => ({
       ...post,
       author_display_name: "DyeSpace User",
@@ -292,17 +292,18 @@ export default function MainFeedPage() {
               </div>
               <span className="rounded-full bg-green-900/30 px-2 py-1 text-xs text-green-200">{post.is_for_sale ? "For Sale" : "Just Shared"}</span>
             </header>
-            <button
-              type="button"
-              className="block w-full text-left"
-              onClick={() => setExpandedComments((prev) => ({ ...prev, [post.id]: !prev[post.id] }))}
-            >
-              <p className="mb-3 text-sm leading-6 text-[color:var(--post-text)]/92 sm:text-base sm:leading-7">{post.content || "No description provided yet."}</p>
+            <div className="block w-full text-left">
+              <button
+                type="button"
+                className="block w-full text-left hover:opacity-80 transition"
+                onClick={() => setExpandedComments((prev) => ({ ...prev, [post.id]: !prev[post.id] }))}
+              >
+                <p className="mb-3 text-sm leading-6 text-[color:var(--post-text)]/92 sm:text-base sm:leading-7">{post.content || "No description provided yet."}</p>
+              </button>
               {post.image_urls && post.image_urls.length > 0 && (
                 <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
                   {post.image_urls.map((imgUrl, idx) => (
-                    <button key={idx} type="button" className="group relative aspect-[4/5] w-full overflow-hidden rounded-2xl cursor-zoom-in sm:aspect-[4/4]" onClick={(e) => {
-                      e.stopPropagation();
+                    <button key={idx} type="button" className="group relative aspect-[4/5] w-full overflow-hidden rounded-2xl cursor-zoom-in sm:aspect-[4/4]" onClick={() => {
                       setLightbox({ open: true, url: imgUrl });
                     }}>
                       <img
@@ -318,7 +319,7 @@ export default function MainFeedPage() {
                   ))}
                 </div>
               )}
-            </button>
+            </div>
             {lightbox.open && lightbox.url && (
               <LightboxModal imageUrl={lightbox.url} onClose={() => setLightbox({ open: false, url: null })} />
             )}
@@ -372,6 +373,7 @@ export default function MainFeedPage() {
                 <a href="/terms" className="underline hover:text-green-300">Terms</a>
                 <a href="/privacy" className="underline hover:text-green-300">Privacy</a>
                 <a href="/guidelines" className="underline hover:text-green-300">Guidelines</a>
+                <a href="/suggestions" className="underline hover:text-green-300">Support</a>
               </div>
             </footer>
             {postInteraction.reactions.length > 0 && (

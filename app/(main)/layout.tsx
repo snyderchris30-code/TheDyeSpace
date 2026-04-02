@@ -22,8 +22,8 @@ export const metadata: Metadata = {
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   return (
     <MainLayoutClient>
-      <div className={`min-h-screen text-cyan-100 ${inter.variable} ${spaceGrotesk.variable} ${bebasNeue.variable} ${cormorantGaramond.variable} ${dmSerifDisplay.variable} ${orbitron.variable} ${playfairDisplay.variable} ${syne.variable} ${jetbrainsMono.variable} ${audiowide.variable}`}>
-        <main className="pt-24 px-4 pb-10 sm:px-8">{children}</main>
+      <div className={`flex-1 text-cyan-100 ${inter.variable} ${spaceGrotesk.variable} ${bebasNeue.variable} ${cormorantGaramond.variable} ${dmSerifDisplay.variable} ${orbitron.variable} ${playfairDisplay.variable} ${syne.variable} ${jetbrainsMono.variable} ${audiowide.variable}`}>
+        <div className="pt-24 px-4 pb-10 sm:px-8 min-h-full">{children}</div>
       </div>
     </MainLayoutClient>
   );

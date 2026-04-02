@@ -133,7 +133,7 @@ export default function ExplorePage() {
             .in("id", userIds);
 
           if (profilesError) {
-            console.error("Failed to load explore author profiles", profilesError);
+            // Suppress noisy profile loading error
           } else {
             (profilesData || []).forEach((profile) => {
               profilesById.set(profile.id, profile as ProfileRow);

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { Bell, User, Home, PlusSquare, Compass, LogOut, Users } from "lucide-react";
+import { Bell, User, Home, PlusSquare, Compass, LogOut, Users, LifeBuoy } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -155,6 +155,7 @@ export default function MainNavbar({ user }: { user?: { avatar_url?: string; dis
         {/* Home and Explore always visible */}
         <Link href="/" className="nav-link flex items-center gap-1 cosmic-headline"><Home size={18} /><span className="text-xs sm:text-base">Home</span></Link>
         <Link href="/explore" className="nav-link flex items-center gap-1 cosmic-headline"><Compass size={18} /><span className="text-xs sm:text-base">Explore</span></Link>
+        <Link href="/suggestions" className="nav-link flex items-center gap-1 cosmic-headline"><LifeBuoy size={18} /><span className="text-xs sm:text-base">Support</span></Link>
         {/* Create Post only if signed in */}
         {session && session.user && (
           <Link href="/create" className="nav-link flex items-center gap-1 cosmic-headline"><PlusSquare size={18} /><span className="text-xs sm:text-base">Create</span></Link>
@@ -264,6 +265,7 @@ export default function MainNavbar({ user }: { user?: { avatar_url?: string; dis
               <a href="/terms" className="block px-3 py-2 rounded hover:bg-teal-800/40 text-cyan-200 font-semibold transition-colors">Terms of Service</a>
               <a href="/privacy" className="block px-3 py-2 rounded hover:bg-teal-800/40 text-cyan-200 font-semibold transition-colors">Privacy Policy</a>
               <a href="/guidelines" className="block px-3 py-2 rounded hover:bg-teal-800/40 text-cyan-200 font-semibold transition-colors">Community Guidelines</a>
+              <a href="/suggestions" className="block px-3 py-2 rounded hover:bg-teal-800/40 text-cyan-200 font-semibold transition-colors">Suggestions &amp; Support</a>
               <button
                 className="w-full flex items-center gap-2 px-3 py-2 rounded hover:bg-teal-800/40 text-teal-100 font-semibold transition-colors mt-2"
                 onClick={handleSignOut}

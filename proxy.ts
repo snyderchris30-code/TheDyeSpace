@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 
-const AUTH_ROUTES = new Set(['/login', '/signup']);
+const AUTH_ROUTES = new Set(['/login', '/signup', '/auth/forgot-password']);
 const PROTECTED_ROUTE_PREFIXES = ['/create', '/notifications'];
 const PROTECTED_EXACT_ROUTES = new Set(['/profile']);
 
@@ -38,9 +38,16 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let user = null;
+  try {
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
+    user = authUser;
+  } catch (error) {
+    // Suppress refresh token errors - user is not authenticated or session is invalid
+    // Continue with user = null for proper redirect handling
+  }
 
   if (!user && isProtectedPath(pathname)) {
     const loginUrl = new URL('/login', request.url);
