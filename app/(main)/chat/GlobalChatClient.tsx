@@ -154,6 +154,8 @@ export default function GlobalChat() {
                   <div className="mt-1 flex gap-2">
                     <input
                       className="flex-1 rounded-lg border border-cyan-300/30 bg-black/40 px-2 py-1 text-cyan-100 text-sm focus:outline-none focus:ring-1 focus:ring-cyan-400"
+                      title="Edit your chat message"
+                      placeholder="Edit your message"
                       value={editText}
                       onChange={(e) => setEditText(e.target.value)}
                       maxLength={500}

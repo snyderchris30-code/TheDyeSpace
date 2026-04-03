@@ -409,6 +409,8 @@ export default function MainFeedPage() {
                 <div className="mb-3 flex flex-col gap-2">
                   <textarea
                     className="min-h-24 w-full rounded-2xl border border-cyan-300/20 bg-slate-950/75 px-4 py-3 text-white outline-none transition focus:border-cyan-300/50"
+                    title="Edit post content"
+                    placeholder="Edit your post"
                     value={editPostContent}
                     onChange={(e) => setEditPostContent(e.target.value)}
                     maxLength={2000}
@@ -557,6 +559,8 @@ export default function MainFeedPage() {
                                 <div className="mt-2 flex flex-col gap-2">
                                   <textarea
                                     className="min-h-16 w-full rounded-xl border border-cyan-300/20 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/50"
+                                    title="Edit your comment"
+                                    placeholder="Edit your comment"
                                     value={editCommentContent}
                                     onChange={(e) => setEditCommentContent(e.target.value)}
                                     maxLength={1000}
