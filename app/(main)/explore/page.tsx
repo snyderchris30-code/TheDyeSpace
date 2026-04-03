@@ -221,6 +221,9 @@ export default function ExplorePage() {
               {t.label}
             </button>
           ))}
+          <Link href="/chat" className="rounded-full border border-pink-400/60 bg-gradient-to-br from-cyan-900/60 to-pink-900/60 px-4 py-2 text-sm font-semibold text-pink-200 shadow-md hover:bg-pink-900/80 hover:text-white transition ml-auto">
+            🚬 Smoke Lounge
+          </Link>
         </div>
 
         <div className="mb-8">
@@ -303,13 +306,40 @@ export default function ExplorePage() {
                 </div>
               ) : null}
 
-              <div className="flex items-center justify-between text-xs text-[color:var(--post-text)]/75">
+              <div className="flex items-center justify-between text-xs text-[color:var(--post-text)]/75 mb-2">
                 <span>{new Date(post.created_at).toLocaleString()}</span>
                 <span>{post.likes} likes</span>
               </div>
+              <ReportPostButton postId={post.id} />
             </article>
           ))}
         </div>
+        // Report button for posts
+        import { useCallback } from "react";
+
+        function ReportPostButton({ postId }: { postId: string }) {
+          const handleReport = useCallback(async () => {
+            const reason = prompt("Reason for reporting this post?");
+            if (!reason) return;
+            const supabase = createClient();
+            await supabase.from("reports").insert({
+              type: "post",
+              reported_id: postId,
+              reason,
+              created_at: new Date().toISOString(),
+            });
+            alert("Post reported. Thank you!");
+          }, [postId]);
+          return (
+            <button
+              className="rounded-full border border-pink-400/60 bg-pink-900/40 px-3 py-1 text-xs font-semibold text-pink-200 hover:bg-pink-900/80 hover:text-white transition"
+              onClick={handleReport}
+              title="Report post"
+            >
+              Report
+            </button>
+          );
+        }
         {lightbox.open && lightbox.url ? <LightboxModal imageUrl={lightbox.url} onClose={() => setLightbox({ open: false, url: null })} /> : null}
       </div>
     </div>
