@@ -83,6 +83,27 @@ function stripCategoryTag(content: string | null) {
   return content.replace(/^\[(tutorial|new_boot_goofin|sold|unavailable)\]\s*/i, "").trim();
 }
 
+type FeedCategory = "all" | "following" | "tutorial" | "new_boot_goofin" | "for_sale" | "sold_unavailable";
+
+function parsePostCategory(content: string | null): FeedCategory {
+  const text = (content || "").toLowerCase();
+  if (text.startsWith("[sold]") || text.startsWith("[unavailable]")) return "sold_unavailable";
+  if (text.startsWith("[tutorial]")) return "tutorial";
+  if (text.startsWith("[new_boot_goofin]")) return "new_boot_goofin";
+  return "all";
+}
+
+function getCategoryMeta(content: string | null): { value: FeedCategory; label: string } | null {
+  const category = parsePostCategory(content);
+  if (category === "tutorial") return { value: "tutorial", label: "Tutorial" };
+  if (category === "new_boot_goofin") return { value: "new_boot_goofin", label: "New Boot Goofin" };
+  if (category === "sold_unavailable") {
+    const text = (content || "").toLowerCase();
+    return { value: "sold_unavailable", label: text.startsWith("[sold]") ? "Sold" : "No Longer Available" };
+  }
+  return null;
+}
+
 function formatPostDate(value: string) {
   return new Date(value).toLocaleString();
 }
@@ -1082,6 +1103,7 @@ export default function ProfileEditor() {
                     const postInteraction = interactions[post.id] || { comments: [], reactions: [], viewerReaction: null };
                     const isCommentsOpen = Boolean(expandedComments[post.id]);
                     const isBusy = interactionBusyPostId === post.id;
+                    const categoryMeta = getCategoryMeta(post.content);
 
                     return (
                       <article
@@ -1092,11 +1114,21 @@ export default function ProfileEditor() {
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                           <div>
                             <p className="text-sm text-[color:var(--profile-text)]/70">{formatPostDate(post.created_at)}</p>
-                            {post.is_for_sale ? (
-                              <span className="mt-2 inline-flex rounded-full border border-emerald-300/40 bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-100">
-                                For Sale
-                              </span>
-                            ) : null}
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {post.is_for_sale ? (
+                                <span className="inline-flex rounded-full border border-emerald-300/40 bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-100">
+                                  For Sale
+                                </span>
+                              ) : null}
+                              {categoryMeta ? (
+                                <Link
+                                  href={`/explore?tab=${encodeURIComponent(categoryMeta.value)}`}
+                                  className="inline-flex rounded-full border border-cyan-300/45 bg-cyan-300/15 px-3 py-1 text-xs font-semibold text-cyan-100 hover:border-cyan-200/70 hover:bg-cyan-300/30"
+                                >
+                                  {categoryMeta.label}
+                                </Link>
+                              ) : null}
+                            </div>
                           </div>
                           <div className="rounded-full border border-cyan-300/20 bg-black/25 px-3 py-1 text-xs text-[color:var(--profile-text)]/75">
                             {post.likes} reactions • {post.comments_count} comments

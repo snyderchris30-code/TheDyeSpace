@@ -54,6 +54,32 @@ function formatDisplayName(profile?: ProfileRow) {
   return "DyeSpace User";
 }
 
+type FeedCategory = "all" | "following" | "tutorial" | "new_boot_goofin" | "for_sale" | "sold_unavailable";
+
+function parsePostCategory(content: string | null): FeedCategory {
+  const text = (content || "").toLowerCase();
+  if (text.startsWith("[sold]") || text.startsWith("[unavailable]")) return "sold_unavailable";
+  if (text.startsWith("[tutorial]")) return "tutorial";
+  if (text.startsWith("[new_boot_goofin]")) return "new_boot_goofin";
+  return "all";
+}
+
+function stripCategoryTag(content: string | null) {
+  if (!content) return "";
+  return content.replace(/^\[(tutorial|new_boot_goofin|sold|unavailable)\]\s*/i, "").trim();
+}
+
+function getCategoryMeta(content: string | null): { value: FeedCategory; label: string } | null {
+  const category = parsePostCategory(content);
+  if (category === "tutorial") return { value: "tutorial", label: "Tutorial" };
+  if (category === "new_boot_goofin") return { value: "new_boot_goofin", label: "New Boot Goofin" };
+  if (category === "sold_unavailable") {
+    const text = (content || "").toLowerCase();
+    return { value: "sold_unavailable", label: text.startsWith("[sold]") ? "Sold" : "No Longer Available" };
+  }
+  return null;
+}
+
 async function fetchPosts({ pageParam }: { pageParam?: string | null }) {
   const supabase = createClient();
   let query = supabase
@@ -348,6 +374,8 @@ export default function MainFeedPage() {
           const isBusy = interactionBusyPostId === post.id;
           const isOwner = !!session?.user && session.user.id === post.user_id;
           const displayContent = editedPostContent[post.id] ?? post.content;
+          const categoryMeta = getCategoryMeta(displayContent);
+          const visibleContent = stripCategoryTag(displayContent);
 
           return (
           <article
@@ -357,20 +385,30 @@ export default function MainFeedPage() {
           >
             <header className="mb-3 flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
               <div>
-                <Link
-                  href={post.author_username ? `/profile/${post.author_username}` : '#'}
-                  className="font-bold text-[color:var(--post-text)] hover:text-[color:var(--post-highlight)] hover:underline"
-                  prefetch={false}
-                >
-                  {post.author_display_name || "DyeSpace User"}
-                </Link>
-                <Link
-                  href={post.author_username ? `/profile/${post.author_username}` : '#'}
-                  className="ml-1 text-xs text-[color:var(--post-highlight)]/85 hover:text-[color:var(--post-highlight)] hover:underline"
-                  prefetch={false}
-                >
-                  @{post.author_username || "dyespace-user"}
-                </Link>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Link
+                    href={post.author_username ? `/profile/${post.author_username}` : '#'}
+                    className="font-bold text-[color:var(--post-text)] hover:text-[color:var(--post-highlight)] hover:underline"
+                    prefetch={false}
+                  >
+                    {post.author_display_name || "DyeSpace User"}
+                  </Link>
+                  <Link
+                    href={post.author_username ? `/profile/${post.author_username}` : '#'}
+                    className="text-xs text-[color:var(--post-highlight)]/85 hover:text-[color:var(--post-highlight)] hover:underline"
+                    prefetch={false}
+                  >
+                    @{post.author_username || "dyespace-user"}
+                  </Link>
+                  {categoryMeta ? (
+                    <Link
+                      href={`/explore?tab=${encodeURIComponent(categoryMeta.value)}`}
+                      className="inline-flex rounded-full border border-cyan-300/45 bg-cyan-300/15 px-2 py-0.5 text-[11px] font-semibold text-cyan-100 hover:border-cyan-200/70 hover:bg-cyan-300/30"
+                    >
+                      {categoryMeta.label}
+                    </Link>
+                  ) : null}
+                </div>
                 <time className="block text-xs text-[color:var(--post-text)]/70">{new Date(post.created_at).toLocaleString()}</time>
               </div>
               <div className="flex items-center gap-2">
@@ -402,7 +440,7 @@ export default function MainFeedPage() {
                 onClick={() => setExpandedComments((prev) => ({ ...prev, [post.id]: !prev[post.id] }))}
               >
                 {editingPostId === post.id ? null : (
-                  <p className="mb-3 text-sm leading-6 text-[color:var(--post-text)]/92 sm:text-base sm:leading-7">{displayContent || "No description provided yet."}</p>
+                  <p className="mb-3 text-sm leading-6 text-[color:var(--post-text)]/92 sm:text-base sm:leading-7">{visibleContent || "No description provided yet."}</p>
                 )}
               </button>
               {editingPostId === post.id && (

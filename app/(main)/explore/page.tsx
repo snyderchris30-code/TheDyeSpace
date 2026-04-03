@@ -47,6 +47,17 @@ function parsePostCategory(content: string | null): FeedCategory {
   return "all";
 }
 
+function getCategoryMeta(content: string | null): { value: FeedCategory; label: string } | null {
+  const category = parsePostCategory(content);
+  if (category === "tutorial") return { value: "tutorial", label: "Tutorial" };
+  if (category === "new_boot_goofin") return { value: "new_boot_goofin", label: "New Boot Goofin" };
+  if (category === "sold_unavailable") {
+    const text = (content || "").toLowerCase();
+    return { value: "sold_unavailable", label: text.startsWith("[sold]") ? "Sold" : "No Longer Available" };
+  }
+  return null;
+}
+
 function stripCategoryTag(content: string | null): string {
   if (!content) return "";
   return content.replace(/^\[(tutorial|new_boot_goofin|sold|unavailable)\]\s*/i, "").trim();
@@ -116,6 +127,17 @@ export default function ExplorePage() {
   const [posts, setPosts] = useState<ExplorePost[]>([]);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [marketplaceOnly, setMarketplaceOnly] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const requestedTab = new URLSearchParams(window.location.search).get("tab");
+    if (!requestedTab) return;
+
+    const allowedTabs: FeedCategory[] = ["all", "following", "tutorial", "new_boot_goofin", "for_sale", "sold_unavailable"];
+    if (allowedTabs.includes(requestedTab as FeedCategory)) {
+      setTab(requestedTab as FeedCategory);
+    }
+  }, []);
 
   useEffect(() => {
     const supabase = createClient();
@@ -344,6 +366,14 @@ export default function ExplorePage() {
                 >
                   @{post.author_username || "dyespace-user"}
                 </Link>
+                {getCategoryMeta(post.content) ? (
+                  <Link
+                    href={`/explore?tab=${encodeURIComponent(getCategoryMeta(post.content)!.value)}`}
+                    className="ml-2 inline-flex rounded-full border border-cyan-300/45 bg-cyan-300/15 px-2 py-0.5 text-[11px] font-semibold text-cyan-100 hover:border-cyan-200/70 hover:bg-cyan-300/30"
+                  >
+                    {getCategoryMeta(post.content)!.label}
+                  </Link>
+                ) : null}
               </div>
               <div className="mb-3 flex flex-wrap gap-2">
                 {post.is_for_sale ? (
