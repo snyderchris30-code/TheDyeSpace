@@ -2,8 +2,8 @@
 
 import { useEffect } from "react";
 
-const MAX_OFFSET = 140;
-const PARALLAX_FACTOR = 0.14;
+const MAX_OFFSET = 48;
+const PARALLAX_FACTOR = 0.03;
 
 export default function BackgroundParallax() {
   useEffect(() => {

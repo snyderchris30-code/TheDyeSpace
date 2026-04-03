@@ -123,7 +123,7 @@ export default function ResetPasswordPage() {
         ) : (
           <div className="text-center">
             <div className="text-red-300 font-semibold mb-4">{error}</div>
-            <Link href="/auth/forgot-password" className="underline text-pink-300 hover:text-yellow-300">
+            <Link href="/forgot-password" className="underline text-pink-300 hover:text-yellow-300">
               Request a new reset link
             </Link>
           </div>

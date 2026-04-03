@@ -2,7 +2,7 @@
 
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import { Heart, MessageCircle, Send } from "lucide-react";
+import { Heart, MessageCircle, Send, SquarePen } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useEffect, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
@@ -253,6 +253,15 @@ export default function MainFeedPage() {
       <h1 className="mb-3 text-4xl leading-tight cosmic-headline sm:mb-4 sm:text-6xl lg:text-7xl">
         TheDyeSpace;] <span className="mt-2 block text-lg leading-snug cosmic-headline-sub sm:inline sm:text-[1.35rem]">The Hub For Tie-Dye Loving Hippies.</span>
       </h1>
+      <div className="mb-4 sm:mb-6">
+        <Link
+          href={session?.user ? "/create" : "/login?redirect=/create"}
+          className="inline-flex items-center gap-2 rounded-full border border-cyan-300/55 bg-cyan-300/15 px-5 py-2 text-sm font-semibold text-cyan-50 shadow-[0_0_24px_rgba(34,211,238,0.22)] transition hover:scale-[1.02] hover:bg-cyan-300/25"
+        >
+          <SquarePen className="h-4 w-4" />
+          Create Post
+        </Link>
+      </div>
       <p className="mb-5 text-base cosmic-subtext sm:mb-8 sm:text-xl">
         {/* Removed placeholder text. */}
       </p>

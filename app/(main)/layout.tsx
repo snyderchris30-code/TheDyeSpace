@@ -23,7 +23,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   return (
     <MainLayoutClient>
       <div className={`flex-1 text-cyan-100 ${inter.variable} ${spaceGrotesk.variable} ${bebasNeue.variable} ${cormorantGaramond.variable} ${dmSerifDisplay.variable} ${orbitron.variable} ${playfairDisplay.variable} ${syne.variable} ${jetbrainsMono.variable} ${audiowide.variable}`}>
-        <div className="pt-24 px-4 pb-10 sm:px-8 min-h-full">{children}</div>
+        <div className="pt-8 px-4 pb-10 sm:px-8 sm:pt-10 min-h-full">{children}</div>
       </div>
     </MainLayoutClient>
   );

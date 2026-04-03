@@ -54,7 +54,7 @@ export default function SuggestionsPage() {
   return (
     <div className="flex flex-col text-cyan-100 min-w-full">
       <MainNavbarWrapper />
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-3 pb-12 pt-24 sm:px-6 sm:pt-28 lg:px-8">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-3 pb-12 pt-8 sm:px-6 sm:pt-10 lg:px-8">
         <section className="relative overflow-hidden rounded-[2rem] border border-cyan-300/20 bg-[radial-gradient(circle_at_top,rgba(0,255,208,0.14),transparent_36%),radial-gradient(circle_at_80%_20%,rgba(162,89,255,0.22),transparent_30%),linear-gradient(180deg,rgba(8,16,30,0.88),rgba(7,12,24,0.92))] p-6 shadow-[0_20px_80px_rgba(0,0,0,0.36)] backdrop-blur-xl sm:p-10">
           <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/60 to-transparent" />
           <div className="relative max-w-3xl">
@@ -126,7 +126,7 @@ export default function SuggestionsPage() {
                     value={form.message}
                     onChange={(event) => setForm((current) => ({ ...current, message: event.target.value }))}
                     className="min-h-40 w-full rounded-[1.5rem] border border-cyan-300/20 bg-black/30 px-4 py-4 text-white outline-none transition focus:border-cyan-300/45"
-                    placeholder="Tell us what would make TheDyeSpace more useful, more beautiful, or more cosmic."
+                    placeholder="Tell me if you run into any issues and tell me what would make TheDyeSpace more useful or fun place to hangout."
                   />
                 </label>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

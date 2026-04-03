@@ -43,14 +43,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="DyeSpace" />
-        <link rel="apple-touch-icon" href="/logo.png" />
       </head>
       <body className={`flex flex-col min-h-screen text-white overflow-hidden ${inter.variable} ${spaceGrotesk.variable} font-sans`}>
         <Providers>
           <PWARegister />
           <BackgroundParallax />
           <div className="site-background" />
-          <main className="site-shell relative z-10 flex flex-col flex-1 pt-20 overflow-y-auto overflow-x-hidden">
+          <main className="site-shell relative z-10 flex flex-col flex-1 pt-16 overflow-y-auto overflow-x-hidden">
             {children}
           </main>
         </Providers>

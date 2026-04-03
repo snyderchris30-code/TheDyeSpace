@@ -1,9 +1,9 @@
 "use client";
 import dynamic from "next/dynamic";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Dialog } from "@headlessui/react";
 import { useParams } from "next/navigation";
-import { Heart, MessageCircle, Send } from "lucide-react";
+import { Heart, MessageCircle, Send, SquarePen, Music2, PlayCircle, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { REACTION_EMOJIS, type AggregatedPostInteraction, type ReactionEmoji } from "@/lib/post-interactions";
@@ -49,6 +49,14 @@ type FormState = {
   text_color: string;
   highlight_color: string;
   font_style: FontStyle;
+  youtube_urls: string[];
+};
+
+type PlaylistSong = {
+  url: string;
+  videoId: string;
+  embedUrl: string;
+  thumbnailUrl: string;
 };
 
 type ProfilePost = {
@@ -88,6 +96,45 @@ function applyProfileThemeVars(element: HTMLElement | null, appearance?: Profile
   element.style.setProperty("--profile-highlight", resolved.highlight_color);
 }
 
+const YOUTUBE_URL_REGEX = /(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+
+function extractYoutubeVideoId(url: string) {
+  const match = url.match(YOUTUBE_URL_REGEX);
+  return match ? match[1] : null;
+}
+
+function normalizeYoutubeUrls(values: string[]) {
+  const uniqueUrls = new Set<string>();
+
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    const videoId = extractYoutubeVideoId(trimmed);
+    if (!videoId) continue;
+    uniqueUrls.add(`https://www.youtube.com/watch?v=${videoId}`);
+    if (uniqueUrls.size >= 25) {
+      break;
+    }
+  }
+
+  return Array.from(uniqueUrls);
+}
+
+function buildPlaylist(urls: string[]): PlaylistSong[] {
+  return normalizeYoutubeUrls(urls)
+    .map((url) => {
+      const videoId = extractYoutubeVideoId(url);
+      if (!videoId) return null;
+      return {
+        url,
+        videoId,
+        embedUrl: `https://www.youtube-nocookie.com/embed/${videoId}`,
+        thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+      };
+    })
+    .filter((song): song is PlaylistSong => Boolean(song));
+}
+
 export default function ProfileEditor() {
   // Lightbox state for image modal
   const [lightbox, setLightbox] = useState<{ open: boolean; url: string | null }>({ open: false, url: null });
@@ -117,6 +164,7 @@ export default function ProfileEditor() {
     text_color: DEFAULT_TEXT_COLOR,
     highlight_color: DEFAULT_HIGHLIGHT_COLOR,
     font_style: DEFAULT_FONT_STYLE,
+    youtube_urls: [],
   });
   const [draft, setDraft] = useState<FormState>({
     display_name: "",
@@ -128,6 +176,7 @@ export default function ProfileEditor() {
     text_color: DEFAULT_TEXT_COLOR,
     highlight_color: DEFAULT_HIGHLIGHT_COLOR,
     font_style: DEFAULT_FONT_STYLE,
+    youtube_urls: [],
   });
   const [editing, setEditing] = useState(false);
   const [posts, setPosts] = useState<ProfilePost[]>([]);
@@ -136,6 +185,9 @@ export default function ProfileEditor() {
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [reactionPickerPostId, setReactionPickerPostId] = useState<string | null>(null);
   const [interactionBusyPostId, setInteractionBusyPostId] = useState<string | null>(null);
+  const [songInput, setSongInput] = useState("");
+  const [playerSong, setPlayerSong] = useState<PlaylistSong | null>(null);
+  const [videoTitles, setVideoTitles] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<StatusState | null>(null);
 
   const applyProfileToForm = useCallback((profile: ProfileRow) => {
@@ -150,6 +202,7 @@ export default function ProfileEditor() {
       text_color: appearance?.text_color || DEFAULT_TEXT_COLOR,
       highlight_color: appearance?.highlight_color || DEFAULT_HIGHLIGHT_COLOR,
       font_style: normalizeFontStyle(appearance?.font_style),
+      youtube_urls: normalizeYoutubeUrls(Array.isArray(appearance?.youtube_urls) ? appearance.youtube_urls : []),
     };
     setForm(nextForm);
     setDraft(nextForm);
@@ -364,7 +417,7 @@ export default function ProfileEditor() {
   }, []);
 
   const saveProfile = useCallback(
-    async (payloadState: FormState, successText?: string) => {
+    async (payloadState: FormState, successText?: string, signal?: AbortSignal) => {
       const userId = session?.user?.id || profileUserId;
 
       if (!userId) {
@@ -382,12 +435,14 @@ export default function ProfileEditor() {
         text_color: payloadState.text_color,
         highlight_color: payloadState.highlight_color,
         font_style: payloadState.font_style,
+        youtube_urls: payloadState.youtube_urls,
       };
 
       const saveRes = await fetch("/api/profile/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        signal,
       });
 
       if (!saveRes.ok) {
@@ -496,21 +551,64 @@ export default function ProfileEditor() {
 
   const openEditor = () => {
     setDraft(form);
+    setSongInput("");
+    setIsSaving(false);
     setEditing(true);
+  };
+
+  const addSongsToDraft = () => {
+    const rawCandidates = songInput
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    if (!rawCandidates.length) {
+      setStatus({ type: "error", text: "Please paste at least one YouTube URL." });
+      return;
+    }
+
+    const normalized = normalizeYoutubeUrls(rawCandidates);
+    if (!normalized.length) {
+      setStatus({ type: "error", text: "Only valid YouTube video links can be added." });
+      return;
+    }
+
+    setDraft((prev) => ({
+      ...prev,
+      youtube_urls: normalizeYoutubeUrls([...(prev.youtube_urls || []), ...normalized]),
+    }));
+    setSongInput("");
+    setStatus({ type: "success", text: `${normalized.length} song${normalized.length > 1 ? "s" : ""} added.` });
+  };
+
+  const removeSongFromDraft = (url: string) => {
+    setDraft((prev) => ({
+      ...prev,
+      youtube_urls: (prev.youtube_urls || []).filter((value) => value !== url),
+    }));
   };
 
   const handleSave = async () => {
     setIsSaving(true);
     setStatus(null);
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 15000);
+
     try {
-      await saveProfile(draft, "Profile changes saved successfully.");
+      await saveProfile(draft, "Profile changes saved successfully.", controller.signal);
       setEditing(false);
     } catch (error: any) {
       setStatus({
         type: "error",
-        text: typeof error?.message === "string" ? error.message : "We could not save your profile. Please try again.",
+        text:
+          error?.name === "AbortError"
+            ? "Save request timed out. Please try again."
+            : typeof error?.message === "string"
+              ? error.message
+              : "We could not save your profile. Please try again.",
       });
     } finally {
+      window.clearTimeout(timeoutId);
       setIsSaving(false);
     }
   };
@@ -596,9 +694,41 @@ export default function ProfileEditor() {
   );
 
   const profileDisplay = editing ? draft : form;
+  const playlistSongs = useMemo(() => buildPlaylist(profileDisplay.youtube_urls || []), [profileDisplay.youtube_urls]);
+
+  useEffect(() => {
+    const uncachedSongs = playlistSongs.filter((song) => !videoTitles[song.videoId]).slice(0, 8);
+    if (!uncachedSongs.length) {
+      return;
+    }
+
+    let active = true;
+
+    const fetchTitles = async () => {
+      for (const song of uncachedSongs) {
+        try {
+          const response = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(song.url)}&format=json`);
+          if (!response.ok) continue;
+          const body = await response.json();
+          const title = typeof body?.title === "string" ? body.title : "YouTube Track";
+          if (active) {
+            setVideoTitles((prev) => ({ ...prev, [song.videoId]: title }));
+          }
+        } catch {
+          // Keep playlist usable even if title lookup fails.
+        }
+      }
+    };
+
+    void fetchTitles();
+
+    return () => {
+      active = false;
+    };
+  }, [playlistSongs, videoTitles]);
 
   return (
-    <div className="min-h-screen px-4 pb-16 pt-20 text-white sm:px-8" aria-label="Profile Customization Hub">
+    <div className="min-h-screen px-4 pb-16 pt-8 text-white sm:px-8 sm:pt-10" aria-label="Profile Customization Hub">
       <div className="mx-auto max-w-6xl">
         {status ? (
           <div
@@ -618,6 +748,44 @@ export default function ProfileEditor() {
           </div>
         ) : (
           <>
+            {playlistSongs.length > 0 ? (
+              <section className="mb-10">
+                <div className="mb-5 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.35em] text-cyan-300/80">Music</p>
+                    <h2 className="mt-2 flex items-center gap-2 text-3xl font-bold text-cyan-50">
+                      <Music2 className="h-7 w-7 text-cyan-300" />
+                      Playlist
+                    </h2>
+                  </div>
+                  <div className="rounded-full border border-cyan-300/20 bg-slate-950/45 px-4 py-2 text-sm text-cyan-100/80 backdrop-blur-xl">
+                    {playlistSongs.length} {playlistSongs.length === 1 ? "song" : "songs"}
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {playlistSongs.map((song, index) => (
+                    <article key={song.videoId} className="rounded-[1.5rem] border border-cyan-300/20 bg-[linear-gradient(180deg,rgba(9,19,37,0.82),rgba(7,12,24,0.88))] p-4 shadow-[0_20px_50px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+                      <div className="overflow-hidden rounded-2xl border border-cyan-300/20 bg-black/25">
+                        <img src={song.thumbnailUrl} alt="YouTube thumbnail" className="h-40 w-full object-cover" loading="lazy" />
+                      </div>
+                      <h3 className="mt-3 line-clamp-2 text-sm font-semibold text-cyan-50">
+                        {videoTitles[song.videoId] || `YouTube Track ${index + 1}`}
+                      </h3>
+                      <button
+                        type="button"
+                        className="mt-3 inline-flex items-center gap-2 rounded-full border border-cyan-300/35 bg-cyan-300/15 px-4 py-2 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-300/25"
+                        onClick={() => setPlayerSong(song)}
+                      >
+                        <PlayCircle className="h-4 w-4" />
+                        Play
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
             <section
               ref={viewRef}
               className={`relative isolate overflow-hidden rounded-[2rem] border border-cyan-300/25 shadow-[0_25px_90px_rgba(0,0,0,0.45)] ${fontClass(profileDisplay.font_style)}`}
@@ -632,6 +800,15 @@ export default function ProfileEditor() {
               <div className="absolute inset-0 bg-black/20" />
 
               <div className="absolute right-5 top-5 z-20 flex gap-3">
+                {isOwner && (
+                  <Link
+                    href="/create"
+                    className="inline-flex items-center gap-2 rounded-full border border-cyan-300/70 bg-black/45 px-5 py-2 text-sm font-semibold text-cyan-100 shadow-lg backdrop-blur-md transition hover:scale-[1.02] hover:bg-black/60"
+                  >
+                    <SquarePen className="h-4 w-4" />
+                    Create Post
+                  </Link>
+                )}
                 {isOwner && !editing && (
                   <button
                     className="rounded-full border border-[color:var(--profile-highlight)]/70 bg-black/45 px-5 py-2 text-sm font-semibold text-[color:var(--profile-highlight)] shadow-lg backdrop-blur-md transition hover:scale-[1.02] hover:bg-black/60"
@@ -962,6 +1139,7 @@ export default function ProfileEditor() {
                   className="rounded-full border border-white/20 px-4 py-2 text-sm text-white/90 hover:bg-white/10"
                   onClick={() => {
                     setDraft(form);
+                    setIsSaving(false);
                     setEditing(false);
                   }}
                   type="button"
@@ -975,6 +1153,7 @@ export default function ProfileEditor() {
                 <h3 className="mt-2 text-2xl font-semibold text-[color:var(--profile-text)]">{draft.display_name || "Display Name"}</h3>
                 <p className="text-sm text-[color:var(--profile-highlight)]">@{draft.username || "username"}</p>
                 <p className="mt-3 whitespace-pre-wrap text-[color:var(--profile-text)]/90">{draft.bio || "Your bio preview appears here."}</p>
+                <p className="mt-3 text-xs text-[color:var(--profile-highlight)]/90">{(draft.youtube_urls || []).length} saved song{(draft.youtube_urls || []).length === 1 ? "" : "s"}</p>
               </div>
 
               <div className="grid gap-5 sm:grid-cols-2">
@@ -997,6 +1176,48 @@ export default function ProfileEditor() {
                     placeholder="Share something about yourself"
                   />
                 </label>
+
+                <div className="sm:col-span-2 rounded-2xl border border-cyan-300/20 bg-black/25 p-4">
+                  <div className="mb-3 flex items-center gap-2 text-cyan-100">
+                    <Music2 className="h-4 w-4 text-cyan-300" />
+                    <span className="text-sm font-semibold">YouTube Music Playlist</span>
+                  </div>
+                  <p className="mb-3 text-xs text-cyan-100/70">Add one YouTube video URL per line, then click Add Song.</p>
+                  <textarea
+                    className="min-h-24 w-full rounded-2xl border border-white/15 bg-black/30 px-4 py-3 text-white outline-none focus:border-cyan-300/50"
+                    value={songInput}
+                    onChange={(e) => setSongInput(e.target.value)}
+                    placeholder="https://www.youtube.com/watch?v=..."
+                  />
+                  <button
+                    type="button"
+                    className="mt-3 inline-flex items-center gap-2 rounded-full border border-cyan-300/40 bg-cyan-300/15 px-4 py-2 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-300/25"
+                    onClick={addSongsToDraft}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add Song
+                  </button>
+
+                  {(draft.youtube_urls || []).length > 0 ? (
+                    <div className="mt-4 space-y-2">
+                      {(draft.youtube_urls || []).map((url, index) => (
+                        <div key={url} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-900/50 px-3 py-2">
+                          <p className="truncate text-xs text-cyan-100/85">{videoTitles[extractYoutubeVideoId(url) || ""] || `Song ${index + 1}`}</p>
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded-full border border-rose-300/40 bg-rose-500/10 px-2 py-1 text-xs font-semibold text-rose-200 hover:bg-rose-500/20"
+                            onClick={() => removeSongFromDraft(url)}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-xs text-cyan-100/60">No songs added yet.</p>
+                  )}
+                </div>
 
                 <div>
                   <span className="mb-2 block text-sm text-cyan-100">Background Color</span>
@@ -1078,6 +1299,7 @@ export default function ProfileEditor() {
                   type="button"
                   onClick={() => {
                     setDraft(form);
+                    setIsSaving(false);
                     setEditing(false);
                   }}
                 >
@@ -1087,6 +1309,38 @@ export default function ProfileEditor() {
             </div>
           </div>
         ) : null}
+
+        <Dialog open={Boolean(playerSong)} onClose={() => setPlayerSong(null)} className="fixed inset-0 z-[1002] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" aria-hidden="true" />
+          <Dialog.Panel className="relative z-10 w-full max-w-3xl overflow-hidden rounded-3xl border border-cyan-300/35 bg-[linear-gradient(180deg,rgba(8,16,30,0.92),rgba(7,12,24,0.96))] p-4 shadow-2xl backdrop-blur-xl sm:p-6">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <Dialog.Title className="text-lg font-semibold text-cyan-50">Profile Music Player</Dialog.Title>
+                <p className="mt-1 text-sm text-cyan-100/70">{playerSong ? videoTitles[playerSong.videoId] || "YouTube Track" : ""}</p>
+              </div>
+              <button
+                type="button"
+                className="inline-flex items-center rounded-full border border-white/20 px-3 py-1.5 text-xs text-white/90 hover:bg-white/10"
+                onClick={() => setPlayerSong(null)}
+              >
+                Close
+              </button>
+            </div>
+            {playerSong ? (
+              <div className="overflow-hidden rounded-2xl border border-cyan-300/25 bg-black/50">
+                <iframe
+                  src={playerSong.embedUrl}
+                  title={videoTitles[playerSong.videoId] || "YouTube video player"}
+                  className="aspect-video w-full"
+                  allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                  loading="lazy"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                />
+              </div>
+            ) : null}
+          </Dialog.Panel>
+        </Dialog>
       </div>
     </div>
   );

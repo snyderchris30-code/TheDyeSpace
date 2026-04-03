@@ -176,31 +176,27 @@ html.light {
   inset: 0;
   z-index: 0;
   background-image:
-    linear-gradient(180deg, rgba(4, 9, 20, 0.54), rgba(5, 10, 24, 0.62)),
     radial-gradient(circle at 15% 18%, rgba(0, 255, 208, 0.12), transparent 45%),
     radial-gradient(circle at 82% 14%, rgba(162, 89, 255, 0.16), transparent 36%),
     var(--neon-starfield-image);
   background-position:
-    center center,
     15% 18%,
     82% 14%,
     center calc(50% + var(--bg-parallax-offset));
   background-size:
     cover,
     cover,
-    cover,
     contain;
   background-repeat: no-repeat;
-  filter: saturate(1.06) contrast(1.02) brightness(0.94);
+  filter: saturate(1.06) contrast(1.02);
 }
 
 html.light .site-background {
   background-image:
-    linear-gradient(180deg, rgba(18, 32, 58, 0.46), rgba(29, 45, 76, 0.4)),
     radial-gradient(circle at top, rgba(0, 255, 208, 0.07), transparent 42%),
     radial-gradient(circle at 80% 20%, rgba(162, 89, 255, 0.11), transparent 36%),
     var(--neon-starfield-image);
-  filter: saturate(1.02) brightness(0.96);
+  filter: saturate(1.02);
 }
 
 @media (max-width: 768px) {
@@ -208,10 +204,8 @@ html.light .site-background {
     background-size:
       cover,
       cover,
-      cover,
       contain;
     background-position:
-      center center,
       12% 12%,
       86% 12%,
       center calc(48% + var(--bg-parallax-offset));
@@ -233,12 +227,12 @@ html.light .site-background {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(5, 10, 20, 0.06), rgba(5, 10, 20, 0.16));
+  background: transparent;
   pointer-events: none;
 }
 
 html.light .site-shell::before {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(213, 233, 255, 0.08));
+  background: transparent;
 }
 
 .glass-panel {
@@ -422,7 +416,7 @@ html, body, .site-background {
   
   /* Enable scrolling on all major containers */
   [role="main"], .min-h-screen {
-    min-height: auto !important;
+    min-height: 0 !important;
   }
 }
 
@@ -441,4 +435,9 @@ html, body, .site-background {
     overflow-x: hidden;
     flex: 1;
   }
+}
+
+/* Disable animated text globally */
+:is(h1, h2, h3, h4, h5, h6, p, span, a, label, li, strong, em, small, blockquote, input, textarea, button) {
+  animation: none !important;
 }

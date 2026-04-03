@@ -20,7 +20,34 @@ type SaveBody = {
   text_color?: string;
   highlight_color?: string;
   font_style?: FontStyle;
+  youtube_urls?: string[];
 };
+
+const YOUTUBE_URL_REGEX = /(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+
+function normalizeYoutubeUrls(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+
+  const uniqueUrls = new Set<string>();
+
+  for (const rawValue of input) {
+    if (typeof rawValue !== "string") continue;
+    const trimmed = rawValue.trim();
+    if (!trimmed) continue;
+
+    const match = trimmed.match(YOUTUBE_URL_REGEX);
+    if (!match) continue;
+
+    const videoId = match[1];
+    uniqueUrls.add(`https://www.youtube.com/watch?v=${videoId}`);
+
+    if (uniqueUrls.size >= 25) {
+      break;
+    }
+  }
+
+  return Array.from(uniqueUrls);
+}
 
 export async function POST(req: NextRequest) {
   const supabase = await createSupabaseServerClient();
@@ -61,7 +88,19 @@ export async function POST(req: NextRequest) {
     text_color?: string | null;
     highlight_color?: string | null;
     font_style?: FontStyle | null;
+    youtube_urls?: string[] | null;
   };
+
+  const requestedUsername = typeof body.username === "string" ? body.username.trim() : "";
+  const existingUsername = typeof existingProfile?.username === "string" ? existingProfile.username.trim() : "";
+  const metadataUsername = typeof user.user_metadata?.username === "string" ? user.user_metadata.username.trim() : "";
+  const safeUsername = requestedUsername || existingUsername || metadataUsername || user.email || user.id;
+
+  const nextYoutubeUrls = body.youtube_urls
+    ? normalizeYoutubeUrls(body.youtube_urls)
+    : Array.isArray(existingThemeSettings.youtube_urls)
+      ? normalizeYoutubeUrls(existingThemeSettings.youtube_urls)
+      : [];
   const nextFontStyle = body.font_style
     ? normalizeFontStyle(body.font_style)
     : existingThemeSettings.font_style
@@ -73,7 +112,7 @@ export async function POST(req: NextRequest) {
     .upsert(
       {
         id: user.id,
-        username: body.username ?? existingProfile?.username ?? user.user_metadata?.username ?? user.email ?? "",
+        username: safeUsername,
         display_name: body.display_name ?? existingProfile?.display_name ?? "",
         bio: body.bio ?? existingProfile?.bio ?? "",
         avatar_url: body.avatar_url !== undefined ? body.avatar_url : (existingProfile?.avatar_url ?? null),
@@ -84,6 +123,7 @@ export async function POST(req: NextRequest) {
           text_color: body.text_color ?? existingThemeSettings.text_color ?? DEFAULT_TEXT_COLOR,
           highlight_color: body.highlight_color ?? existingThemeSettings.highlight_color ?? DEFAULT_HIGHLIGHT_COLOR,
           font_style: nextFontStyle,
+          youtube_urls: nextYoutubeUrls,
         },
       },
       { onConflict: "id", ignoreDuplicates: false }

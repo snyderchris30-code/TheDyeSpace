@@ -80,7 +80,7 @@ export default function LoginPage() {
           <Link href="/signup" className="underline text-pink-300 hover:text-yellow-300">Sign up</Link>
         </p>
         <p className="text-center text-sm">
-          <Link href="/auth/forgot-password" className="underline text-cyan-300 hover:text-yellow-300">Forgot password?</Link>
+          <Link href="/forgot-password" className="underline text-cyan-300 hover:text-yellow-300">Forgot password?</Link>
         </p>
         {message && (
           <div className="text-center text-pink-300 font-semibold mt-2 animate-pulse">{message}</div>

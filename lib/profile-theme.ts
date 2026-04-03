@@ -25,6 +25,7 @@ export type ProfileAppearance = {
   text_color?: string | null;
   highlight_color?: string | null;
   font_style?: FontStyle | null;
+  youtube_urls?: string[] | null;
 };
 
 export const FONT_OPTIONS: ReadonlyArray<{ value: FontStyle; label: string }> = [
