@@ -2,25 +2,26 @@
 
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/client";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
 
 export default function SignupPage() {
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [redirect, setRedirect] = useState("/");
-  const router = useRouter();
-
-  useEffect(() => {
+  const [redirect] = useState(() => {
+    if (typeof window === "undefined") return "/";
     const params = new URLSearchParams(window.location.search);
-    setRedirect(params.get("redirect") || "/");
-    const shouldVerify = params.get("verify");
-    if (shouldVerify === "true") {
-      setMessage("Email verification sent. Check your inbox and then log in.");
-    }
-  }, []);
+    return params.get("redirect") || "/";
+  });
+  const [message, setMessage] = useState<string | null>(
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("verify") === "true"
+        ? "Email verification sent. Check your inbox and then log in."
+        : null
+      : null
+  );
+  const router = useRouter();
 
   async function handleSignup(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();

@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/client";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -15,18 +15,19 @@ async function handleSignOut() {
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [redirect, setRedirect] = useState("/");
-  const router = useRouter();
-
-  useEffect(() => {
+  const [redirect] = useState(() => {
+    if (typeof window === "undefined") return "/";
     const params = new URLSearchParams(window.location.search);
-    setRedirect(params.get("redirect") || "/");
-    const verify = params.get("verify");
-    if (verify === "true") {
-      setMessage("Please verify your email before logging in. Check your inbox.");
-    }
-  }, []);
+    return params.get("redirect") || "/";
+  });
+  const [message, setMessage] = useState<string | null>(
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("verify") === "true"
+        ? "Please verify your email before logging in. Check your inbox."
+        : null
+      : null
+  );
+  const router = useRouter();
 
   async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();

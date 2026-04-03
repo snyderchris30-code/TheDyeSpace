@@ -8,8 +8,8 @@ export default function TermsOfService() {
         <ul className="space-y-4 text-lg">
           <li>🌈 You own your content, but you give TheDyeSpace a license to display it on the site.</li>
           <li>🌌 We are not responsible for what users post. Please vibe responsibly.</li>
-          <li>🚫 No illegal activity, no hate speech, and no stealing other artists' designs.</li>
-          <li>🛒 "For sale" items must be legal tie-dye only. No funny business.</li>
+          <li>🚫 No illegal activity, no hate speech, and no stealing other artists&apos; designs.</li>
+          <li>🛒 &quot;For sale&quot; items must be legal tie-dye only. No funny business.</li>
           <li>🌀 We can remove content or ban users if needed to keep the peace.</li>
           <li>🔮 These terms may change as the universe evolves. Check back for updates.</li>
         </ul>

@@ -9,7 +9,7 @@ export default function CommunityGuidelines() {
           <li>✌️ Be respectful to other artists and cosmic travelers.</li>
           <li>🎨 No stealing designs or artwork. Share the love, not the copyright.</li>
           <li>🚫 No hate, harassment, or illegal sales. Keep it groovy and legal.</li>
-          <li>🎶 Respect copyright on music and images. Give credit where it's due.</li>
+          <li>🎶 Respect copyright on music and images. Give credit where it&apos;s due.</li>
           <li>🆘 Use the Report Abuse button if you see something uncool.</li>
         </ul>
         <div className="mt-8 flex gap-6 justify-center">
