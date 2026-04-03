@@ -133,6 +133,13 @@ export default function MainFeedPage() {
   const [interactionBusyPostId, setInteractionBusyPostId] = useState<string | null>(null);
   const [interactionStatus, setInteractionStatus] = useState<string | null>(null);
 
+  const [deletedPostIds, setDeletedPostIds] = useState<Set<string>>(new Set());
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [editPostContent, setEditPostContent] = useState("");
+  const [editedPostContent, setEditedPostContent] = useState<Record<string, string>>({});
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editCommentContent, setEditCommentContent] = useState("");
+
   // Supabase session detection
   const [session, setSession] = useState<any>(null);
   useEffect(() => {
@@ -251,6 +258,62 @@ export default function MainFeedPage() {
     [commentDrafts, session?.user, setPostCounts]
   );
 
+  const handleDeletePost = useCallback(async (postId: string) => {
+    if (!confirm("Delete this post? This cannot be undone.")) return;
+    const res = await fetch(`/api/posts/manage?postId=${postId}`, { method: "DELETE" });
+    if (res.ok) {
+      setDeletedPostIds((prev) => new Set([...prev, postId]));
+    } else {
+      setInteractionStatus("Could not delete post. Please try again.");
+    }
+  }, []);
+
+  const handleSavePostEdit = useCallback(async (postId: string) => {
+    const content = editPostContent.trim();
+    if (!content) return;
+    const res = await fetch("/api/posts/manage", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ postId, content }),
+    });
+    if (res.ok) {
+      const body = await res.json();
+      setEditedPostContent((prev) => ({ ...prev, [postId]: body.content }));
+      setEditingPostId(null);
+    } else {
+      setInteractionStatus("Could not update post. Please try again.");
+    }
+  }, [editPostContent]);
+
+  const handleDeleteComment = useCallback(async (commentId: string, postId: string) => {
+    if (!confirm("Delete this comment?")) return;
+    const res = await fetch(`/api/posts/comments?commentId=${commentId}&postId=${postId}`, { method: "DELETE" });
+    if (res.ok) {
+      const body = await res.json();
+      setInteractions((prev) => ({ ...prev, [postId]: body.interaction }));
+      setPostCounts(postId, { comments_count: body.commentsCount ?? 0 });
+    } else {
+      setInteractionStatus("Could not delete comment. Please try again.");
+    }
+  }, [setPostCounts]);
+
+  const handleSaveCommentEdit = useCallback(async (commentId: string, postId: string) => {
+    const content = editCommentContent.trim();
+    if (!content) return;
+    const res = await fetch("/api/posts/comments", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ commentId, postId, content }),
+    });
+    if (res.ok) {
+      const body = await res.json();
+      setInteractions((prev) => ({ ...prev, [postId]: body.interaction }));
+      setEditingCommentId(null);
+    } else {
+      setInteractionStatus("Could not update comment. Please try again.");
+    }
+  }, [editCommentContent]);
+
   return (
     <div className="mx-auto max-w-6xl px-3 py-5 sm:px-6 sm:py-8 lg:px-8">
       <h1 className="mb-3 text-4xl leading-tight cosmic-headline sm:mb-4 sm:text-6xl lg:text-7xl">
@@ -279,10 +342,12 @@ export default function MainFeedPage() {
       {error && <div className="text-red-300">Error loading posts: {(error as Error).message}</div>}
 
       <div className="grid grid-cols-1 gap-6">
-        {mergedPosts.map((post) => {
+        {mergedPosts.filter((post) => !deletedPostIds.has(post.id)).map((post) => {
           const postInteraction = interactions[post.id] || { comments: [], reactions: [], viewerReaction: null };
           const isCommentsOpen = Boolean(expandedComments[post.id]);
           const isBusy = interactionBusyPostId === post.id;
+          const isOwner = !!session?.user && session.user.id === post.user_id;
+          const displayContent = editedPostContent[post.id] ?? post.content;
 
           return (
           <article
@@ -308,7 +373,27 @@ export default function MainFeedPage() {
                 </Link>
                 <time className="block text-xs text-[color:var(--post-text)]/70">{new Date(post.created_at).toLocaleString()}</time>
               </div>
-              <span className="rounded-full bg-green-900/30 px-2 py-1 text-xs text-green-200">{post.is_for_sale ? "For Sale" : "Just Shared"}</span>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-green-900/30 px-2 py-1 text-xs text-green-200">{post.is_for_sale ? "For Sale" : "Just Shared"}</span>
+                {isOwner && (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="rounded-full border border-cyan-300/25 bg-black/20 px-3 py-1 text-xs text-cyan-300 hover:bg-cyan-900/30 transition"
+                      onClick={() => { setEditingPostId(post.id); setEditPostContent(displayContent ?? ""); }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-full border border-rose-300/25 bg-black/20 px-3 py-1 text-xs text-rose-300 hover:bg-rose-900/30 transition"
+                      onClick={() => void handleDeletePost(post.id)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
             </header>
             <div className="block w-full text-left">
               <button
@@ -316,8 +401,36 @@ export default function MainFeedPage() {
                 className="block w-full text-left hover:opacity-80 transition"
                 onClick={() => setExpandedComments((prev) => ({ ...prev, [post.id]: !prev[post.id] }))}
               >
-                <p className="mb-3 text-sm leading-6 text-[color:var(--post-text)]/92 sm:text-base sm:leading-7">{post.content || "No description provided yet."}</p>
+                {editingPostId === post.id ? null : (
+                  <p className="mb-3 text-sm leading-6 text-[color:var(--post-text)]/92 sm:text-base sm:leading-7">{displayContent || "No description provided yet."}</p>
+                )}
               </button>
+              {editingPostId === post.id && (
+                <div className="mb-3 flex flex-col gap-2">
+                  <textarea
+                    className="min-h-24 w-full rounded-2xl border border-cyan-300/20 bg-slate-950/75 px-4 py-3 text-white outline-none transition focus:border-cyan-300/50"
+                    value={editPostContent}
+                    onChange={(e) => setEditPostContent(e.target.value)}
+                    maxLength={2000}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="rounded-full bg-gradient-to-r from-cyan-300 to-teal-300 px-4 py-1.5 text-xs font-semibold text-slate-950 hover:opacity-90 transition"
+                      onClick={() => void handleSavePostEdit(post.id)}
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-full border border-cyan-300/25 bg-black/20 px-4 py-1.5 text-xs text-cyan-300 hover:bg-cyan-900/30 transition"
+                      onClick={() => setEditingPostId(null)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
               {post.image_urls && post.image_urls.length > 0 && (
                 <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
                   {post.image_urls.map((imgUrl, idx) => (
@@ -440,7 +553,53 @@ export default function MainFeedPage() {
                               <span className="text-xs text-[color:var(--post-highlight)]/80">@{comment.author.username || "user"}</span>
                               <span className="text-xs text-[color:var(--post-text)]/45">{new Date(comment.created_at).toLocaleString()}</span>
                             </div>
-                            <p className="mt-2 whitespace-pre-wrap text-[color:var(--post-text)]/90">{comment.content}</p>
+                              {editingCommentId === comment.id ? (
+                                <div className="mt-2 flex flex-col gap-2">
+                                  <textarea
+                                    className="min-h-16 w-full rounded-xl border border-cyan-300/20 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/50"
+                                    value={editCommentContent}
+                                    onChange={(e) => setEditCommentContent(e.target.value)}
+                                    maxLength={1000}
+                                    autoFocus
+                                  />
+                                  <div className="flex gap-2">
+                                    <button
+                                      type="button"
+                                      className="rounded-full bg-cyan-500/80 px-3 py-1 text-xs text-white hover:bg-cyan-400 transition"
+                                      onClick={() => void handleSaveCommentEdit(comment.id, post.id)}
+                                    >
+                                      Save
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="rounded-full border border-cyan-300/20 bg-black/20 px-3 py-1 text-xs text-cyan-300 hover:bg-cyan-900/30 transition"
+                                      onClick={() => setEditingCommentId(null)}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="mt-2 whitespace-pre-wrap text-[color:var(--post-text)]/90">{comment.content}</p>
+                              )}
+                              {session?.user?.id === comment.author.id && editingCommentId !== comment.id && (
+                                <div className="mt-2 flex gap-3">
+                                  <button
+                                    type="button"
+                                    className="text-xs text-cyan-400 hover:underline transition"
+                                    onClick={() => { setEditingCommentId(comment.id); setEditCommentContent(comment.content); }}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="text-xs text-rose-400 hover:underline transition"
+                                    onClick={() => void handleDeleteComment(comment.id, post.id)}
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              )}
                           </div>
                         </div>
                       </div>

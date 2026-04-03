@@ -238,3 +238,93 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+// PATCH /api/posts/comments — edit a comment
+export async function PATCH(req: NextRequest) {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = await req.json().catch(() => ({})) as { commentId?: string; postId?: string; content?: string };
+  const content = body.content?.trim();
+  if (!body.commentId || !body.postId || !content) {
+    return NextResponse.json({ error: "commentId, postId, and content are required" }, { status: 400 });
+  }
+
+  const adminClient = createAdminClient();
+  const { data: comment, error: fetchError } = await adminClient
+    .from("post_comments")
+    .select("id, user_id")
+    .eq("id", body.commentId)
+    .maybeSingle();
+
+  if (fetchError || !comment) {
+    return NextResponse.json({ error: "Comment not found" }, { status: 404 });
+  }
+  if (comment.user_id !== user.id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { error: updateError } = await adminClient
+    .from("post_comments")
+    .update({ content })
+    .eq("id", body.commentId);
+
+  if (updateError) {
+    return NextResponse.json({ error: updateError.message }, { status: 500 });
+  }
+
+  const interaction = await loadRelationalInteraction(adminClient, body.postId, user.id);
+  return NextResponse.json({ interaction, commentsCount: interaction?.comments.length ?? 0 });
+}
+
+// DELETE /api/posts/comments?commentId=...&postId=... — delete a comment
+export async function DELETE(req: NextRequest) {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(req.url);
+  const commentId = searchParams.get("commentId");
+  const postId = searchParams.get("postId");
+  if (!commentId || !postId) {
+    return NextResponse.json({ error: "commentId and postId are required" }, { status: 400 });
+  }
+
+  const adminClient = createAdminClient();
+  const { data: comment, error: fetchError } = await adminClient
+    .from("post_comments")
+    .select("id, user_id")
+    .eq("id", commentId)
+    .maybeSingle();
+
+  if (fetchError || !comment) {
+    return NextResponse.json({ error: "Comment not found" }, { status: 404 });
+  }
+  if (comment.user_id !== user.id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { error: deleteError } = await adminClient.from("post_comments").delete().eq("id", commentId);
+  if (deleteError) {
+    return NextResponse.json({ error: deleteError.message }, { status: 500 });
+  }
+
+  const interaction = await loadRelationalInteraction(adminClient, postId, user.id);
+  const commentsCount = interaction?.comments.length ?? 0;
+  await adminClient.from("posts").update({ comments_count: commentsCount }).eq("id", postId);
+
+  return NextResponse.json({ interaction, commentsCount });
+}
