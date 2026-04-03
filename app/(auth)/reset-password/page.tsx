@@ -15,16 +15,86 @@ export default function ResetPasswordPage() {
   const router = useRouter();
 
   useEffect(() => {
-    // Check if we have a valid reset token in the URL
-    const hash = window.location.hash;
-    if (hash.includes("type=recovery")) {
-      setIsValidToken(true);
-      setShowForm(true);
-    } else {
-      // No valid token, show error
-      setIsValidToken(false);
-      setError("Invalid or expired reset link. Please request a new one.");
+    let isMounted = true;
+
+    async function initializeRecoverySession() {
+      const supabase = createClient();
+      const searchParams = new URLSearchParams(window.location.search);
+      const hash = window.location.hash.startsWith("#")
+        ? window.location.hash.slice(1)
+        : window.location.hash;
+      const hashParams = new URLSearchParams(hash);
+
+      const urlError = searchParams.get("error_description") || hashParams.get("error_description");
+      if (urlError) {
+        if (!isMounted) return;
+        setIsValidToken(false);
+        setError(decodeURIComponent(urlError));
+        return;
+      }
+
+      const type = searchParams.get("type") || hashParams.get("type");
+      if (type !== "recovery") {
+        if (!isMounted) return;
+        setIsValidToken(false);
+        setError("Invalid or expired reset link. Please request a new one.");
+        return;
+      }
+
+      const code = searchParams.get("code");
+      if (code) {
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        if (!isMounted) return;
+
+        if (exchangeError) {
+          setIsValidToken(false);
+          setError(exchangeError.message || "Invalid or expired reset link. Please request a new one.");
+          return;
+        }
+
+        setIsValidToken(true);
+        setShowForm(true);
+        return;
+      }
+
+      const accessToken = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
+
+      if (accessToken && refreshToken) {
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        if (!isMounted) return;
+
+        if (sessionError) {
+          setIsValidToken(false);
+          setError(sessionError.message || "Invalid or expired reset link. Please request a new one.");
+          return;
+        }
+
+        setIsValidToken(true);
+        setShowForm(true);
+        return;
+      }
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!isMounted) return;
+
+      if (sessionData.session) {
+        setIsValidToken(true);
+        setShowForm(true);
+      } else {
+        setIsValidToken(false);
+        setError("Invalid or expired reset link. Please request a new one.");
+      }
     }
+
+    initializeRecoverySession();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   async function handleResetPassword(e: React.FormEvent<HTMLFormElement>) {
