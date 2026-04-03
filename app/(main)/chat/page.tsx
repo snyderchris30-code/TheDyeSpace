@@ -1,6 +1,5 @@
-import dynamic from "next/dynamic";
-
-const GlobalChatClient = dynamic(() => import("./GlobalChatClient"), { ssr: false });
+"use client";
+import GlobalChatClient from "./GlobalChatClient";
 
 export default function Page() {
   return <GlobalChatClient />;
