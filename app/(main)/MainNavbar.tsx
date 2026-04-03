@@ -30,11 +30,21 @@ async function fetchNotifications(): Promise<Array<{ id: string; actor_name: str
 
   return data || [];
 }
+
+type DirectoryProfile = {
+  id: string;
+  username: string | null;
+  display_name: string | null;
+};
+
 export default function MainNavbar() {
   const router = useRouter();
   const pathname = usePathname();
   const [session, setSession] = useState<any>(null);
   const [userCount, setUserCount] = useState<number | null>(null);
+  const [usersOpen, setUsersOpen] = useState(false);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [usersList, setUsersList] = useState<DirectoryProfile[]>([]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -46,6 +56,28 @@ export default function MainNavbar() {
     });
     return () => { listener?.subscription.unsubscribe(); };
   }, []);
+
+  const loadUsersList = async () => {
+    setUsersLoading(true);
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id,username,display_name")
+        .not("username", "is", null)
+        .order("display_name", { ascending: true })
+        .limit(300);
+
+      if (error) {
+        setUsersList([]);
+        return;
+      }
+
+      setUsersList((data || []) as DirectoryProfile[]);
+    } finally {
+      setUsersLoading(false);
+    }
+  };
 
   useEffect(() => {
     const supabase = createClient();
@@ -200,9 +232,54 @@ export default function MainNavbar() {
           </button>
         )}
         {userCount !== null && (
-          <div className="flex h-11 items-center gap-1.5 rounded-xl border border-cyan-200/25 bg-black/30 px-3 text-xs font-semibold text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.12)]">
+          <button
+            type="button"
+            onClick={() => {
+              setUsersOpen((open) => !open);
+              if (!usersOpen) {
+                void loadUsersList();
+              }
+            }}
+            aria-label="Open user list"
+            title="Open user list"
+            className="flex h-11 items-center gap-1.5 rounded-xl border border-cyan-200/25 bg-black/30 px-3 text-xs font-semibold text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.12)] transition hover:border-cyan-200/45 hover:bg-cyan-300/10"
+          >
             <Users size={14} className="text-cyan-300" />
             <span>{userCount}</span>
+          </button>
+        )}
+
+        {usersOpen && (
+          <div className="fixed left-1/2 top-24 z-50 w-[min(92vw,380px)] -translate-x-1/2 rounded-xl border border-cyan-400/40 bg-black/90 p-3 shadow-2xl animate-fade-in sm:top-28">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="font-semibold text-cyan-200">User Directory</span>
+              <button
+                type="button"
+                className="text-xs text-cyan-200 hover:text-white"
+                onClick={() => setUsersOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="max-h-[70vh] space-y-1 overflow-auto">
+              {usersLoading ? (
+                <p className="text-sm text-cyan-100/75">Loading users...</p>
+              ) : usersList.length === 0 ? (
+                <p className="text-sm text-cyan-100/75">No users found.</p>
+              ) : (
+                usersList.map((profile) => (
+                  <Link
+                    key={profile.id}
+                    href={`/profile/${encodeURIComponent(profile.username || "")}`}
+                    className="block rounded-lg border border-cyan-300/15 bg-slate-950/60 px-3 py-2 text-sm text-cyan-100 transition hover:border-cyan-300/45 hover:bg-cyan-900/20"
+                    onClick={() => setUsersOpen(false)}
+                  >
+                    <span className="font-semibold">{profile.display_name || profile.username || "DyeSpace User"}</span>
+                    <span className="ml-2 text-xs text-cyan-300/80">@{profile.username}</span>
+                  </Link>
+                ))
+              )}
+            </div>
           </div>
         )}
         <IconButton href="/" label="Home" icon={<Home size={18} />} isActive={pathname === "/"} />
