@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { resolveProfileUsername } from "@/lib/profile-identity";
 import {
   buildInteractionsByPost,
   buildInteractionsFromRows,
@@ -162,7 +163,7 @@ export async function POST(req: NextRequest) {
     const { error: profileError } = await adminClient.from("profiles").upsert(
       {
         id: user.id,
-        username: existingProfile?.username ?? user.user_metadata?.username ?? user.email ?? "",
+        username: resolveProfileUsername(existingProfile?.username, user.user_metadata?.username, user.email, user.id),
         display_name: existingProfile?.display_name ?? "",
         bio: existingProfile?.bio ?? "",
         avatar_url: existingProfile?.avatar_url ?? null,

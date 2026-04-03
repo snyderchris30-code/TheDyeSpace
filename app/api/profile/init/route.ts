@@ -7,6 +7,7 @@ import {
   DEFAULT_HIGHLIGHT_COLOR,
   DEFAULT_TEXT_COLOR,
 } from "@/lib/profile-theme";
+import { resolveProfileUsername } from "@/lib/profile-identity";
 
 export async function POST() {
   // Verify the caller is authenticated via the server client (reads the session cookie)
@@ -35,8 +36,7 @@ export async function POST() {
     auth: { persistSession: false },
   });
 
-  const username =
-    user.user_metadata?.username || user.email || "";
+  const username = resolveProfileUsername(user.user_metadata?.username, user.email, user.id);
 
   const { data: profile, error: upsertError } = await adminClient
     .from("profiles")

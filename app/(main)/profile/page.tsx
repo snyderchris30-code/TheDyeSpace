@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { resolveProfileUsername } from "@/lib/profile-identity";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -26,7 +27,7 @@ export default function ProfilePage() {
         .eq("id", user.id)
         .single();
 
-      const username = profile?.username || user.email;
+      const username = resolveProfileUsername(profile?.username, user.user_metadata?.username, user.email, user.id);
       if (username) {
         router.push(`/profile/${encodeURIComponent(username)}`);
       } else {

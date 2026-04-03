@@ -55,6 +55,7 @@ async function loadLegacyInteraction(adminClient: ReturnType<typeof createAdminC
 
 async function loadRelationalInteraction(adminClient: ReturnType<typeof createAdminClient>, postId: string, viewerId?: string | null) {
   const { data: comments, error: commentsError } = await adminClient
+  import { resolveProfileUsername } from "@/lib/profile-identity";
     .from("post_comments")
     .select("id, post_id, user_id, content, created_at")
     .eq("post_id", postId)
@@ -183,7 +184,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { data: existingProfile } = await adminClient
-      .from("profiles")
+          username: resolveProfileUsername(existingProfile?.username, user.user_metadata?.username, user.email, user.id),
       .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings")
       .eq("id", user.id)
       .limit(1)

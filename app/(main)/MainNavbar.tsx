@@ -112,9 +112,7 @@ export default function MainNavbar() {
   };
 
   const isLoggedIn = Boolean(session?.user);
-  const profileHref = session?.user
-    ? `/profile/${session.user.user_metadata?.username || session.user.email}`
-    : "/login";
+  const profileHref = session?.user ? "/profile" : "/login";
 
   const IconButton = ({
     href,

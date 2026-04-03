@@ -9,6 +9,7 @@ import {
   normalizeFontStyle,
   type FontStyle,
 } from "@/lib/profile-theme";
+import { resolveProfileUsername } from "@/lib/profile-identity";
 
 type SaveBody = {
   username?: string;
@@ -91,10 +92,13 @@ export async function POST(req: NextRequest) {
     youtube_urls?: string[] | null;
   };
 
-  const requestedUsername = typeof body.username === "string" ? body.username.trim() : "";
-  const existingUsername = typeof existingProfile?.username === "string" ? existingProfile.username.trim() : "";
-  const metadataUsername = typeof user.user_metadata?.username === "string" ? user.user_metadata.username.trim() : "";
-  const safeUsername = requestedUsername || existingUsername || metadataUsername || user.email || user.id;
+  const safeUsername = resolveProfileUsername(
+    body.username,
+    existingProfile?.username,
+    typeof user.user_metadata?.username === "string" ? user.user_metadata.username : null,
+    user.email,
+    user.id
+  );
 
   const nextYoutubeUrls = body.youtube_urls
     ? normalizeYoutubeUrls(body.youtube_urls)

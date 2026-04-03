@@ -2,7 +2,7 @@
 import dynamic from "next/dynamic";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Dialog } from "@headlessui/react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Heart, MessageCircle, Send, SquarePen, Music2, PlayCircle, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -19,6 +19,7 @@ import {
   type FontStyle,
   type ProfileAppearance,
 } from "@/lib/profile-theme";
+import { resolveProfileUsername, sanitizeUsernameInput } from "@/lib/profile-identity";
 const LightboxModal = dynamic(() => import("../../../LightboxModal"), { ssr: false });
 
 const DEFAULT_BANNER_URL = "https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=1400&q=80";
@@ -143,6 +144,7 @@ export default function ProfileEditor() {
   const [reportReason, setReportReason] = useState("");
   const [reportStatus, setReportStatus] = useState<string | null>(null);
   const params = useParams<{ username: string }>();
+  const router = useRouter();
   const routeUsername = normalizeUsername(params?.username || "");
   const supabase = createClient();
   const viewRef = useRef<HTMLDivElement | null>(null);
@@ -506,11 +508,13 @@ export default function ProfileEditor() {
           data: { publicUrl },
         } = supabase.storage.from(options.bucket).getPublicUrl(fileName);
 
-        setDraft((prev) => ({
-          ...prev,
+        const nextDraft = {
+          ...draft,
           [options.field]: publicUrl,
-        }));
-        setStatus({ type: "success", text: options.successText });
+        };
+
+        setDraft(nextDraft);
+        await saveProfile(nextDraft, options.successText);
       } catch (error: any) {
         setStatus({
           type: "error",
@@ -520,7 +524,7 @@ export default function ProfileEditor() {
         setIsUploading(false);
       }
     },
-    [ensureProfileBuckets, profileUserId, session?.user?.id, supabase.storage]
+    [draft, ensureProfileBuckets, profileUserId, saveProfile, session?.user?.id, supabase.storage]
   );
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -595,8 +599,17 @@ export default function ProfileEditor() {
     const timeoutId = window.setTimeout(() => controller.abort(), 15000);
 
     try {
-      await saveProfile(draft, "Profile changes saved successfully.", controller.signal);
+      const nextUsername = resolveProfileUsername(draft.username, form.username, session?.user?.email, session?.user?.id);
+      const refreshedProfile = await saveProfile(
+        { ...draft, username: nextUsername },
+        "Profile changes saved successfully.",
+        controller.signal
+      );
       setEditing(false);
+      const savedUsername = resolveProfileUsername(refreshedProfile?.username, nextUsername);
+      if (savedUsername && routeUsername !== savedUsername) {
+        router.replace(`/profile/${encodeURIComponent(savedUsername)}`);
+      }
     } catch (error: any) {
       setStatus({
         type: "error",
@@ -1165,6 +1178,17 @@ export default function ProfileEditor() {
                     onChange={(e) => setDraft((prev) => ({ ...prev, display_name: e.target.value }))}
                     placeholder="Your display name"
                   />
+                </label>
+
+                <label className="block sm:col-span-2">
+                  <span className="mb-2 block text-sm text-cyan-100">Username / @name</span>
+                  <input
+                    className="w-full rounded-2xl border border-white/15 bg-black/30 px-4 py-3 text-white outline-none focus:border-cyan-300/50"
+                    value={draft.username}
+                    onChange={(e) => setDraft((prev) => ({ ...prev, username: sanitizeUsernameInput(e.target.value) }))}
+                    placeholder="your-name"
+                  />
+                  <p className="mt-2 text-xs text-cyan-100/60">Letters, numbers, dots, underscores, and dashes only.</p>
                 </label>
 
                 <label className="block sm:col-span-2">
