@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+function isMissingUserFollowsTable(error: any) {
+  return error?.code === "42P01" || /user_follows/i.test(String(error?.message || ""));
+}
+
 function createAdminClient() {
   const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -40,10 +44,13 @@ export async function GET(req: NextRequest) {
       .maybeSingle();
 
     if (error) {
+      if (isMissingUserFollowsTable(error)) {
+        return NextResponse.json({ isFollowing: false, followFeatureReady: false });
+      }
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ isFollowing: Boolean(data) });
+    return NextResponse.json({ isFollowing: Boolean(data), followFeatureReady: true });
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || "Failed to load follow state." }, { status: 500 });
   }
@@ -82,10 +89,13 @@ export async function POST(req: NextRequest) {
         .eq("followed_id", targetUserId);
 
       if (error) {
+        if (isMissingUserFollowsTable(error)) {
+          return NextResponse.json({ isFollowing: false, followFeatureReady: false });
+        }
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
 
-      return NextResponse.json({ isFollowing: false });
+      return NextResponse.json({ isFollowing: false, followFeatureReady: true });
     }
 
     const { error } = await adminClient.from("user_follows").upsert({
@@ -94,10 +104,16 @@ export async function POST(req: NextRequest) {
     });
 
     if (error) {
+      if (isMissingUserFollowsTable(error)) {
+        return NextResponse.json(
+          { error: "Follow feature is not ready yet. Please run the user_follows migration.", followFeatureReady: false },
+          { status: 503 }
+        );
+      }
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ isFollowing: true });
+    return NextResponse.json({ isFollowing: true, followFeatureReady: true });
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || "Failed to update follow state." }, { status: 500 });
   }

@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+function isMissingUserFollowsTable(error: any) {
+  return error?.code === "42P01" || /user_follows/i.test(String(error?.message || ""));
+}
+
 function createAdminClient() {
   const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -33,11 +37,14 @@ export async function GET() {
       .eq("follower_id", user.id);
 
     if (error) {
+      if (isMissingUserFollowsTable(error)) {
+        return NextResponse.json({ followingIds: [], followFeatureReady: false });
+      }
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     const followingIds = (data || []).map((row: { followed_id: string }) => row.followed_id);
-    return NextResponse.json({ followingIds });
+    return NextResponse.json({ followingIds, followFeatureReady: true });
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || "Failed to load following list." }, { status: 500 });
   }
