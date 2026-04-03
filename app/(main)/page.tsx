@@ -379,10 +379,10 @@ export default function MainFeedPage() {
                 )}
               </div>
               <div className="flex gap-4 justify-center sm:justify-end">
-                <a href="/terms" className="underline hover:text-green-300">Terms</a>
-                <a href="/privacy" className="underline hover:text-green-300">Privacy</a>
-                <a href="/guidelines" className="underline hover:text-green-300">Guidelines</a>
-                <a href="/suggestions" className="underline hover:text-green-300">Support</a>
+                <Link href="/terms" className="underline hover:text-green-300">Terms</Link>
+                <Link href="/privacy" className="underline hover:text-green-300">Privacy</Link>
+                <Link href="/guidelines" className="underline hover:text-green-300">Guidelines</Link>
+                <Link href="/suggestions" className="underline hover:text-green-300">Support</Link>
               </div>
             </footer>
             {postInteraction.reactions.length > 0 && (
