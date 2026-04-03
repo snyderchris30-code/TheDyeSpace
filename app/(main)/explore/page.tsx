@@ -338,32 +338,6 @@ export default function ExplorePage() {
             </article>
           ))}
         </div>
-        // Report button for posts
-        import { useCallback } from "react";
-
-        function ReportPostButton({ postId }: { postId: string }) {
-          const handleReport = useCallback(async () => {
-            const reason = prompt("Reason for reporting this post?");
-            if (!reason) return;
-            const supabase = createClient();
-            await supabase.from("reports").insert({
-              type: "post",
-              reported_id: postId,
-              reason,
-              created_at: new Date().toISOString(),
-            });
-            alert("Post reported. Thank you!");
-          }, [postId]);
-          return (
-            <button
-              className="rounded-full border border-pink-400/60 bg-pink-900/40 px-3 py-1 text-xs font-semibold text-pink-200 hover:bg-pink-900/80 hover:text-white transition"
-              onClick={handleReport}
-              title="Report post"
-            >
-              Report
-            </button>
-          );
-        }
         {lightbox.open && lightbox.url ? <LightboxModal imageUrl={lightbox.url} onClose={() => setLightbox({ open: false, url: null })} /> : null}
       </div>
     </div>
