@@ -33,6 +33,27 @@ function createAdminClient() {
   });
 }
 
+async function createCommentNotification(
+  adminClient: ReturnType<typeof createAdminClient>,
+  ownerId: string | null | undefined,
+  actorId: string,
+  actorName: string,
+  postId: string
+) {
+  if (!ownerId || ownerId === actorId) {
+    return;
+  }
+
+  await adminClient.from("notifications").insert({
+    user_id: ownerId,
+    actor_name: actorName,
+    type: "comment",
+    post_id: postId,
+    message: `${actorName} commented on your post.`,
+    read: false,
+  });
+}
+
 async function loadLegacyInteraction(adminClient: ReturnType<typeof createAdminClient>, postId: string, viewerId?: string | null) {
   const { data: profiles, error } = await adminClient
     .from("profiles")
@@ -110,11 +131,23 @@ export async function POST(req: NextRequest) {
 
   try {
     const adminClient = createAdminClient();
-    const { data: post, error: postError } = await adminClient.from("posts").select("id").eq("id", body.postId).maybeSingle();
+    const { data: post, error: postError } = await adminClient
+      .from("posts")
+      .select("id, user_id")
+      .eq("id", body.postId)
+      .maybeSingle();
 
     if (postError || !post) {
       return NextResponse.json({ error: "Post not found." }, { status: 404 });
     }
+
+    const { data: actorProfile } = await adminClient
+      .from("profiles")
+      .select("username, display_name")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    const actorName = actorProfile?.display_name?.trim() || resolveProfileUsername(actorProfile?.username, user.user_metadata?.username, user.email, user.id);
 
     const { error: insertError } = await adminClient.from("post_comments").insert({
       post_id: body.postId,
@@ -134,6 +167,8 @@ export async function POST(req: NextRequest) {
       if (updatePostError) {
         return NextResponse.json({ error: updatePostError.message }, { status: 500 });
       }
+
+      await createCommentNotification(adminClient, post.user_id, user.id, actorName, body.postId);
 
       return NextResponse.json({ interaction, commentsCount, storage: "relational" });
     }
@@ -192,6 +227,8 @@ export async function POST(req: NextRequest) {
     if (updatePostError) {
       return NextResponse.json({ error: updatePostError.message }, { status: 500 });
     }
+
+    await createCommentNotification(adminClient, post.user_id, user.id, actorName, body.postId);
 
     return NextResponse.json({ interaction, commentsCount, storage: "legacy" });
   } catch (error: any) {

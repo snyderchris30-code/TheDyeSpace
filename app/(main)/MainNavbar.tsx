@@ -209,12 +209,12 @@ export default function MainNavbar() {
               </span>
             </button>
             {notifDrop && (
-              <div className="absolute right-0 z-50 mt-2 w-[min(92vw,320px)] rounded-xl border border-sky-500 bg-black/85 p-3 shadow-2xl animate-fade-in">
+              <div className="fixed left-1/2 top-24 z-50 w-[min(92vw,360px)] -translate-x-1/2 rounded-xl border border-sky-500 bg-black/90 p-3 shadow-2xl animate-fade-in sm:top-28">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="font-semibold text-cyan-200">Notifications</span>
                   <button onClick={markAllRead} className="text-xs text-green-200 hover:text-white">Mark all read</button>
                 </div>
-                <div className="max-h-64 space-y-2 overflow-auto">
+                <div className="max-h-[70vh] space-y-2 overflow-auto">
                   {notifications.length === 0 ? (
                     <p className="text-sm text-slate-300">No new notifications yet.</p>
                   ) : (

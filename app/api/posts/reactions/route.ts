@@ -35,6 +35,28 @@ function createAdminClient() {
   });
 }
 
+async function createLikeNotification(
+  adminClient: ReturnType<typeof createAdminClient>,
+  ownerId: string | null | undefined,
+  actorId: string,
+  actorName: string,
+  postId: string,
+  emoji: ReactionEmoji
+) {
+  if (!ownerId || ownerId === actorId) {
+    return;
+  }
+
+  await adminClient.from("notifications").insert({
+    user_id: ownerId,
+    actor_name: actorName,
+    type: "like",
+    post_id: postId,
+    message: `${actorName} reacted ${emoji} to your post.`,
+    read: false,
+  });
+}
+
 async function loadLegacyInteraction(adminClient: ReturnType<typeof createAdminClient>, postId: string, viewerId?: string | null) {
   const { data: profiles, error } = await adminClient
     .from("profiles")
@@ -120,11 +142,23 @@ export async function POST(req: NextRequest) {
 
   try {
     const adminClient = createAdminClient();
-    const { data: post, error: postError } = await adminClient.from("posts").select("id").eq("id", body.postId).maybeSingle();
+    const { data: post, error: postError } = await adminClient
+      .from("posts")
+      .select("id, user_id")
+      .eq("id", body.postId)
+      .maybeSingle();
 
     if (postError || !post) {
       return NextResponse.json({ error: "Post not found." }, { status: 404 });
     }
+
+    const { data: actorProfile } = await adminClient
+      .from("profiles")
+      .select("username, display_name")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    const actorName = actorProfile?.display_name?.trim() || resolveProfileUsername(actorProfile?.username, user.user_metadata?.username, user.email, user.id);
 
     const { data: currentReaction, error: currentReactionError } = await adminClient
       .from("post_reactions")
@@ -134,6 +168,8 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (!currentReactionError) {
+      let shouldNotify = false;
+
       if (currentReaction?.emoji === body.emoji) {
         const { error: deleteError } = await adminClient
           .from("post_reactions")
@@ -154,6 +190,7 @@ export async function POST(req: NextRequest) {
         if (updateError) {
           return NextResponse.json({ error: updateError.message }, { status: 500 });
         }
+        shouldNotify = true;
       } else {
         const { error: insertError } = await adminClient.from("post_reactions").insert({
           post_id: body.postId,
@@ -164,6 +201,7 @@ export async function POST(req: NextRequest) {
         if (insertError) {
           return NextResponse.json({ error: insertError.message }, { status: 500 });
         }
+        shouldNotify = true;
       }
 
       const interaction = await loadRelationalInteraction(adminClient, body.postId, user.id);
@@ -176,6 +214,10 @@ export async function POST(req: NextRequest) {
 
       if (updatePostError) {
         return NextResponse.json({ error: updatePostError.message }, { status: 500 });
+      }
+
+      if (shouldNotify) {
+        await createLikeNotification(adminClient, post.user_id, user.id, actorName, body.postId, body.emoji);
       }
 
       return NextResponse.json({ interaction, likesCount, storage: "relational" });
@@ -196,6 +238,7 @@ export async function POST(req: NextRequest) {
     const existingReactions = getStoredPostReactions(existingThemeSettings);
     const legacyCurrentReaction = existingReactions.find((reaction) => reaction.post_id === body.postId);
     const nextReactions = existingReactions.filter((reaction) => reaction.post_id !== body.postId);
+    const shouldNotify = !legacyCurrentReaction || legacyCurrentReaction.emoji !== body.emoji;
 
     if (!legacyCurrentReaction || legacyCurrentReaction.emoji !== body.emoji) {
       nextReactions.push({
@@ -208,7 +251,7 @@ export async function POST(req: NextRequest) {
     const { error: profileError } = await adminClient.from("profiles").upsert(
       {
         id: user.id,
-        username: existingProfile?.username ?? user.user_metadata?.username ?? user.email ?? "",
+        username: resolveProfileUsername(existingProfile?.username, user.user_metadata?.username, user.email, user.id),
         display_name: existingProfile?.display_name ?? "",
         bio: existingProfile?.bio ?? "",
         avatar_url: existingProfile?.avatar_url ?? null,
@@ -236,6 +279,10 @@ export async function POST(req: NextRequest) {
 
     if (updatePostError) {
       return NextResponse.json({ error: updatePostError.message }, { status: 500 });
+    }
+
+    if (shouldNotify) {
+      await createLikeNotification(adminClient, post.user_id, user.id, actorName, body.postId, body.emoji);
     }
 
     return NextResponse.json({ interaction, likesCount, storage: "legacy" });
