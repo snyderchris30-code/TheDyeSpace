@@ -164,12 +164,41 @@ export default function MainNavbar() {
     </button>
   );
 
+  // PWA Install Button logic
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstall, setShowInstall] = useState(false);
+  useEffect(() => {
+    const handler = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstall(true);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') setShowInstall(false);
+  };
+
   return (
     <nav className="navbar mt-2 mb-4 relative sm:mb-6">
       <Link href="/" className="navbar-logo w-full text-center text-2xl tracking-wide select-none sm:w-auto sm:text-left sm:text-4xl sm:tracking-widest">
         TheDyeSpace
       </Link>
       <div className="flex w-full flex-wrap items-center justify-center gap-2 sm:w-auto sm:justify-end sm:gap-2">
+        {showInstall && (
+          <button
+            onClick={handleInstallClick}
+            className="flex h-11 items-center gap-2 rounded-xl border border-cyan-300 bg-cyan-900/80 px-4 text-cyan-100 font-semibold shadow-md hover:bg-cyan-800/90 transition"
+            aria-label="Install App"
+          >
+            <svg width="20" height="20" fill="none" viewBox="0 0 24 24"><path fill="currentColor" d="M12 16.5a1 1 0 0 1-.707-.293l-4-4a1 1 0 1 1 1.414-1.414L11 12.586V4a1 1 0 1 1 2 0v8.586l2.293-2.293a1 1 0 1 1 1.414 1.414l-4 4A1 1 0 0 1 12 16.5Z"/><path fill="currentColor" d="M4 20a1 1 0 0 1 0-2h16a1 1 0 1 1 0 2H4Z"/></svg>
+            Install App
+          </button>
+        )}
         {userCount !== null && (
           <div className="flex h-11 items-center gap-1.5 rounded-xl border border-cyan-200/25 bg-black/30 px-3 text-xs font-semibold text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.12)]">
             <Users size={14} className="text-cyan-300" />
