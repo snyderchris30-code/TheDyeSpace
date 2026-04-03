@@ -283,10 +283,6 @@ export default function ExplorePage() {
   return (
     <div className="relative min-h-screen px-3 pb-10 pt-6 sm:px-8 sm:pb-16 sm:pt-10">
       <div className="mx-auto max-w-6xl">
-		<div className="mb-6 rounded-3xl border border-cyan-300/25 bg-slate-950/55 p-4 shadow-2xl backdrop-blur-xl sm:mb-8 sm:p-8">
-		  <h1 className="glow-text mb-3 text-3xl font-extrabold sm:text-6xl">Explore</h1>
-		</div>
-
         <div className="mb-5 flex flex-wrap gap-3">
           {TABS.map((t) => (
             <button
