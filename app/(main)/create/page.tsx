@@ -68,15 +68,19 @@ export default function CreatePostPage() {
         isForSale = true;
       }
 
-      const { error: insertError } = await supabase.from("posts").insert({
-        user_id: userId,
-        content: `${categoryPrefix}${content.trim()}`,
-        image_urls: imageUrls.length ? imageUrls : null,
-        is_for_sale: isForSale,
+      const createResponse = await fetch("/api/posts/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: `${categoryPrefix}${content.trim()}`,
+          image_urls: imageUrls.length ? imageUrls : null,
+          is_for_sale: isForSale,
+        }),
       });
 
-      if (insertError) {
-        throw insertError;
+      if (!createResponse.ok) {
+        const body = await createResponse.json().catch(() => ({}));
+        throw new Error(body?.error || "Failed to create post.");
       }
 
       setStatus("Post published successfully.");
