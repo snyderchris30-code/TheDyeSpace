@@ -367,6 +367,9 @@ export default function ProfileEditor() {
           throw new Error("Profile not found.");
         }
         setProfileUserId(viewedProfile.id);
+        if (sessionUser?.id && viewedProfile.id === sessionUser.id) {
+          setIsOwner(true);
+        }
         applyProfileToForm(viewedProfile);
       } catch (error: any) {
         setStatus({
