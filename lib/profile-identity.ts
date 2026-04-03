@@ -1,6 +1,7 @@
 export function isEmailLike(value: string | null | undefined) {
   if (!value) return false;
-  return value.includes("@");
+  const trimmed = value.trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
 }
 
 export function sanitizeUsernameInput(value: string | null | undefined) {

@@ -3,7 +3,7 @@ import dynamic from "next/dynamic";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Dialog } from "@headlessui/react";
 import { useParams, useRouter } from "next/navigation";
-import { Heart, MessageCircle, Send, SquarePen, Music2, PlayCircle, Plus, X } from "lucide-react";
+import { Heart, MessageCircle, Send, SquarePen, Music2, PlayCircle, Plus, X, Maximize2 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { REACTION_EMOJIS, type AggregatedPostInteraction, type ReactionEmoji } from "@/lib/post-interactions";
@@ -189,6 +189,7 @@ export default function ProfileEditor() {
   const [interactionBusyPostId, setInteractionBusyPostId] = useState<string | null>(null);
   const [songInput, setSongInput] = useState("");
   const [playerSong, setPlayerSong] = useState<PlaylistSong | null>(null);
+  const [isPlayerExpanded, setIsPlayerExpanded] = useState(false);
   const [videoTitles, setVideoTitles] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<StatusState | null>(null);
 
@@ -707,6 +708,9 @@ export default function ProfileEditor() {
   );
 
   const profileDisplay = editing ? draft : form;
+  const typedUsername = sanitizeUsernameInput(draft.username);
+  const usernameSavePreview = resolveProfileUsername(draft.username, form.username, session?.user?.email, session?.user?.id);
+  const isUsernameFallback = typedUsername.length < 3 && usernameSavePreview !== typedUsername;
   const playlistSongs = useMemo(() => buildPlaylist(profileDisplay.youtube_urls || []), [profileDisplay.youtube_urls]);
 
   useEffect(() => {
@@ -780,19 +784,55 @@ export default function ProfileEditor() {
                   {playlistSongs.map((song, index) => (
                     <article key={song.videoId} className="rounded-[1.5rem] border border-cyan-300/20 bg-[linear-gradient(180deg,rgba(9,19,37,0.82),rgba(7,12,24,0.88))] p-4 shadow-[0_20px_50px_rgba(0,0,0,0.35)] backdrop-blur-xl">
                       <div className="overflow-hidden rounded-2xl border border-cyan-300/20 bg-black/25">
-                        <img src={song.thumbnailUrl} alt="YouTube thumbnail" className="h-40 w-full object-cover" loading="lazy" />
+                        {playerSong?.videoId === song.videoId && !isPlayerExpanded ? (
+                          <iframe
+                            src={song.embedUrl}
+                            title={videoTitles[song.videoId] || "YouTube video player"}
+                            className="aspect-video w-full"
+                            allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            allowFullScreen
+                            loading="lazy"
+                            referrerPolicy="strict-origin-when-cross-origin"
+                          />
+                        ) : (
+                          <img src={song.thumbnailUrl} alt="YouTube thumbnail" className="h-40 w-full object-cover" loading="lazy" />
+                        )}
                       </div>
                       <h3 className="mt-3 line-clamp-2 text-sm font-semibold text-cyan-50">
                         {videoTitles[song.videoId] || `YouTube Track ${index + 1}`}
                       </h3>
-                      <button
-                        type="button"
-                        className="mt-3 inline-flex items-center gap-2 rounded-full border border-cyan-300/35 bg-cyan-300/15 px-4 py-2 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-300/25"
-                        onClick={() => setPlayerSong(song)}
-                      >
-                        <PlayCircle className="h-4 w-4" />
-                        Play
-                      </button>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-2 rounded-full border border-cyan-300/35 bg-cyan-300/15 px-4 py-2 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-300/25"
+                          onClick={() => {
+                            setPlayerSong(song);
+                            setIsPlayerExpanded(false);
+                          }}
+                        >
+                          <PlayCircle className="h-4 w-4" />
+                          {playerSong?.videoId === song.videoId ? "Playing" : "Play"}
+                        </button>
+                        {playerSong?.videoId === song.videoId ? (
+                          <>
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-4 py-2 text-sm font-semibold text-white/90 transition hover:bg-white/20"
+                              onClick={() => setPlayerSong(null)}
+                            >
+                              Stop
+                            </button>
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-2 rounded-full border border-cyan-300/35 bg-slate-950/45 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:bg-slate-900/70"
+                              onClick={() => setIsPlayerExpanded(true)}
+                            >
+                              <Maximize2 className="h-4 w-4" />
+                              Expand
+                            </button>
+                          </>
+                        ) : null}
+                      </div>
                     </article>
                   ))}
                 </div>
@@ -1188,6 +1228,12 @@ export default function ProfileEditor() {
                     onChange={(e) => setDraft((prev) => ({ ...prev, username: sanitizeUsernameInput(e.target.value) }))}
                     placeholder="your-name"
                   />
+                  <p className={`mt-2 text-xs ${isUsernameFallback ? "text-rose-200" : "text-cyan-100/85"}`}>
+                    Will save as: <span className={`font-semibold ${isUsernameFallback ? "text-rose-300" : "text-cyan-200"}`}>@{usernameSavePreview}</span>
+                  </p>
+                  {isUsernameFallback ? (
+                    <p className="mt-1 text-xs text-rose-200/90">Username must be at least 3 characters. Save will use your current/fallback username.</p>
+                  ) : null}
                   <p className="mt-2 text-xs text-cyan-100/60">Letters, numbers, dots, underscores, and dashes only.</p>
                 </label>
 
@@ -1334,7 +1380,7 @@ export default function ProfileEditor() {
           </div>
         ) : null}
 
-        <Dialog open={Boolean(playerSong)} onClose={() => setPlayerSong(null)} className="fixed inset-0 z-[1002] flex items-center justify-center p-4">
+        <Dialog open={Boolean(playerSong) && isPlayerExpanded} onClose={() => setIsPlayerExpanded(false)} className="fixed inset-0 z-[1002] flex items-center justify-center p-4">
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" aria-hidden="true" />
           <Dialog.Panel className="relative z-10 w-full max-w-3xl overflow-hidden rounded-3xl border border-cyan-300/35 bg-[linear-gradient(180deg,rgba(8,16,30,0.92),rgba(7,12,24,0.96))] p-4 shadow-2xl backdrop-blur-xl sm:p-6">
             <div className="mb-4 flex items-start justify-between gap-4">
@@ -1345,7 +1391,7 @@ export default function ProfileEditor() {
               <button
                 type="button"
                 className="inline-flex items-center rounded-full border border-white/20 px-3 py-1.5 text-xs text-white/90 hover:bg-white/10"
-                onClick={() => setPlayerSong(null)}
+                onClick={() => setIsPlayerExpanded(false)}
               >
                 Close
               </button>
