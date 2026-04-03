@@ -22,6 +22,8 @@ const initialFormState: FormState = {
 export default function SuggestionsPage() {
   const [form, setForm] = useState<FormState>(initialFormState);
   const [submitted, setSubmitted] = useState(false);
+  const [submissionTime, setSubmissionTime] = useState<string | null>(null);
+  const [submissionRef, setSubmissionRef] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -43,6 +45,8 @@ export default function SuggestionsPage() {
       }
 
       setSubmitted(true);
+      setSubmissionTime(new Date().toLocaleString());
+      setSubmissionRef(`SUG-${Date.now().toString().slice(-6)}`);
       setForm(initialFormState);
     } catch (error: any) {
       setSubmitError(typeof error?.message === "string" ? error.message : "Failed to submit suggestion.");
@@ -87,10 +91,18 @@ export default function SuggestionsPage() {
                 <p className="mt-2 text-sm leading-6 text-emerald-100/85">
                   Your message has been received. We&apos;ll use it to keep shaping TheDyeSpace into something even better.
                 </p>
+                <div className="mt-4 rounded-xl border border-emerald-200/30 bg-black/20 px-4 py-3 text-xs text-emerald-100/90">
+                  <p><span className="font-semibold text-emerald-50">Reference:</span> {submissionRef || "SUG-NEW"}</p>
+                  <p className="mt-1"><span className="font-semibold text-emerald-50">Submitted:</span> {submissionTime || "Just now"}</p>
+                </div>
                 <button
                   type="button"
                   className="mt-4 inline-flex items-center rounded-full border border-emerald-200/30 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:bg-emerald-400/10"
-                  onClick={() => setSubmitted(false)}
+                  onClick={() => {
+                    setSubmitted(false);
+                    setSubmissionTime(null);
+                    setSubmissionRef(null);
+                  }}
                 >
                   Send another message
                 </button>
@@ -136,7 +148,7 @@ export default function SuggestionsPage() {
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-cyan-300 via-teal-300 to-emerald-300 px-6 py-3 text-sm font-semibold text-slate-950 shadow-[0_12px_30px_rgba(0,255,208,0.18)] transition hover:scale-[1.02]"
+                    className="inline-flex min-w-40 items-center justify-center rounded-full bg-gradient-to-r from-cyan-300 via-teal-300 to-emerald-300 px-6 py-3 text-sm font-semibold text-slate-950 shadow-[0_12px_30px_rgba(0,255,208,0.18)] transition hover:scale-[1.02] disabled:opacity-70"
                   >
                     {submitting ? "Sending..." : "Send Suggestion"}
                   </button>

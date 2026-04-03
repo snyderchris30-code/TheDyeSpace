@@ -131,6 +131,7 @@ export default function MainFeedPage() {
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [reactionPickerPostId, setReactionPickerPostId] = useState<string | null>(null);
   const [interactionBusyPostId, setInteractionBusyPostId] = useState<string | null>(null);
+  const [interactionStatus, setInteractionStatus] = useState<string | null>(null);
 
   // Supabase session detection
   const [session, setSession] = useState<any>(null);
@@ -187,6 +188,7 @@ export default function MainFeedPage() {
       }
 
       setInteractionBusyPostId(postId);
+      setInteractionStatus(null);
       try {
         const response = await fetch("/api/posts/reactions", {
           method: "POST",
@@ -203,7 +205,7 @@ export default function MainFeedPage() {
         setPostCounts(postId, { likes: body.likesCount ?? 0 });
         setReactionPickerPostId(null);
       } catch (interactionError) {
-        console.error(interactionError);
+        setInteractionStatus("Could not save your reaction. Please try again.");
       } finally {
         setInteractionBusyPostId(null);
       }
@@ -223,6 +225,7 @@ export default function MainFeedPage() {
       }
 
       setInteractionBusyPostId(postId);
+      setInteractionStatus(null);
       try {
         const response = await fetch("/api/posts/comments", {
           method: "POST",
@@ -240,7 +243,7 @@ export default function MainFeedPage() {
         setCommentDrafts((prev) => ({ ...prev, [postId]: "" }));
         setExpandedComments((prev) => ({ ...prev, [postId]: true }));
       } catch (interactionError) {
-        console.error(interactionError);
+        setInteractionStatus("Could not post your comment. Please try again.");
       } finally {
         setInteractionBusyPostId(null);
       }
@@ -265,6 +268,12 @@ export default function MainFeedPage() {
       <p className="mb-5 text-base cosmic-subtext sm:mb-8 sm:text-xl">
         {/* Removed placeholder text. */}
       </p>
+
+      {interactionStatus ? (
+        <div className="mb-4 rounded-xl border border-rose-300/30 bg-rose-500/15 px-4 py-2 text-sm text-rose-100">
+          {interactionStatus}
+        </div>
+      ) : null}
 
       {isLoading && <div className="text-teal-200">Loading cosmic posts...</div>}
       {error && <div className="text-red-300">Error loading posts: {(error as Error).message}</div>}
@@ -319,6 +328,7 @@ export default function MainFeedPage() {
                         src={imgUrl}
                         alt={`Post image ${idx + 1}`}
                         className="absolute inset-0 h-full w-full border border-cyan-500/40 object-cover transition duration-200 group-hover:scale-105"
+                        loading="lazy"
                         tabIndex={0}
                       />
                       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent px-3 py-4 text-left text-xs text-cyan-50/85 sm:text-sm">
@@ -346,7 +356,7 @@ export default function MainFeedPage() {
                         <span>{postInteraction.viewerReaction ? `Reacted ${postInteraction.viewerReaction}` : "Like / React"}</span>
                       </button>
                       {reactionPickerPostId === post.id ? (
-                        <div className="absolute left-0 top-full z-20 mt-2 flex max-w-[calc(100vw-4rem)] flex-row flex-wrap gap-2 rounded-2xl border border-cyan-300/25 bg-slate-950/95 p-3 shadow-2xl backdrop-blur-xl sm:left-full sm:top-0 sm:ml-2 sm:mt-0 sm:max-w-none">
+                        <div className="absolute right-0 top-full z-20 mt-2 flex max-w-[calc(100vw-3rem)] flex-row flex-wrap gap-2 rounded-2xl border border-cyan-300/25 bg-slate-950/95 p-3 shadow-2xl backdrop-blur-xl sm:left-full sm:right-auto sm:top-0 sm:ml-2 sm:mt-0 sm:max-w-none">
                           {REACTION_EMOJIS.map((emoji) => (
                             <button
                               key={emoji}
@@ -416,7 +426,7 @@ export default function MainFeedPage() {
                         <div className="flex items-start gap-3">
                           <div className="h-10 w-10 overflow-hidden rounded-full border border-cyan-300/25 bg-slate-900">
                             {comment.author.avatar_url ? (
-                              <img src={comment.author.avatar_url} alt="Comment author" className="h-full w-full object-cover" />
+                              <img src={comment.author.avatar_url} alt="Comment author" className="h-full w-full object-cover" loading="lazy" />
                             ) : (
                               <div className="flex h-full w-full items-center justify-center text-xs font-bold text-cyan-100">TD</div>
                             )}

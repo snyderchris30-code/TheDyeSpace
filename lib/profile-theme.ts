@@ -28,6 +28,22 @@ export type ProfileAppearance = {
   youtube_urls?: string[] | null;
 };
 
+export type ProfilePalette = {
+  name: string;
+  background_color: string;
+  text_color: string;
+  highlight_color: string;
+};
+
+export const PROFILE_COLOR_PALETTES: ReadonlyArray<ProfilePalette> = [
+  { name: "Teal Aurora", background_color: "#061621", text_color: "#DFFDFC", highlight_color: "#32E6C6" },
+  { name: "Blue Nova", background_color: "#0B1533", text_color: "#EAF2FF", highlight_color: "#59A9FF" },
+  { name: "Purple Pulse", background_color: "#170C2E", text_color: "#F4EAFF", highlight_color: "#B98CFF" },
+  { name: "Solar Gold", background_color: "#1E1A0B", text_color: "#FFF7D6", highlight_color: "#F6C451" },
+  { name: "Neon Tide", background_color: "#04171A", text_color: "#E6FEFF", highlight_color: "#3AE7FF" },
+  { name: "Midnight Rose", background_color: "#1A0C18", text_color: "#FFEAF8", highlight_color: "#FF79CF" },
+];
+
 export const FONT_OPTIONS: ReadonlyArray<{ value: FontStyle; label: string }> = [
   { value: "default", label: "Default" },
   { value: "cosmic", label: "Cosmic" },

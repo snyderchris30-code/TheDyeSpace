@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
 
 interface ChatMessage {
   id: string;
@@ -16,7 +15,6 @@ export default function GlobalChat() {
   const [input, setInput] = useState("");
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const router = useRouter();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -77,6 +75,7 @@ export default function GlobalChat() {
       type: "chat_message",
       reported_id: msg.id,
       reported_by: user.id,
+      reporter_id: user.id,
       reason,
       created_at: new Date().toISOString(),
     });

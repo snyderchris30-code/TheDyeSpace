@@ -28,10 +28,11 @@ type ProfileRow = {
   theme_settings?: ProfileAppearance | null;
 };
 
-type FeedCategory = "all" | "tutorial" | "new_boot_goofin" | "for_sale" | "sold_unavailable";
+type FeedCategory = "all" | "following" | "tutorial" | "new_boot_goofin" | "for_sale" | "sold_unavailable";
 
 const TABS: Array<{ label: string; value: FeedCategory }> = [
   { label: "All Posts", value: "all" },
+  { label: "Following", value: "following" },
   { label: "Tutorials", value: "tutorial" },
   { label: "New Boot Goofin", value: "new_boot_goofin" },
   { label: "For Sale", value: "for_sale" },
@@ -82,9 +83,13 @@ function ReportPostButton({ postId }: { postId: string }) {
     const reason = prompt("Reason for reporting this post?");
     if (!reason) return;
     const supabase = createClient();
+    const { data: sessionData } = await supabase.auth.getSession();
+    const reporterId = sessionData?.session?.user?.id || null;
     await supabase.from("reports").insert({
       type: "post",
       reported_id: postId,
+      reporter_id: reporterId,
+      reported_by: reporterId,
       reason,
       created_at: new Date().toISOString(),
     });
@@ -110,6 +115,7 @@ export default function ExplorePage() {
   const [error, setError] = useState<string | null>(null);
   const [posts, setPosts] = useState<ExplorePost[]>([]);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+  const [marketplaceOnly, setMarketplaceOnly] = useState(false);
 
   useEffect(() => {
     const supabase = createClient();
@@ -132,10 +138,35 @@ export default function ExplorePage() {
       setError(null);
       try {
         const supabase = createClient();
+        let followingIds: string[] = [];
+
+        if (tab === "following") {
+          const followingRes = await fetch("/api/profile/following", { cache: "no-store" });
+          const followingBody = await followingRes.json().catch(() => ({}));
+          if (!followingRes.ok) {
+            throw new Error(followingBody?.error || "Failed to load Following feed.");
+          }
+
+          followingIds = Array.isArray(followingBody?.followingIds)
+            ? followingBody.followingIds.filter((id: unknown): id is string => typeof id === "string")
+            : [];
+
+          if (!followingIds.length) {
+            if (!active) return;
+            setPosts([]);
+            setLoading(false);
+            return;
+          }
+        }
+
         let query = supabase
           .from("posts")
           .select("id,user_id,content,image_urls,likes,is_for_sale,created_at")
           .order("created_at", { ascending: false });
+
+        if (tab === "following") {
+          query = query.in("user_id", followingIds);
+        }
 
         if (search.trim()) {
           query = query.ilike("content", `%${search.trim()}%`);
@@ -177,6 +208,8 @@ export default function ExplorePage() {
         });
 
         const filtered = withAuthorNames.filter((post) => {
+          if (marketplaceOnly && !post.is_for_sale) return false;
+          if (tab === "following") return true;
           if (tab === "all") return true;
           if (tab === "for_sale") return post.is_for_sale;
           if (tab === "sold_unavailable") return !post.is_for_sale && parsePostCategory(post.content) === "sold_unavailable";
@@ -195,9 +228,10 @@ export default function ExplorePage() {
     return () => {
       active = false;
     };
-  }, [tab, search]);
+  }, [tab, search, marketplaceOnly]);
 
   const title = useMemo(() => {
+    if (tab === "following") return "Following Feed";
     if (tab === "tutorial") return "Tutorial Posts";
     if (tab === "new_boot_goofin") return "New Boot Goofin";
     if (tab === "for_sale") return "For Sale";
@@ -257,6 +291,15 @@ export default function ExplorePage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
+          <label className="mt-3 inline-flex cursor-pointer items-center gap-2 text-sm text-cyan-100/90">
+            <input
+              type="checkbox"
+              checked={marketplaceOnly}
+              onChange={(event) => setMarketplaceOnly(event.target.checked)}
+              className="h-4 w-4 rounded border-cyan-200/40 bg-black/40"
+            />
+            Marketplace only (For Sale)
+          </label>
         </div>
 
         <h2 className="mb-4 text-2xl font-semibold text-cyan-50">{title}</h2>
@@ -266,7 +309,9 @@ export default function ExplorePage() {
 
         {!loading && !error && posts.length === 0 && (
           <div className="rounded-2xl border border-cyan-300/20 bg-slate-950/45 p-8 text-cyan-100/75">
-            No posts yet. The feed will populate when users publish posts.
+            {tab === "following"
+              ? "No posts in Following yet. Follow artists to build your feed."
+              : "No posts yet. The feed will populate when users publish posts."}
           </div>
         )}
 
@@ -279,7 +324,7 @@ export default function ExplorePage() {
             >
               {post.image_urls?.[0] ? (
                   <button type="button" className="group relative mb-4 block aspect-[4/5] w-full overflow-hidden rounded-2xl sm:aspect-[4/3]" onClick={() => setLightbox({ open: true, url: post.image_urls![0] })}>
-                    <img src={post.image_urls[0]} alt="Post" className="h-full w-full rounded-2xl object-cover transition duration-200 group-hover:scale-105" />
+                    <img src={post.image_urls[0]} alt="Post" className="h-full w-full rounded-2xl object-cover transition duration-200 group-hover:scale-105" loading="lazy" />
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent px-3 py-4 text-left text-xs text-cyan-50/85 sm:text-sm">Tap to expand</div>
                   </button>
               ) : null}

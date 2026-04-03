@@ -44,7 +44,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="DyeSpace" />
       </head>
-      <body className={`flex flex-col min-h-screen text-white overflow-hidden ${inter.variable} ${spaceGrotesk.variable} font-sans`}>
+      <body className={`flex flex-col min-h-screen text-white overflow-x-hidden ${inter.variable} ${spaceGrotesk.variable} font-sans`}>
         <Providers>
           <PWARegister />
           <BackgroundParallax />

@@ -15,6 +15,7 @@ import {
   FONT_OPTIONS,
   fontClass,
   normalizeFontStyle,
+  PROFILE_COLOR_PALETTES,
   resolveProfileAppearance,
   type FontStyle,
   type ProfileAppearance,
@@ -154,6 +155,8 @@ export default function ProfileEditor() {
   const [isUploading, setIsUploading] = useState(false);
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
   const [isOwner, setIsOwner] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [isFollowBusy, setIsFollowBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [postsLoading, setPostsLoading] = useState(false);
   const [form, setForm] = useState<FormState>({
@@ -405,6 +408,27 @@ export default function ProfileEditor() {
   }, [draft]);
 
   useEffect(() => {
+    const loadFollowState = async () => {
+      if (!session?.user?.id || !profileUserId || isOwner) {
+        setIsFollowing(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/profile/follow?targetUserId=${encodeURIComponent(profileUserId)}`, { cache: "no-store" });
+        const body = await response.json().catch(() => ({}));
+        if (response.ok) {
+          setIsFollowing(Boolean(body?.isFollowing));
+        }
+      } catch {
+        setIsFollowing(false);
+      }
+    };
+
+    void loadFollowState();
+  }, [isOwner, profileUserId, session?.user?.id]);
+
+  useEffect(() => {
     if (!profileUserId) {
       setPosts([]);
       setInteractions({});
@@ -593,6 +617,49 @@ export default function ProfileEditor() {
     setDraft((prev) => ({
       ...prev,
       youtube_urls: (prev.youtube_urls || []).filter((value) => value !== url),
+    }));
+  };
+
+  const handleFollowToggle = async () => {
+    if (!profileUserId) return;
+    if (!session?.user) {
+      setStatus({ type: "error", text: "Please sign in to follow artists." });
+      return;
+    }
+
+    setIsFollowBusy(true);
+    try {
+      const response = await fetch("/api/profile/follow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetUserId: profileUserId,
+          action: isFollowing ? "unfollow" : "follow",
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(body?.error || "Failed to update follow status.");
+      }
+
+      setIsFollowing(Boolean(body?.isFollowing));
+    } catch (error: any) {
+      setStatus({
+        type: "error",
+        text: typeof error?.message === "string" ? error.message : "Failed to update follow status.",
+      });
+    } finally {
+      setIsFollowBusy(false);
+    }
+  };
+
+  const applyPalette = (palette: { background_color: string; text_color: string; highlight_color: string }) => {
+    setDraft((prev) => ({
+      ...prev,
+      background_color: palette.background_color,
+      text_color: palette.text_color,
+      highlight_color: palette.highlight_color,
     }));
   };
 
@@ -850,6 +917,7 @@ export default function ProfileEditor() {
                 src={profileDisplay.banner_url || DEFAULT_BANNER_URL}
                 alt="Profile banner"
                 className="absolute inset-0 h-full w-full object-cover"
+                loading="eager"
                 draggable={false}
               />
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(68,249,207,0.20),transparent_35%),linear-gradient(180deg,rgba(4,10,22,0.10)_0%,rgba(5,10,20,0.28)_32%,rgba(3,8,18,0.82)_100%)]" />
@@ -872,6 +940,16 @@ export default function ProfileEditor() {
                     type="button"
                   >
                     Edit Profile
+                  </button>
+                )}
+                {!isOwner && profileDisplay.username && (
+                  <button
+                    className="rounded-full border border-cyan-300/70 bg-black/45 px-5 py-2 text-sm font-semibold text-cyan-100 shadow-lg backdrop-blur-md transition hover:scale-[1.02] hover:bg-black/60 disabled:opacity-60"
+                    onClick={() => void handleFollowToggle()}
+                    type="button"
+                    disabled={isFollowBusy}
+                  >
+                    {isFollowBusy ? "Saving..." : isFollowing ? "Following" : "Follow"}
                   </button>
                 )}
                 {!isOwner && profileDisplay.username && (
@@ -956,7 +1034,7 @@ export default function ProfileEditor() {
                   <div className="relative shrink-0">
                     <div className="h-28 w-28 overflow-hidden rounded-full border-4 border-cyan-200/70 bg-slate-950 shadow-[0_0_40px_rgba(68,249,207,0.42),0_0_100px_rgba(97,67,255,0.20)] sm:h-32 sm:w-32">
                       {profileDisplay.avatar_url ? (
-                        <img src={profileDisplay.avatar_url} alt="Avatar" className="h-full w-full object-cover" />
+                        <img src={profileDisplay.avatar_url} alt="Avatar" className="h-full w-full object-cover" loading="lazy" />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center text-4xl font-bold text-cyan-100">TD</div>
                       )}
@@ -1038,6 +1116,7 @@ export default function ProfileEditor() {
                                   src={imageUrl}
                                   alt={`Post image ${imageIndex + 1}`}
                                   className="absolute inset-0 h-full w-full border border-cyan-300/20 object-cover shadow-lg transition duration-200 group-hover:scale-105"
+                                  loading="lazy"
                                   tabIndex={0}
                                   /* style moved to className */
                                 />
@@ -1062,7 +1141,7 @@ export default function ProfileEditor() {
                             </button>
 
                             {reactionPickerPostId === post.id ? (
-                              <div className="absolute left-0 top-full z-20 mt-2 flex flex-wrap gap-2 rounded-2xl border border-cyan-300/25 bg-slate-950/95 p-3 shadow-2xl backdrop-blur-xl">
+                              <div className="absolute right-0 top-full z-20 mt-2 flex max-w-[calc(100vw-3rem)] flex-wrap gap-2 rounded-2xl border border-cyan-300/25 bg-slate-950/95 p-3 shadow-2xl backdrop-blur-xl sm:left-0 sm:right-auto sm:max-w-none">
                                 {REACTION_EMOJIS.map((emoji) => (
                                   <button
                                     key={emoji}
@@ -1120,7 +1199,7 @@ export default function ProfileEditor() {
                                     <div className="flex items-start gap-3">
                                       <div className="h-10 w-10 overflow-hidden rounded-full border border-cyan-300/25 bg-slate-900">
                                         {comment.author.avatar_url ? (
-                                          <img src={comment.author.avatar_url} alt="Comment author" className="h-full w-full object-cover" />
+                                          <img src={comment.author.avatar_url} alt="Comment author" className="h-full w-full object-cover" loading="lazy" />
                                         ) : (
                                           <div className="flex h-full w-full items-center justify-center text-xs font-bold text-cyan-100">TD</div>
                                         )}
@@ -1292,37 +1371,92 @@ export default function ProfileEditor() {
                   )}
                 </div>
 
-                <div>
-                  <span className="mb-2 block text-sm text-cyan-100">Background Color</span>
-                  <input
-                    type="color"
-                    className="h-11 w-full cursor-pointer rounded-xl border border-white/15 bg-black/30"
-                    value={draft.background_color}
-                    onChange={(e) => setDraft((prev) => ({ ...prev, background_color: e.target.value }))}
-                    aria-label="Background color"
-                  />
-                </div>
+                <div className="sm:col-span-2 rounded-2xl border border-cyan-300/20 bg-black/25 p-4">
+                  <div className="mb-3">
+                    <p className="text-sm font-semibold text-cyan-100">Color Theme</p>
+                    <p className="text-xs text-cyan-100/70">Pick colors manually or use a preset palette. Preview updates instantly.</p>
+                  </div>
 
-                <div>
-                  <span className="mb-2 block text-sm text-cyan-100">Text Color</span>
-                  <input
-                    type="color"
-                    className="h-11 w-full cursor-pointer rounded-xl border border-white/15 bg-black/30"
-                    value={draft.text_color}
-                    onChange={(e) => setDraft((prev) => ({ ...prev, text_color: e.target.value }))}
-                    aria-label="Text color"
-                  />
-                </div>
+                  <div className="mb-4 grid gap-3 sm:grid-cols-3">
+                    {PROFILE_COLOR_PALETTES.map((palette) => (
+                      <button
+                        key={palette.name}
+                        type="button"
+                        className="rounded-xl border border-cyan-300/25 bg-slate-950/50 p-3 text-left transition hover:border-cyan-300/45 hover:bg-slate-900/65"
+                        onClick={() => applyPalette(palette)}
+                        title={`Apply ${palette.name}`}
+                      >
+                        <p className="text-xs font-semibold text-cyan-100">{palette.name}</p>
+                        <div className="mt-2 space-y-1 text-[10px] text-cyan-100/80">
+                          <p>BG {palette.background_color}</p>
+                          <p>TXT {palette.text_color}</p>
+                          <p>ACC {palette.highlight_color}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
 
-                <div>
-                  <span className="mb-2 block text-sm text-cyan-100">Highlight / Accent Color</span>
-                  <input
-                    type="color"
-                    className="h-11 w-full cursor-pointer rounded-xl border border-white/15 bg-black/30"
-                    value={draft.highlight_color}
-                    onChange={(e) => setDraft((prev) => ({ ...prev, highlight_color: e.target.value }))}
-                    aria-label="Highlight color"
-                  />
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <label className="block">
+                      <span className="mb-2 block text-sm text-cyan-100">Background Color</span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          className="h-11 w-14 cursor-pointer rounded-xl border border-white/15 bg-black/30"
+                          value={draft.background_color}
+                          onChange={(e) => setDraft((prev) => ({ ...prev, background_color: e.target.value }))}
+                          aria-label="Background color"
+                        />
+                        <input
+                          type="text"
+                          className="h-11 w-full rounded-xl border border-white/15 bg-black/30 px-3 text-sm text-white outline-none focus:border-cyan-300/50"
+                          value={draft.background_color}
+                          onChange={(e) => setDraft((prev) => ({ ...prev, background_color: e.target.value }))}
+                          aria-label="Background color hex"
+                        />
+                      </div>
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-2 block text-sm text-cyan-100">Text Color</span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          className="h-11 w-14 cursor-pointer rounded-xl border border-white/15 bg-black/30"
+                          value={draft.text_color}
+                          onChange={(e) => setDraft((prev) => ({ ...prev, text_color: e.target.value }))}
+                          aria-label="Text color"
+                        />
+                        <input
+                          type="text"
+                          className="h-11 w-full rounded-xl border border-white/15 bg-black/30 px-3 text-sm text-white outline-none focus:border-cyan-300/50"
+                          value={draft.text_color}
+                          onChange={(e) => setDraft((prev) => ({ ...prev, text_color: e.target.value }))}
+                          aria-label="Text color hex"
+                        />
+                      </div>
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-2 block text-sm text-cyan-100">Highlight / Accent Color</span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          className="h-11 w-14 cursor-pointer rounded-xl border border-white/15 bg-black/30"
+                          value={draft.highlight_color}
+                          onChange={(e) => setDraft((prev) => ({ ...prev, highlight_color: e.target.value }))}
+                          aria-label="Highlight color"
+                        />
+                        <input
+                          type="text"
+                          className="h-11 w-full rounded-xl border border-white/15 bg-black/30 px-3 text-sm text-white outline-none focus:border-cyan-300/50"
+                          value={draft.highlight_color}
+                          onChange={(e) => setDraft((prev) => ({ ...prev, highlight_color: e.target.value }))}
+                          aria-label="Highlight color hex"
+                        />
+                      </div>
+                    </label>
+                  </div>
                 </div>
 
                 <div>
