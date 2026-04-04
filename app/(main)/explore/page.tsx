@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { fontClass, resolveProfileAppearance, type ProfileAppearance } from "@/lib/profile-theme";
+import { Home, Users, BookOpen, PartyPopper, Tag, Ban } from "lucide-react";
 
 type ExplorePost = {
   id: string;
@@ -30,13 +31,13 @@ type ProfileRow = {
 
 type FeedCategory = "all" | "following" | "tutorial" | "new_boot_goofin" | "for_sale" | "sold_unavailable";
 
-const TABS: Array<{ label: string; value: FeedCategory }> = [
-  { label: "All Posts", value: "all" },
-  { label: "Following", value: "following" },
-  { label: "Tutorials", value: "tutorial" },
-  { label: "New Boot Goofin", value: "new_boot_goofin" },
-  { label: "For Sale", value: "for_sale" },
-  { label: "Sold / No Longer Available", value: "sold_unavailable" },
+const TABS: Array<{ label: string; value: FeedCategory; icon: React.ReactNode }> = [
+  { label: "All Posts", value: "all", icon: <Home size={18} /> },
+  { label: "Following", value: "following", icon: <Users size={18} /> },
+  { label: "Tutorials", value: "tutorial", icon: <BookOpen size={18} /> },
+  { label: "New Boot Goofin", value: "new_boot_goofin", icon: <PartyPopper size={18} /> },
+  { label: "For Sale", value: "for_sale", icon: <Tag size={18} /> },
+  { label: "Sold / No Longer Available", value: "sold_unavailable", icon: <Ban size={18} /> },
 ];
 
 function parsePostCategory(content: string | null): FeedCategory {
@@ -287,14 +288,19 @@ export default function ExplorePage() {
           {TABS.map((t) => (
             <button
               key={t.value}
-              className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                tab === t.value
+              className={`group relative rounded-full border p-0 w-11 h-11 flex items-center justify-center transition-all duration-200
+                ${tab === t.value
                   ? "border-cyan-200/60 bg-cyan-300 text-slate-950"
-                  : "border-cyan-300/25 bg-black/35 text-cyan-100 hover:bg-black/55"
-              }`}
+                  : "border-cyan-300/25 bg-black/35 text-cyan-100 hover:bg-black/55"}
+              `}
               onClick={() => setTab(t.value)}
+              aria-label={t.label}
+              title={t.label}
             >
-              {t.label}
+              {t.icon}
+              <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 -translate-x-1/2 translate-y-1 whitespace-nowrap rounded-md border border-cyan-200/35 bg-slate-950/95 px-2 py-1 text-[11px] font-medium text-cyan-100 opacity-0 shadow-[0_0_14px_rgba(34,211,238,0.18)] transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100">
+                {t.label}
+              </span>
             </button>
           ))}
           <Link href="/chat" className="rounded-full border border-pink-400/60 bg-gradient-to-br from-cyan-900/60 to-pink-900/60 px-4 py-2 text-sm font-semibold text-pink-200 shadow-md hover:bg-pink-900/80 hover:text-white transition ml-auto">
