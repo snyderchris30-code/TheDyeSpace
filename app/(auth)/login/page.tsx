@@ -38,12 +38,14 @@ export default function LoginPage() {
     const password = form.password.value;
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setMessage(error.message);
-    else {
+    if (error) {
+      setMessage(error.message);
+      setLoading(false);
+    } else {
       setMessage("Welcome back, cosmic soul!");
-      setTimeout(() => router.push(redirect), 1200);
+      router.push(redirect);
+      router.refresh();
     }
-    setLoading(false);
   }
 
   return (
