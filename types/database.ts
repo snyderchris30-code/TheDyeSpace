@@ -1,6 +1,14 @@
 // Types for Supabase public schema
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
 
+export interface ProfileThemeSettings {
+  background_color?: string | null;
+  text_color?: string | null;
+  highlight_color?: string | null;
+  font_style?: string | null;
+  youtube_urls?: string[] | null;
+}
+
 export interface Profile {
   id: string;
   username: string | null;
@@ -8,6 +16,7 @@ export interface Profile {
   bio: string | null;
   avatar_url: string | null;
   banner_url: string | null;
+  theme_settings: ProfileThemeSettings | null;
   created_at: string;
 }
 
@@ -48,6 +57,29 @@ export interface Notification {
   message: string;
 }
 
+export interface UserFollow {
+  follower_id: string;
+  followed_id: string;
+  created_at: string;
+}
+
+export interface Report {
+  id: string;
+  reporter_id: string | null;
+  reported_user_id: string | null;
+  reason: string;
+  created_at: string;
+}
+
+export interface Suggestion {
+  id: string;
+  user_id: string | null;
+  name: string | null;
+  email: string | null;
+  message: string;
+  created_at: string;
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -56,6 +88,9 @@ export interface Database {
       post_comments: PostComment;
       post_reactions: PostReaction;
       notifications: Notification;
+      user_follows: UserFollow;
+      reports: Report;
+      suggestions: Suggestion;
     };
   };
 }

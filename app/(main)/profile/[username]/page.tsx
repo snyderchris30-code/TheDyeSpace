@@ -1172,30 +1172,41 @@ export default function ProfileEditor() {
 
                         <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-cyan-300/10 pt-4">
                           <div className="relative">
-                            <button
-                              className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-black/25 px-4 py-2 text-sm text-cyan-100 transition hover:border-cyan-300/40 hover:bg-black/40"
-                              type="button"
-                              onClick={() => setReactionPickerPostId((current) => (current === post.id ? null : post.id))}
-                            >
-                              <Heart className="h-4 w-4" />
-                              <span>{postInteraction.viewerReaction ? `Reacted ${postInteraction.viewerReaction}` : "React"}</span>
-                            </button>
-
-                            {reactionPickerPostId === post.id ? (
-                              <div className="absolute right-0 top-full z-20 mt-2 flex max-w-[calc(100vw-3rem)] flex-wrap gap-2 rounded-2xl border border-cyan-300/25 bg-slate-950/95 p-3 shadow-2xl backdrop-blur-xl sm:left-0 sm:right-auto sm:max-w-none">
-                                {REACTION_EMOJIS.map((emoji) => (
-                                  <button
-                                    key={emoji}
-                                    className={`rounded-full px-3 py-2 text-lg transition hover:scale-110 ${postInteraction.viewerReaction === emoji ? "bg-cyan-400/20" : "bg-black/30"}`}
-                                    type="button"
-                                    disabled={isBusy}
-                                    onClick={() => void handleReactionSelect(post.id, emoji)}
-                                  >
-                                    {emoji}
-                                  </button>
-                                ))}
-                              </div>
-                            ) : null}
+                            {session?.user ? (
+                              <>
+                                <button
+                                  className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-black/25 px-4 py-2 text-sm text-cyan-100 transition hover:border-cyan-300/40 hover:bg-black/40"
+                                  type="button"
+                                  onClick={() => setReactionPickerPostId((current) => (current === post.id ? null : post.id))}
+                                >
+                                  <Heart className="h-4 w-4" />
+                                  <span>{postInteraction.viewerReaction ? `Reacted ${postInteraction.viewerReaction}` : "React"}</span>
+                                </button>
+                                {reactionPickerPostId === post.id ? (
+                                  <div className="absolute right-0 top-full z-20 mt-2 flex max-w-[calc(100vw-3rem)] flex-wrap gap-2 rounded-2xl border border-cyan-300/25 bg-slate-950/95 p-3 shadow-2xl backdrop-blur-xl sm:left-0 sm:right-auto sm:max-w-none">
+                                    {REACTION_EMOJIS.map((emoji) => (
+                                      <button
+                                        key={emoji}
+                                        className={`rounded-full px-3 py-2 text-lg transition hover:scale-110 ${postInteraction.viewerReaction === emoji ? "bg-cyan-400/20" : "bg-black/30"}`}
+                                        type="button"
+                                        disabled={isBusy}
+                                        onClick={() => void handleReactionSelect(post.id, emoji)}
+                                      >
+                                        {emoji}
+                                      </button>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </>
+                            ) : (
+                              <Link
+                                href="/login"
+                                className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-black/25 px-4 py-2 text-sm italic text-cyan-300/80 transition hover:border-cyan-300/40 hover:bg-black/40"
+                              >
+                                <Heart className="h-4 w-4" />
+                                <span>Sign in to react</span>
+                              </Link>
+                            )}
                           </div>
 
                           <button
@@ -1218,9 +1229,9 @@ export default function ProfileEditor() {
                                   reaction.reacted
                                     ? "border-cyan-300/50 bg-cyan-400/15 text-cyan-50"
                                     : "border-cyan-300/20 bg-black/20 text-cyan-100/85"
-                                }`}
-                                onClick={() => void handleReactionSelect(post.id, reaction.emoji)}
-                                disabled={isBusy}
+                                } ${!session?.user ? "cursor-default opacity-80" : "hover:border-cyan-300/40"}`}
+                                onClick={() => session?.user ? void handleReactionSelect(post.id, reaction.emoji) : undefined}
+                                disabled={isBusy || !session?.user}
                               >
                                 <span>{reaction.emoji}</span>
                                 <span>{reaction.count}</span>
