@@ -78,6 +78,15 @@ function normalizeUsername(value: string) {
   return decodeURIComponent(value || "").trim().toLowerCase();
 }
 
+function isOwnRouteUsername(routeUsername: string, user: any) {
+  return Boolean(
+    user &&
+      [user.id, user.user_metadata?.username, user.email]
+        .filter(Boolean)
+        .some((value: string) => normalizeUsername(value) === routeUsername)
+  );
+}
+
 function stripCategoryTag(content: string | null) {
   if (!content) return "";
   return content.replace(/^\[(tutorial|new_boot_goofin|sold|unavailable)\]\s*/i, "").trim();
@@ -168,7 +177,7 @@ export default function ProfileEditor() {
   const params = useParams<{ username: string }>();
   const router = useRouter();
   const routeUsername = normalizeUsername(params?.username || "");
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const viewRef = useRef<HTMLDivElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
   const [session, setSession] = useState<any>(null);
@@ -409,7 +418,7 @@ export default function ProfileEditor() {
 
     const { data: listener } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
       setSession(nextSession);
-      if (nextSession?.user && isOwner) {
+      if (nextSession?.user && isOwnRouteUsername(routeUsername, nextSession.user)) {
         await fetchOrCreateOwnProfile(nextSession.user);
       }
     });
@@ -417,7 +426,7 @@ export default function ProfileEditor() {
     return () => {
       listener?.subscription.unsubscribe();
     };
-  }, [applyProfileToForm, fetchOrCreateOwnProfile, fetchProfileByUsername, isOwner, routeUsername, supabase.auth]);
+  }, [applyProfileToForm, fetchOrCreateOwnProfile, fetchProfileByUsername, routeUsername, supabase]);
 
   useEffect(() => {
     const visibleState = editing ? draft : form;

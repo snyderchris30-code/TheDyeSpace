@@ -16,7 +16,7 @@ export default function ProfilePage() {
 
       if (!user) {
         // Not logged in, redirect to login
-        router.push("/login?redirect=/profile");
+        router.replace("/login?redirect=/profile");
         return;
       }
 
@@ -29,9 +29,9 @@ export default function ProfilePage() {
 
       const username = resolveProfileUsername(profile?.username, user.user_metadata?.username, user.email, user.id);
       if (username) {
-        router.push(`/profile/${encodeURIComponent(username)}`);
+        router.replace(`/profile/${encodeURIComponent(username)}`);
       } else {
-        router.push("/");
+        router.replace("/");
       }
     };
 
