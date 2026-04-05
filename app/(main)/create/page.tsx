@@ -10,7 +10,7 @@ export default function CreatePostPage() {
   const router = useRouter();
   const supabase = createClient();
   const [content, setContent] = useState("");
-  const [image, setImage] = useState<File | null>(null);
+  const [images, setImages] = useState<File[]>([]);
   const [category, setCategory] = useState<PostCategory>("general");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -40,22 +40,28 @@ export default function CreatePostPage() {
       }
 
       let imageUrls: string[] = [];
-      if (image) {
+      if (images.length > 0) {
         await ensureStorageBuckets();
-        const fileExt = image.name.split(".").pop() || "png";
-        const filePath = `${userId}-${Date.now()}.${fileExt}`;
-        const { error: uploadError } = await supabase.storage
-          .from("posts")
-          .upload(filePath, image, { upsert: true, contentType: image.type || undefined });
 
-        if (uploadError) {
-          throw uploadError;
+        const uploadedUrls: string[] = [];
+        for (const [index, image] of images.entries()) {
+          const fileExt = image.name.split(".").pop() || "png";
+          const filePath = `${userId}-${Date.now()}-${index}.${fileExt}`;
+          const { error: uploadError } = await supabase.storage
+            .from("posts")
+            .upload(filePath, image, { upsert: true, contentType: image.type || undefined });
+
+          if (uploadError) {
+            throw uploadError;
+          }
+
+          const {
+            data: { publicUrl },
+          } = supabase.storage.from("posts").getPublicUrl(filePath);
+          uploadedUrls.push(publicUrl);
         }
 
-        const {
-          data: { publicUrl },
-        } = supabase.storage.from("posts").getPublicUrl(filePath);
-        imageUrls = [publicUrl];
+        imageUrls = uploadedUrls;
       }
 
 
@@ -85,7 +91,7 @@ export default function CreatePostPage() {
 
       setStatus("Post published successfully.");
       setContent("");
-      setImage(null);
+      setImages([]);
       setCategory("general");
       // No need to reset isForSale, it's derived from category now
       router.push("/explore");
@@ -136,8 +142,20 @@ export default function CreatePostPage() {
       {/* For Sale checkbox removed; now part of Post Type */}
 
       <label className="block mb-4">
-        <span className="text-cyan-300">Image upload (optional)</span>
-        <input type="file" accept="image/*" onChange={(e) => setImage(e.target.files?.[0] ?? null)} className="mt-2 w-full text-cyan-100" />
+        <span className="text-cyan-300">Image upload (optional, up to 10)</span>
+        <input
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={(e) => {
+            const selectedFiles = Array.from(e.target.files || []).slice(0, 10);
+            setImages(selectedFiles);
+          }}
+          className="mt-2 w-full text-cyan-100"
+        />
+        {images.length > 0 && (
+          <p className="mt-2 text-sm text-cyan-200">{images.length} image{images.length === 1 ? "" : "s"} selected.</p>
+        )}
       </label>
 
       <button

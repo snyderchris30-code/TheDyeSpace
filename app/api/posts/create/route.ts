@@ -1,11 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createClient as createServiceClient } from "@supabase/supabase-js";
 
 type CreatePostBody = {
   content?: string;
   image_urls?: string[] | null;
   is_for_sale?: boolean;
 };
+
+function createAdminClient() {
+  const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!serviceUrl || !serviceKey) {
+    throw new Error("Server misconfiguration: service role key missing");
+  }
+
+  return createServiceClient(serviceUrl, serviceKey, {
+    auth: { persistSession: false },
+  });
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -29,7 +43,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Post content is required." }, { status: 400 });
     }
 
-    const { error: insertError } = await supabase.from("posts").insert({
+    const adminClient = createAdminClient();
+
+    const { error: insertError } = await adminClient.from("posts").insert({
       user_id: user.id,
       content,
       image_urls: imageUrls.length ? imageUrls : null,
