@@ -37,7 +37,6 @@ import PWARegister from './PWARegister';
 import BackgroundParallax from './BackgroundParallax';
 import MeltingRouteTransition from './MeltingRouteTransition';
 import AuthRecoveryRedirect from './AuthRecoveryRedirect';
-import { ErrorBoundary } from './ErrorBoundary';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -56,9 +55,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="site-background" />
           <main className="site-shell relative z-10 flex flex-col flex-1 pt-16 overflow-y-auto overflow-x-hidden">
             <ErrorBoundary>
-              <MeltingRouteTransition>{children}</MeltingRouteTransition>
-            </ErrorBoundary>
-          </main>
+             MeltingRouteTransition>{children}</MeltingRouteTransition
         </Providers>
       </body>
     </html>
