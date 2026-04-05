@@ -5,7 +5,7 @@ import { createServerClient } from '@supabase/ssr';
 const REDIRECT_IF_AUTH_ROUTES = new Set(['/signup']);
 const PUBLIC_ROUTES = new Set(['/login', '/forgot-password', '/reset-password']);
 const PROTECTED_ROUTE_PREFIXES = ['/create', '/notifications'];
-const PROTECTED_EXACT_ROUTES = new Set([]);
+const PROTECTED_EXACT_ROUTES = new Set<string>();
 
 function isProtectedPath(pathname: string) {
   if (PROTECTED_EXACT_ROUTES.has(pathname)) {
