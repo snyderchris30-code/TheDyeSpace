@@ -1,6 +1,6 @@
 
-import Image from "next/image";
 "use client";
+import Image from "next/image";
 
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";

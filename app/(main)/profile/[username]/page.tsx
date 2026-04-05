@@ -1,6 +1,6 @@
 
-import Image from "next/image";
 "use client";
+import Image from "next/image";
 import dynamic from "next/dynamic";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Dialog } from "@headlessui/react";
