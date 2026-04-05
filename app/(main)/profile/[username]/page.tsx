@@ -203,6 +203,7 @@ export default function ProfileEditor() {
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
   const [profileStatus, setProfileStatus] = useState<Pick<ProfileRow, "muted_until" | "voided_until" | "blessed_until"> | null>(null);
   const [isOwner, setIsOwner] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isFollowing, setIsFollowing] = useState(false);
   const [isFollowBusy, setIsFollowBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -291,7 +292,7 @@ export default function ProfileEditor() {
     async (username: string) => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings, created_at, muted_until, voided_until, blessed_until")
+        .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings, created_at, role, muted_until, voided_until, blessed_until")
         .eq("username", username)
         .limit(1)
         .maybeSingle<ProfileRow>();
@@ -399,79 +400,80 @@ export default function ProfileEditor() {
           });
         }
       } catch (error: any) {
+        const message = typeof error?.message === "string" ? error.message : "Could not load your profile right now. Please refresh and try again.";
         setStatus({
           type: "error",
-          text: typeof error?.message === "string" ? error.message : "Could not load your profile right now. Please refresh and try again.",
+          text: message,
         });
+        setLoadError(message);
       }
     },
     [applyProfileToForm, fetchProfileById]
   );
 
+  const loadProfile = useCallback(async () => {
+    const { data } = await supabase.auth.getSession();
+    setSession(data.session);
+    const sessionUser = data.session?.user;
+
+    if (sessionUser?.id) {
+      void loadOwnRole(sessionUser.id);
+    } else {
+      setIsAdmin(false);
+    }
+
+    if (!routeUsername) {
+      setLoading(false);
+      return;
+    }
+
+    const isOwnRoute = Boolean(
+      sessionUser &&
+        [sessionUser.id, sessionUser.user_metadata?.username, sessionUser.email]
+          .filter(Boolean)
+          .some(
+            (value: string) =>
+              normalizeUsername(value) === routeUsername ||
+              sanitizeUsernameInput(value) === routeUsername
+          )
+    );
+
+    setLoading(true);
+    setLoadError(null);
+    setStatus(null);
+
+    if (isOwnRoute && sessionUser) {
+      await fetchOrCreateOwnProfile(sessionUser);
+      setLoading(false);
+      return;
+    }
+
+    setIsOwner(false);
+    try {
+      const viewedProfile = await fetchProfileByUsername(routeUsername);
+      if (!viewedProfile) {
+        throw new Error("Profile not found.");
+      }
+      setProfileUserId(viewedProfile.id);
+      if (sessionUser?.id && viewedProfile.id === sessionUser.id) {
+        setIsOwner(true);
+      }
+      setProfileStatus({
+        muted_until: viewedProfile.muted_until ?? null,
+        voided_until: viewedProfile.voided_until ?? null,
+        blessed_until: viewedProfile.blessed_until ?? null,
+      });
+      applyProfileToForm(viewedProfile);
+    } catch (error: any) {
+      const message = typeof error?.message === "string" ? error.message : "Unable to load this profile.";
+      setLoadError(message);
+    } finally {
+      setLoading(false);
+    }
+  }, [applyProfileToForm, fetchOrCreateOwnProfile, fetchProfileByUsername, loadOwnRole, routeUsername, supabase]);
+
   useEffect(() => {
-    const syncSession = async () => {
-      const { data } = await supabase.auth.getSession();
-      setSession(data.session);
-      const sessionUser = data.session?.user;
-
-      if (sessionUser?.id) {
-        void loadOwnRole(sessionUser.id);
-      } else {
-        setIsAdmin(false);
-      }
-
-      if (!routeUsername) {
-        setLoading(false);
-        return;
-      }
-
-      const isOwnRoute = Boolean(
-        sessionUser &&
-          [sessionUser.id, sessionUser.user_metadata?.username, sessionUser.email]
-            .filter(Boolean)
-            .some(
-              (value: string) =>
-                normalizeUsername(value) === routeUsername ||
-                sanitizeUsernameInput(value) === routeUsername
-            )
-      );
-
-      setLoading(true);
-      setStatus(null);
-
-      if (isOwnRoute && sessionUser) {
-        await fetchOrCreateOwnProfile(sessionUser);
-        setLoading(false);
-        return;
-      }
-
-      setIsOwner(false);
-      try {
-        const viewedProfile = await fetchProfileByUsername(routeUsername);
-        if (!viewedProfile) {
-          throw new Error("Profile not found.");
-        }
-        setProfileUserId(viewedProfile.id);
-        if (sessionUser?.id && viewedProfile.id === sessionUser.id) {
-          setIsOwner(true);
-        }
-        setProfileStatus({
-          muted_until: viewedProfile.muted_until ?? null,
-          voided_until: viewedProfile.voided_until ?? null,
-          blessed_until: viewedProfile.blessed_until ?? null,
-        });
-        applyProfileToForm(viewedProfile);
-      } catch (error: any) {
-        setStatus({
-          type: "error",
-          text: typeof error?.message === "string" ? error.message : "Unable to load this profile.",
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    void syncSession();
+    void loadProfile();
 
     const { data: listener } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
       if (event === "SIGNED_OUT") {
@@ -494,7 +496,7 @@ export default function ProfileEditor() {
     return () => {
       listener?.subscription.unsubscribe();
     };
-  }, [applyProfileToForm, fetchOrCreateOwnProfile, fetchProfileByUsername, routeUsername, supabase]);
+  }, [applyProfileToForm, fetchOrCreateOwnProfile, fetchProfileByUsername, loadOwnRole, loadProfile, routeUsername, supabase]);
 
   useEffect(() => {
     const visibleState = editing ? draft : form;
@@ -981,6 +983,23 @@ export default function ProfileEditor() {
         {loading ? (
           <div className="rounded-[2rem] border border-cyan-300/20 bg-slate-950/45 p-8 text-cyan-100 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl">
             Loading profile...
+          </div>
+        ) : loadError ? (
+          <div className="rounded-[2rem] border border-rose-300/20 bg-rose-950/55 p-8 text-rose-100 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+            <h2 className="mb-3 text-2xl font-bold text-rose-100">Profile could not be loaded</h2>
+            <p className="mb-4 text-sm text-rose-200">{loadError}</p>
+            <button
+              type="button"
+              className="inline-flex items-center rounded-full border border-rose-300/40 bg-rose-500/15 px-4 py-2 text-sm font-semibold text-rose-100 hover:bg-rose-500/25 transition"
+              onClick={() => {
+                setLoading(true);
+                setLoadError(null);
+                setStatus(null);
+                void loadProfile();
+              }}
+            >
+              Retry loading
+            </button>
           </div>
         ) : (
           <>
