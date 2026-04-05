@@ -4,12 +4,11 @@ import { createClient } from "@/lib/supabase/client";
 import { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 export default function ResetPasswordPage() {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
@@ -23,12 +22,14 @@ export default function ResetPasswordPage() {
       setInitializing(true);
       setError(null);
 
+      const urlParams = new URLSearchParams(window.location.search);
+
       const hash = window.location.hash.startsWith("#")
         ? window.location.hash.slice(1)
         : window.location.hash;
       const hashParams = new URLSearchParams(hash);
 
-      const urlError = searchParams.get("error_description") || hashParams.get("error_description");
+      const urlError = urlParams.get("error_description") || hashParams.get("error_description");
       if (urlError) {
         if (!isMounted) return;
         setCanReset(false);
@@ -37,8 +38,8 @@ export default function ResetPasswordPage() {
         return;
       }
 
-      const type = searchParams.get("type") || hashParams.get("type");
-      const code = searchParams.get("code");
+      const type = urlParams.get("type") || hashParams.get("type");
+      const code = urlParams.get("code");
       const accessToken = hashParams.get("access_token");
       const refreshToken = hashParams.get("refresh_token");
 
@@ -109,7 +110,7 @@ export default function ResetPasswordPage() {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, [searchParams, supabase]);
+  }, [supabase]);
 
   async function handleResetPassword(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
