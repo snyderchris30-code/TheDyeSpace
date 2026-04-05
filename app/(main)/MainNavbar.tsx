@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { usePathname } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { resolveProfileUsername } from "@/lib/profile-identity";
 
 async function fetchNotifications(): Promise<Array<{ id: string; actor_name: string; type: string; message: string; read: boolean; created_at: string }>> {
   const supabase = createClient();
@@ -41,6 +42,7 @@ export default function MainNavbar() {
   const router = useRouter();
   const pathname = usePathname();
   const [session, setSession] = useState<any>(null);
+  const [profileHref, setProfileHref] = useState("/login");
   const [userCount, setUserCount] = useState<number | null>(null);
   const [usersOpen, setUsersOpen] = useState(false);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -48,20 +50,55 @@ export default function MainNavbar() {
 
   useEffect(() => {
     const supabase = createClient();
+    let active = true;
+
+    const updateProfileHref = async (user: any | null) => {
+      if (!active) return;
+      if (!user) {
+        setProfileHref("/login");
+        return;
+      }
+
+      const fallbackUsername = resolveProfileUsername(user.user_metadata?.username, user.email, user.id);
+      let nextHref = `/profile/${encodeURIComponent(fallbackUsername)}`;
+
+      try {
+        const { data: profileData, error } = await supabase
+          .from("profiles")
+          .select("username")
+          .eq("id", user.id)
+          .limit(1)
+          .maybeSingle();
+
+        if (!error && profileData?.username) {
+          nextHref = `/profile/${encodeURIComponent(profileData.username)}`;
+        }
+      } catch {
+        // Keep fallback route when profile lookup fails.
+      }
+
+      if (active) {
+        setProfileHref(nextHref);
+      }
+    };
+
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
+      void updateProfileHref(data.session?.user ?? null);
     });
     const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (event === "SIGNED_OUT") {
         setSession(null);
+        setProfileHref("/login");
         return;
       }
 
       if (nextSession) {
         setSession(nextSession);
+        void updateProfileHref(nextSession.user ?? null);
       }
     });
-    return () => { listener?.subscription.unsubscribe(); };
+    return () => { active = false; listener?.subscription.unsubscribe(); };
   }, []);
 
   const loadUsersList = async () => {
@@ -158,7 +195,6 @@ export default function MainNavbar() {
   };
 
   const isLoggedIn = Boolean(session?.user);
-  const profileHref = session?.user ? "/profile" : "/login";
 
   const IconButton = ({
     href,
