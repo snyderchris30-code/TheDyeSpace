@@ -87,57 +87,22 @@ function getCategoryMeta(content: string | null): { value: FeedCategory; label: 
 }
 
 async function fetchPosts({ pageParam }: { pageParam?: string | null }) {
-  const supabase = createClient();
-  let query = supabase
-    .from("posts")
-    .select("id,user_id,content,image_urls,likes,comments_count,is_for_sale,created_at")
-    .order("created_at", { ascending: false })
-    .limit(PAGE_SIZE);
+  const url = `/api/posts/feed${pageParam ? `?before=${encodeURIComponent(pageParam)}` : ""}`;
+  const response = await fetch(url);
+  const text = await response.text();
 
-  if (pageParam) {
-    query = query.lt("created_at", pageParam);
+  if (!response.ok) {
+    throw new Error(text || "Failed to load posts.");
   }
 
-  const { data, error } = await query;
-  if (error) throw error;
-
-  const posts = (data || []) as Post[];
-  if (!posts.length) return posts;
-
-  const userIds = [...new Set(posts.map((post) => post.user_id).filter(Boolean))];
-  if (!userIds.length) return posts;
-
-  const { data: profilesData, error: profilesError } = await supabase
-    .from("profiles")
-    .select("id,username,display_name,theme_settings,voided_until,blessed_until")
-    .in("id", userIds);
-
-  if (profilesError) {
-    // Suppress noisy error; gracefully continue with default names
-    return posts.map((post) => ({
-      ...post,
-      author_display_name: "DyeSpace User",
-      author_at_name: "dyespace-user",
-    }));
+  let body: any;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    throw new Error("Failed to parse posts response.");
   }
 
-  const profilesById = new Map<string, ProfileRow>();
-  (profilesData || []).forEach((profile) => {
-    profilesById.set(profile.id, profile as ProfileRow);
-  });
-
-  return posts.map((post) => {
-    const profile = profilesById.get(post.user_id);
-    return {
-      ...post,
-      author_display_name: formatDisplayName(profile),
-      author_at_name: formatAtName(profile),
-      author_username: profile?.username ?? null,
-      author_theme: profile?.theme_settings ?? null,
-      author_voided_until: profile?.voided_until ?? null,
-      author_blessed_until: profile?.blessed_until ?? null,
-    };
-  });
+  return (body.posts || []) as Post[];
 }
 
 function applyPostThemeVars(element: HTMLElement | null, appearance?: ProfileAppearance | null) {
