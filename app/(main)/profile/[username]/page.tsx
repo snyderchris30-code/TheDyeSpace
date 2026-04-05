@@ -1593,6 +1593,12 @@ export default function ProfileEditor() {
                 >
                   Cancel
                 </button>
+                <Link
+                  href="/settings"
+                  className="rounded-full border border-cyan-300/30 px-6 py-3 text-sm text-cyan-200/80 hover:bg-cyan-300/10"
+                >
+                  Change Password
+                </Link>
               </div>
             </div>
           </div>
