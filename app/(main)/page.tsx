@@ -1,3 +1,5 @@
+
+import Image from "next/image";
 "use client";
 
 import { useInfiniteQuery } from "@tanstack/react-query";
@@ -477,12 +479,14 @@ export default function MainFeedPage() {
                     <button key={idx} type="button" className="group relative aspect-[4/5] w-full overflow-hidden rounded-2xl cursor-zoom-in sm:aspect-[4/4]" onClick={() => {
                       setLightbox({ open: true, url: imgUrl });
                     }}>
-                      <img
+                      <Image
                         src={imgUrl}
                         alt={`Post image ${idx + 1}`}
                         className="absolute inset-0 h-full w-full border border-cyan-500/40 object-cover transition duration-200 group-hover:scale-105"
                         loading="lazy"
                         tabIndex={0}
+                        fill
+                        unoptimized
                       />
                       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent px-3 py-4 text-left text-xs text-cyan-50/85 sm:text-sm">
                         Tap to expand
@@ -579,7 +583,7 @@ export default function MainFeedPage() {
                         <div className="flex items-start gap-3">
                           <div className="h-10 w-10 overflow-hidden rounded-full border border-cyan-300/25 bg-slate-900">
                             {comment.author.avatar_url ? (
-                              <img src={comment.author.avatar_url} alt="Comment author" className="h-full w-full object-cover" loading="lazy" />
+                              <Image src={comment.author.avatar_url} alt="Comment author" className="h-full w-full object-cover" loading="lazy" width={40} height={40} unoptimized />
                             ) : (
                               <div className="flex h-full w-full items-center justify-center text-xs font-bold text-cyan-100">TD</div>
                             )}

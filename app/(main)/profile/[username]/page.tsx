@@ -1,3 +1,5 @@
+
+import Image from "next/image";
 "use client";
 import dynamic from "next/dynamic";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
@@ -951,12 +953,16 @@ export default function ProfileEditor() {
               ref={viewRef}
               className={`relative isolate overflow-hidden rounded-[2rem] border border-cyan-300/25 shadow-[0_25px_90px_rgba(0,0,0,0.45)] ${fontClass(profileDisplay.font_style)}`}
             >
-              <img
+              <Image
                 src={profileDisplay.banner_url || DEFAULT_BANNER_URL}
                 alt="Profile banner"
                 className="absolute inset-0 h-full w-full object-cover"
                 loading="eager"
                 draggable={false}
+                fill
+                priority
+                sizes="100vw"
+                unoptimized
               />
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(68,249,207,0.20),transparent_35%),linear-gradient(180deg,rgba(4,10,22,0.10)_0%,rgba(5,10,20,0.28)_32%,rgba(3,8,18,0.82)_100%)]" />
               <div className="absolute inset-0 bg-black/20" />
@@ -1072,7 +1078,7 @@ export default function ProfileEditor() {
                   <div className="relative shrink-0">
                     <div className="h-28 w-28 overflow-hidden rounded-full border-4 border-cyan-200/70 bg-slate-950 shadow-[0_0_40px_rgba(68,249,207,0.42),0_0_100px_rgba(97,67,255,0.20)] sm:h-32 sm:w-32">
                       {profileDisplay.avatar_url ? (
-                        <img src={profileDisplay.avatar_url} alt="Avatar" className="h-full w-full object-cover" loading="lazy" />
+                        <Image src={profileDisplay.avatar_url} alt="Avatar" className="h-full w-full object-cover" loading="lazy" width={128} height={128} unoptimized />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center text-4xl font-bold text-cyan-100">TD</div>
                       )}
@@ -1161,13 +1167,14 @@ export default function ProfileEditor() {
                                 e.stopPropagation();
                                 setLightbox({ open: true, url: imageUrl });
                               }}>
-                                <img
+                                <Image
                                   src={imageUrl}
                                   alt={`Post image ${imageIndex + 1}`}
                                   className="absolute inset-0 h-full w-full border border-cyan-300/20 object-cover shadow-lg transition duration-200 group-hover:scale-105"
                                   loading="lazy"
                                   tabIndex={0}
-                                  /* style moved to className */
+                                  fill
+                                  unoptimized
                                 />
                                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent px-3 py-4 text-left text-xs text-cyan-50/85 sm:text-sm">Tap to expand</div>
                               </button>
@@ -1259,7 +1266,7 @@ export default function ProfileEditor() {
                                     <div className="flex items-start gap-3">
                                       <div className="h-10 w-10 overflow-hidden rounded-full border border-cyan-300/25 bg-slate-900">
                                         {comment.author.avatar_url ? (
-                                          <img src={comment.author.avatar_url} alt="Comment author" className="h-full w-full object-cover" loading="lazy" />
+                                          <Image src={comment.author.avatar_url} alt="Comment author" className="h-full w-full object-cover" loading="lazy" width={40} height={40} unoptimized />
                                         ) : (
                                           <div className="flex h-full w-full items-center justify-center text-xs font-bold text-cyan-100">TD</div>
                                         )}

@@ -1,3 +1,5 @@
+
+import Image from "next/image";
 "use client";
 
 import dynamic from "next/dynamic";
@@ -348,7 +350,7 @@ export default function ExplorePage() {
             >
               {post.image_urls?.[0] ? (
                   <button type="button" className="group relative mb-4 block aspect-[4/5] w-full overflow-hidden rounded-2xl sm:aspect-[4/3]" onClick={() => setLightbox({ open: true, url: post.image_urls![0] })}>
-                    <img src={post.image_urls[0]} alt="Post" className="h-full w-full rounded-2xl object-cover transition duration-200 group-hover:scale-105" loading="lazy" />
+                    <Image src={post.image_urls[0]} alt="Post" className="h-full w-full rounded-2xl object-cover transition duration-200 group-hover:scale-105" loading="lazy" fill unoptimized />
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent px-3 py-4 text-left text-xs text-cyan-50/85 sm:text-sm">Tap to expand</div>
                   </button>
               ) : null}

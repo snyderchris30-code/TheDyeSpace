@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { Minus, Plus, X } from "lucide-react";
 
 interface LightboxModalProps {
@@ -171,7 +172,7 @@ export default function LightboxModal({ imageUrl, onClose }: LightboxModalProps)
         </div>
       </div>
       <div className="flex h-full w-full items-center justify-center overflow-hidden" onClick={(event) => event.stopPropagation()}>
-        <img
+        <Image
           ref={imageRef}
           src={imageUrl}
           alt="Zoomed post"
@@ -187,6 +188,9 @@ export default function LightboxModal({ imageUrl, onClose }: LightboxModalProps)
               setScale(2);
             }
           }}
+          width={800}
+          height={800}
+          unoptimized
         />
       </div>
     </div>
