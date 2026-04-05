@@ -11,6 +11,21 @@ function createAdminClient() {
   return createServiceClient(serviceUrl, serviceKey, { auth: { persistSession: false } });
 }
 
+async function isUserAdmin(adminClient: ReturnType<typeof createAdminClient>, userId: string) {
+  const { data: profile, error } = await adminClient
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return profile?.role === "admin";
+}
+
 // PATCH /api/posts/manage — edit post content
 export async function PATCH(req: NextRequest) {
   const supabase = await createSupabaseServerClient();
@@ -40,7 +55,10 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Post not found" }, { status: 404 });
   }
   if (post.user_id !== user.id) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const admin = await isUserAdmin(adminClient, user.id);
+    if (!admin) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
   }
 
   const { error: updateError } = await adminClient
@@ -84,7 +102,10 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Post not found" }, { status: 404 });
   }
   if (post.user_id !== user.id) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const admin = await isUserAdmin(adminClient, user.id);
+    if (!admin) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
   }
 
   // Remove related data first, then the post

@@ -36,6 +36,10 @@ type ProfileRow = {
   banner_url: string | null;
   created_at?: string;
   theme_settings?: ProfileAppearance | null;
+  role?: string | null;
+  muted_until?: string | null;
+  voided_until?: string | null;
+  blessed_until?: string | null;
 };
 
 type StatusState = {
@@ -193,9 +197,11 @@ export default function ProfileEditor() {
   const viewRef = useRef<HTMLDivElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
   const [session, setSession] = useState<any>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
+  const [profileStatus, setProfileStatus] = useState<Pick<ProfileRow, "muted_until" | "voided_until" | "blessed_until"> | null>(null);
   const [isOwner, setIsOwner] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
   const [isFollowBusy, setIsFollowBusy] = useState(false);
@@ -267,7 +273,7 @@ export default function ProfileEditor() {
     async (userId: string) => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings, created_at")
+        .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings, created_at, role, muted_until, voided_until, blessed_until")
         .eq("id", userId)
         .limit(1)
         .maybeSingle<ProfileRow>();
@@ -285,7 +291,7 @@ export default function ProfileEditor() {
     async (username: string) => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings, created_at")
+        .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings, created_at, muted_until, voided_until, blessed_until")
         .eq("username", username)
         .limit(1)
         .maybeSingle<ProfileRow>();
@@ -294,6 +300,18 @@ export default function ProfileEditor() {
       return data;
     },
     [supabase]
+  );
+
+  const loadOwnRole = useCallback(
+    async (userId: string) => {
+      try {
+        const profile = await fetchProfileById(userId);
+        setIsAdmin(profile?.role === "admin");
+      } catch {
+        setIsAdmin(false);
+      }
+    },
+    [fetchProfileById]
   );
 
   const loadInteractions = useCallback(async (postIds: string[]) => {
@@ -355,6 +373,12 @@ export default function ProfileEditor() {
         const existingProfile = await fetchProfileById(userId);
         if (existingProfile) {
           applyProfileToForm(existingProfile);
+          setIsAdmin(existingProfile.role === "admin");
+          setProfileStatus({
+            muted_until: existingProfile.muted_until ?? null,
+            voided_until: existingProfile.voided_until ?? null,
+            blessed_until: existingProfile.blessed_until ?? null,
+          });
           return;
         }
 
@@ -367,6 +391,12 @@ export default function ProfileEditor() {
         const { profile: createdProfile } = await res.json();
         if (createdProfile) {
           applyProfileToForm(createdProfile as ProfileRow);
+          setIsAdmin((createdProfile as ProfileRow)?.role === "admin");
+          setProfileStatus({
+            muted_until: (createdProfile as ProfileRow)?.muted_until ?? null,
+            voided_until: (createdProfile as ProfileRow)?.voided_until ?? null,
+            blessed_until: (createdProfile as ProfileRow)?.blessed_until ?? null,
+          });
         }
       } catch (error: any) {
         setStatus({
@@ -383,6 +413,12 @@ export default function ProfileEditor() {
       const { data } = await supabase.auth.getSession();
       setSession(data.session);
       const sessionUser = data.session?.user;
+
+      if (sessionUser?.id) {
+        void loadOwnRole(sessionUser.id);
+      } else {
+        setIsAdmin(false);
+      }
 
       if (!routeUsername) {
         setLoading(false);
@@ -419,6 +455,11 @@ export default function ProfileEditor() {
         if (sessionUser?.id && viewedProfile.id === sessionUser.id) {
           setIsOwner(true);
         }
+        setProfileStatus({
+          muted_until: viewedProfile.muted_until ?? null,
+          voided_until: viewedProfile.voided_until ?? null,
+          blessed_until: viewedProfile.blessed_until ?? null,
+        });
         applyProfileToForm(viewedProfile);
       } catch (error: any) {
         setStatus({
@@ -440,6 +481,9 @@ export default function ProfileEditor() {
 
       if (nextSession) {
         setSession(nextSession);
+        if (nextSession.user?.id) {
+          void loadOwnRole(nextSession.user.id);
+        }
       }
 
       if (nextSession?.user && isOwnRouteUsername(routeUsername, nextSession.user)) {
@@ -822,7 +866,67 @@ export default function ProfileEditor() {
     [commentDrafts, session?.user, updatePostCounters]
   );
 
+  const handleDeletePost = useCallback(async (postId: string) => {
+    if (!confirm("Delete this post? This cannot be undone.")) return;
+    const res = await fetch(`/api/posts/manage?postId=${encodeURIComponent(postId)}`, { method: "DELETE" });
+    if (res.ok) {
+      setPosts((prev) => prev.filter((post) => post.id !== postId));
+      setInteractions((prev) => {
+        const next = { ...prev };
+        delete next[postId];
+        return next;
+      });
+    } else {
+      setStatus({ type: "error", text: "Could not delete post. Please try again." });
+    }
+  }, []);
+
+  const handleDeleteComment = useCallback(async (commentId: string, postId: string) => {
+    if (!confirm("Delete this comment?")) return;
+    const res = await fetch(`/api/posts/comments?commentId=${encodeURIComponent(commentId)}&postId=${encodeURIComponent(postId)}`, { method: "DELETE" });
+    if (res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setInteractions((prev) => ({ ...prev, [postId]: body.interaction }));
+      updatePostCounters(postId, { comments_count: body.commentsCount ?? 0 });
+    } else {
+      setStatus({ type: "error", text: "Could not delete comment. Please try again." });
+    }
+  }, [updatePostCounters]);
+
+  const handleAdminAction = useCallback(
+    async (targetUserId: string, action: "mute" | "cosmic_timeout" | "send_to_void" | "cosmic_blessing", durationHours?: number) => {
+      if (!session?.user) {
+        setStatus({ type: "error", text: "Please sign in as an admin to perform this action." });
+        return;
+      }
+
+      setStatus(null);
+      try {
+        const res = await fetch("/api/admin/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targetUserId, action, durationHours }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(body?.error || "Admin action failed.");
+        }
+
+        setStatus({ type: "success", text: body?.message || "Admin action applied successfully." });
+      } catch (error: any) {
+        setStatus({ type: "error", text: typeof error?.message === "string" ? error.message : "Admin action failed." });
+      }
+    },
+    [session?.user]
+  );
+
   const profileDisplay = editing ? draft : form;
+  const profileMutedUntil = profileStatus?.muted_until ? new Date(profileStatus.muted_until) : null;
+  const profileIsMuted = Boolean(profileMutedUntil && profileMutedUntil > new Date());
+  const profileVoidedUntil = profileStatus?.voided_until ? new Date(profileStatus.voided_until) : null;
+  const profileIsVoided = Boolean(profileVoidedUntil && profileVoidedUntil > new Date());
+  const profileBlessedUntil = profileStatus?.blessed_until ? new Date(profileStatus.blessed_until) : null;
+  const profileIsBlessed = Boolean(profileBlessedUntil && profileBlessedUntil > new Date());
   const typedUsername = sanitizeUsernameInput(draft.username);
   const usernameSavePreview = resolveProfileUsername(draft.username, form.username, session?.user?.email, session?.user?.id);
   const isUsernameFallback = typedUsername.length < 3 && usernameSavePreview !== typedUsername;
@@ -1101,6 +1205,79 @@ export default function ProfileEditor() {
                     <p className="mt-3 max-w-2xl whitespace-pre-wrap text-sm leading-6 text-[color:var(--profile-text)]/92 drop-shadow-[0_0_18px_rgba(0,0,0,0.55)] sm:text-base">
                       {profileDisplay.bio || "No bio yet."}
                     </p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {profileIsMuted ? (
+                        <span className="inline-flex items-center rounded-full border border-rose-300/40 bg-rose-500/10 px-3 py-1 text-xs font-semibold text-rose-100">
+                          Muted until {profileMutedUntil?.toLocaleString()}
+                        </span>
+                      ) : null}
+                      {profileIsVoided ? (
+                        <span className="inline-flex items-center rounded-full border border-violet-300/40 bg-violet-500/10 px-3 py-1 text-xs font-semibold text-violet-100">
+                          Sent to the Void until {profileVoidedUntil?.toLocaleString()}
+                        </span>
+                      ) : null}
+                      {profileIsBlessed ? (
+                        <span className="inline-flex items-center rounded-full border border-amber-300/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-100">
+                          Blessed until {profileBlessedUntil?.toLocaleString()}
+                        </span>
+                      ) : null}
+                    </div>
+                    {isAdmin && !isOwner && profileUserId ? (
+                      <div className="mt-4">
+                        <details className="relative inline-block">
+                          <summary className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-violet-300/30 bg-black/40 px-4 py-2 text-sm font-semibold text-violet-100 transition hover:bg-violet-900/30">
+                            Cosmic Admin Tools
+                          </summary>
+                          <div className="absolute right-0 top-full z-10 mt-2 w-72 rounded-[2rem] border border-violet-300/20 bg-slate-950/95 p-4 shadow-[0_20px_50px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+                            <p className="mb-3 text-xs uppercase tracking-[0.3em] text-violet-300/80">Actions</p>
+                            <div className="grid gap-2">
+                              <button
+                                type="button"
+                                className="rounded-xl border border-fuchsia-300/25 bg-fuchsia-500/10 px-3 py-2 text-left text-xs font-semibold text-fuchsia-100 hover:bg-fuchsia-500/15"
+                                onClick={() => void handleAdminAction(profileUserId, "mute", 4)}
+                              >
+                                Mute 4 hours
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded-xl border border-fuchsia-300/25 bg-fuchsia-500/10 px-3 py-2 text-left text-xs font-semibold text-fuchsia-100 hover:bg-fuchsia-500/15"
+                                onClick={() => void handleAdminAction(profileUserId, "mute", 8)}
+                              >
+                                Mute 8 hours
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded-xl border border-fuchsia-300/25 bg-fuchsia-500/10 px-3 py-2 text-left text-xs font-semibold text-fuchsia-100 hover:bg-fuchsia-500/15"
+                                onClick={() => void handleAdminAction(profileUserId, "mute", 12)}
+                              >
+                                Mute 12 hours
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded-xl border border-cyan-300/25 bg-cyan-500/10 px-3 py-2 text-left text-xs font-semibold text-cyan-100 hover:bg-cyan-500/15"
+                                onClick={() => void handleAdminAction(profileUserId, "cosmic_timeout", 4)}
+                              >
+                                Cosmic Timeout 4 hours
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded-xl border border-emerald-300/25 bg-emerald-500/10 px-3 py-2 text-left text-xs font-semibold text-emerald-100 hover:bg-emerald-500/15"
+                                onClick={() => void handleAdminAction(profileUserId, "send_to_void")}
+                              >
+                                Send to the Void (24h)
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded-xl border border-amber-300/25 bg-amber-500/10 px-3 py-2 text-left text-xs font-semibold text-amber-100 hover:bg-amber-500/15"
+                                onClick={() => void handleAdminAction(profileUserId, "cosmic_blessing")}
+                              >
+                                Give Cosmic Blessing
+                              </button>
+                            </div>
+                          </div>
+                        </details>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -1120,6 +1297,10 @@ export default function ProfileEditor() {
               {postsLoading ? (
                 <div className="rounded-[1.75rem] border border-cyan-300/20 bg-slate-950/45 p-8 text-cyan-100 shadow-xl backdrop-blur-xl">
                   Loading posts...
+                </div>
+              ) : profileIsVoided && !isAdmin && !isOwner ? (
+                <div className="rounded-[1.75rem] border border-violet-300/20 bg-violet-950/45 p-8 text-violet-100 shadow-xl backdrop-blur-xl">
+                  This user has been sent to the Void. Their posts are hidden from public view for now.
                 </div>
               ) : posts.length === 0 ? (
                 <div className="rounded-[1.75rem] border border-cyan-300/20 bg-slate-950/45 p-8 text-cyan-100/75 shadow-xl backdrop-blur-xl">
@@ -1162,6 +1343,55 @@ export default function ProfileEditor() {
                             {post.likes} reactions • {post.comments_count} comments
                           </div>
                         </div>
+
+                        {(isOwner || isAdmin) ? (
+                          <div className="mt-4 flex justify-end items-center gap-2">
+                            <button
+                              type="button"
+                              className="rounded-full border border-rose-300/25 bg-black/20 px-4 py-2 text-xs text-rose-300 hover:bg-rose-900/30 transition"
+                              onClick={() => void handleDeletePost(post.id)}
+                            >
+                              Delete
+                            </button>
+                            {isAdmin && !isOwner ? (
+                              <details className="relative">
+                                <summary className="rounded-full border border-violet-300/25 bg-black/20 px-3 py-2 text-xs font-semibold text-violet-200 hover:bg-violet-900/30 transition cursor-pointer">
+                                  Admin
+                                </summary>
+                                <div className="absolute right-0 z-10 mt-2 w-52 rounded-2xl border border-violet-300/20 bg-slate-950/95 p-3 shadow-[0_20px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+                                  <button
+                                    type="button"
+                                    className="mb-2 w-full rounded-xl border border-fuchsia-300/30 bg-fuchsia-500/10 px-3 py-2 text-left text-xs font-semibold text-fuchsia-100 hover:bg-fuchsia-500/15"
+                                    onClick={() => void handleAdminAction(post.user_id, "mute", 4)}
+                                  >
+                                    Mute 4h
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="mb-2 w-full rounded-xl border border-fuchsia-300/30 bg-fuchsia-500/10 px-3 py-2 text-left text-xs font-semibold text-fuchsia-100 hover:bg-fuchsia-500/15"
+                                    onClick={() => void handleAdminAction(post.user_id, "cosmic_timeout", 4)}
+                                  >
+                                    Cosmic Timeout 4h
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="mb-2 w-full rounded-xl border border-emerald-300/30 bg-emerald-500/10 px-3 py-2 text-left text-xs font-semibold text-emerald-100 hover:bg-emerald-500/15"
+                                    onClick={() => void handleAdminAction(post.user_id, "send_to_void")}
+                                  >
+                                    Send to the Void
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="w-full rounded-xl border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-left text-xs font-semibold text-amber-100 hover:bg-amber-500/15"
+                                    onClick={() => void handleAdminAction(post.user_id, "cosmic_blessing")}
+                                  >
+                                    Cosmic Blessing
+                                  </button>
+                                </div>
+                              </details>
+                            ) : null}
+                          </div>
+                        ) : null}
 
                         <p className="mt-4 whitespace-pre-wrap text-base leading-7 text-[color:var(--profile-text)]/92 sm:text-lg sm:leading-8">{stripCategoryTag(post.content) || "No description provided."}</p>
 
@@ -1297,6 +1527,43 @@ export default function ProfileEditor() {
                                           </Link>
                                           <span className="text-xs text-[color:var(--profile-text)]/55">{formatPostDate(comment.created_at)}</span>
                                         </div>
+                                        {isAdmin && session?.user?.id !== comment.author.id ? (
+                                          <details className="mt-3 relative">
+                                            <summary className="inline-flex cursor-pointer rounded-full border border-violet-300/25 bg-black/20 px-3 py-1 text-[11px] font-semibold text-violet-200 hover:bg-violet-900/30 transition">
+                                              Admin Tools
+                                            </summary>
+                                            <div className="absolute right-0 z-10 mt-2 w-56 rounded-2xl border border-violet-300/20 bg-slate-950/95 p-3 shadow-[0_20px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+                                              <button
+                                                type="button"
+                                                className="mb-2 w-full rounded-xl border border-fuchsia-300/30 bg-fuchsia-500/10 px-3 py-2 text-left text-xs font-semibold text-fuchsia-100 hover:bg-fuchsia-500/15"
+                                                onClick={() => void handleAdminAction(comment.author.id, "mute", 4)}
+                                              >
+                                                Mute 4h
+                                              </button>
+                                              <button
+                                                type="button"
+                                                className="mb-2 w-full rounded-xl border border-cyan-300/30 bg-cyan-500/10 px-3 py-2 text-left text-xs font-semibold text-cyan-100 hover:bg-cyan-500/15"
+                                                onClick={() => void handleAdminAction(comment.author.id, "cosmic_timeout", 4)}
+                                              >
+                                                Cosmic Timeout 4h
+                                              </button>
+                                              <button
+                                                type="button"
+                                                className="mb-2 w-full rounded-xl border border-emerald-300/30 bg-emerald-500/10 px-3 py-2 text-left text-xs font-semibold text-emerald-100 hover:bg-emerald-500/15"
+                                                onClick={() => void handleAdminAction(comment.author.id, "send_to_void")}
+                                              >
+                                                Send to the Void
+                                              </button>
+                                              <button
+                                                type="button"
+                                                className="w-full rounded-xl border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-left text-xs font-semibold text-amber-100 hover:bg-amber-500/15"
+                                                onClick={() => void handleAdminAction(comment.author.id, "cosmic_blessing")}
+                                              >
+                                                Cosmic Blessing
+                                              </button>
+                                            </div>
+                                          </details>
+                                        ) : null}
                                         <p className="mt-2 whitespace-pre-wrap text-[color:var(--profile-text)]/90">{comment.content}</p>
                                       </div>
                                     </div>

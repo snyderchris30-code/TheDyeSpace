@@ -1,8 +1,8 @@
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveProfileUsername } from "@/lib/profile-identity";
+import { createAdminClient, loadProfileStatus, isMuted, userIsAdmin } from "@/lib/admin-utils";
 import {
   buildInteractionsByPost,
   buildInteractionsFromRows,
@@ -19,19 +19,6 @@ type CommentBody = {
   postId?: string;
   content?: string;
 };
-
-function createAdminClient() {
-  const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!serviceUrl || !serviceKey) {
-    throw new Error("Server misconfiguration: service role key missing");
-  }
-
-  return createServiceClient(serviceUrl, serviceKey, {
-    auth: { persistSession: false },
-  });
-}
 
 async function insertNotificationRecord(
   adminClient: ReturnType<typeof createAdminClient>,
@@ -180,6 +167,11 @@ export async function POST(req: NextRequest) {
 
   try {
     const adminClient = createAdminClient();
+    const currentUserStatus = await loadProfileStatus(adminClient, user.id);
+    if (isMuted(currentUserStatus)) {
+      return NextResponse.json({ error: "You are muted and cannot post comments at this time." }, { status: 403 });
+    }
+
     const { data: post, error: postError } = await adminClient
       .from("posts")
       .select("id, user_id")
@@ -317,7 +309,10 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Comment not found" }, { status: 404 });
   }
   if (comment.user_id !== user.id) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const admin = await userIsAdmin(adminClient, user.id);
+    if (!admin) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
   }
 
   const { error: updateError } = await adminClient
@@ -363,7 +358,10 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Comment not found" }, { status: 404 });
   }
   if (comment.user_id !== user.id) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const admin = await userIsAdmin(adminClient, user.id);
+    if (!admin) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
   }
 
   const { error: deleteError } = await adminClient.from("post_comments").delete().eq("id", commentId);

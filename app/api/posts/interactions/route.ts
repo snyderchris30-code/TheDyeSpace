@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createAdminClient, userIsAdmin, isVoided } from "@/lib/admin-utils";
 import {
   buildInteractionsFromRows,
   isMissingInteractionTablesError,
@@ -8,19 +8,6 @@ import {
   type RelationalPostCommentRow,
   type RelationalPostReactionRow,
 } from "@/lib/post-interactions";
-
-function createAdminClient() {
-  const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!serviceUrl || !serviceKey) {
-    throw new Error("Server misconfiguration: service role key missing");
-  }
-
-  return createServiceClient(serviceUrl, serviceKey, {
-    auth: { persistSession: false },
-  });
-}
 
 async function loadLegacyInteractions(adminClient: ReturnType<typeof createAdminClient>, postIds: string[], viewerId?: string | null) {
   const { data: profiles, error } = await adminClient
@@ -41,7 +28,7 @@ async function loadLegacyInteractions(adminClient: ReturnType<typeof createAdmin
   );
 }
 
-async function loadRelationalInteractions(adminClient: ReturnType<typeof createAdminClient>, postIds: string[], viewerId?: string | null) {
+async function loadRelationalInteractions(adminClient: ReturnType<typeof createAdminClient>, postIds: string[], viewerId?: string | null, viewerIsAdmin = false) {
   const { data: comments, error: commentsError } = await adminClient
     .from("post_comments")
     .select("id, post_id, user_id, content, created_at")
@@ -62,12 +49,12 @@ async function loadRelationalInteractions(adminClient: ReturnType<typeof createA
   }
 
   const userIds = [...new Set([...(comments || []).map((comment) => comment.user_id), ...(reactions || []).map((reaction) => reaction.user_id)])];
-  let profiles: InteractionProfileRow[] = [];
+  let profiles: Array<InteractionProfileRow & { voided_until?: string | null }> = [];
 
   if (userIds.length) {
     const { data: profileRows, error: profilesError } = await adminClient
       .from("profiles")
-      .select("id, username, display_name, avatar_url, theme_settings")
+      .select("id, username, display_name, avatar_url, theme_settings, voided_until")
       .in("id", userIds);
 
     if (profilesError) {
@@ -75,6 +62,18 @@ async function loadRelationalInteractions(adminClient: ReturnType<typeof createA
     }
 
     profiles = (profileRows || []) as InteractionProfileRow[];
+  }
+
+  const visibleComments = comments || [];
+  if (!viewerIsAdmin) {
+    const voidedAuthors = new Set(profiles.filter((profile) => isVoided(profile)).map((profile) => profile.id));
+    return buildInteractionsFromRows(
+      postIds,
+      visibleComments.filter((comment) => !voidedAuthors.has(comment.user_id)) as RelationalPostCommentRow[],
+      (reactions || []) as RelationalPostReactionRow[],
+      profiles,
+      viewerId
+    );
   }
 
   return buildInteractionsFromRows(
@@ -103,8 +102,9 @@ export async function GET(req: NextRequest) {
     } = await supabase.auth.getUser();
 
     const adminClient = createAdminClient();
+    const viewerIsAdmin = user ? await userIsAdmin(adminClient, user.id) : false;
     try {
-      const interactionsByPostId = await loadRelationalInteractions(adminClient, postIds, user?.id || null);
+      const interactionsByPostId = await loadRelationalInteractions(adminClient, postIds, user?.id || null, viewerIsAdmin);
       return NextResponse.json({ interactionsByPostId, storage: "relational" });
     } catch (error: any) {
       if (!isMissingInteractionTablesError(error)) {

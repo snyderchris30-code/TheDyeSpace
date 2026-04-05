@@ -26,6 +26,8 @@ type Post = {
   author_at_name?: string;
   author_username?: string | null;
   author_theme?: ProfileAppearance | null;
+  author_blessed_until?: string | null;
+  author_voided_until?: string | null;
 };
 
 type InteractionMap = Record<string, AggregatedPostInteraction>;
@@ -35,6 +37,8 @@ type ProfileRow = {
   username: string | null;
   display_name: string | null;
   theme_settings?: ProfileAppearance | null;
+  voided_until?: string | null;
+  blessed_until?: string | null;
 };
 
 function isEmailLike(value: string | null | undefined) {
@@ -105,7 +109,7 @@ async function fetchPosts({ pageParam }: { pageParam?: string | null }) {
 
   const { data: profilesData, error: profilesError } = await supabase
     .from("profiles")
-    .select("id,username,display_name,theme_settings")
+    .select("id,username,display_name,theme_settings,voided_until,blessed_until")
     .in("id", userIds);
 
   if (profilesError) {
@@ -130,6 +134,8 @@ async function fetchPosts({ pageParam }: { pageParam?: string | null }) {
       author_at_name: formatAtName(profile),
       author_username: profile?.username ?? null,
       author_theme: profile?.theme_settings ?? null,
+      author_voided_until: profile?.voided_until ?? null,
+      author_blessed_until: profile?.blessed_until ?? null,
     };
   });
 }
@@ -160,6 +166,7 @@ export default function MainFeedPage() {
   const [reactionPickerPostId, setReactionPickerPostId] = useState<string | null>(null);
   const [interactionBusyPostId, setInteractionBusyPostId] = useState<string | null>(null);
   const [interactionStatus, setInteractionStatus] = useState<string | null>(null);
+  const [adminActionStatus, setAdminActionStatus] = useState<string | null>(null);
 
   const [deletedPostIds, setDeletedPostIds] = useState<Set<string>>(new Set());
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
@@ -170,21 +177,53 @@ export default function MainFeedPage() {
 
   // Supabase session detection
   const [session, setSession] = useState<any>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  const loadUserRole = useCallback(async (userId: string) => {
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (!error && data?.role === "admin") {
+        setIsAdmin(true);
+      } else {
+        setIsAdmin(false);
+      }
+    } catch {
+      setIsAdmin(false);
+    }
+  }, []);
+
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      if (data.session?.user?.id) {
+        void loadUserRole(data.session.user.id);
+      } else {
+        setIsAdmin(false);
+      }
+    });
     const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (event === "SIGNED_OUT") {
         setSession(null);
+        setIsAdmin(false);
         return;
       }
 
       if (nextSession) {
         setSession(nextSession);
+        if (nextSession.user?.id) {
+          void loadUserRole(nextSession.user.id);
+        }
       }
     });
     return () => { listener?.subscription.unsubscribe(); };
-  }, []);
+  }, [loadUserRole]);
 
   const loadInteractions = useCallback(async (postIds: string[]) => {
     if (!postIds.length) {
@@ -211,6 +250,13 @@ export default function MainFeedPage() {
   const mergedPosts = useMemo(
     () => posts.map((post) => ({ ...post, ...(postOverrides[post.id] || {}) })),
     [postOverrides, posts]
+  );
+
+  const visiblePosts = useMemo(
+    () => mergedPosts.filter((post) =>
+      isAdmin || !post.author_voided_until || new Date(post.author_voided_until) <= new Date()
+    ),
+    [isAdmin, mergedPosts]
   );
 
   const setPostCounts = useCallback((postId: string, updates: Partial<Pick<Post, "likes" | "comments_count">>) => {
@@ -332,6 +378,33 @@ export default function MainFeedPage() {
     }
   }, [setPostCounts]);
 
+  const handleAdminAction = useCallback(
+    async (targetUserId: string, action: "mute" | "cosmic_timeout" | "send_to_void" | "cosmic_blessing", durationHours?: number) => {
+      if (!session?.user) {
+        setAdminActionStatus("Please sign in as an admin to perform this action.");
+        return;
+      }
+
+      setAdminActionStatus(null);
+      try {
+        const res = await fetch("/api/admin/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targetUserId, action, durationHours }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(body?.error || "Admin action failed.");
+        }
+
+        setAdminActionStatus(body?.message || "Admin action applied successfully.");
+      } catch (error: any) {
+        setAdminActionStatus(typeof error?.message === "string" ? error.message : "Admin action failed.");
+      }
+    },
+    [session?.user]
+  );
+
   const handleSaveCommentEdit = useCallback(async (commentId: string, postId: string) => {
     const content = editCommentContent.trim();
     if (!content) return;
@@ -372,12 +445,17 @@ export default function MainFeedPage() {
           {interactionStatus}
         </div>
       ) : null}
+      {adminActionStatus ? (
+        <div className="mb-4 rounded-xl border border-violet-300/30 bg-violet-500/15 px-4 py-2 text-sm text-violet-100">
+          {adminActionStatus}
+        </div>
+      ) : null}
 
       {isLoading && <div className="text-teal-200">Loading cosmic posts...</div>}
       {error && <div className="text-red-300">Error loading posts: {(error as Error).message}</div>}
 
       <div className="grid grid-cols-1 gap-6">
-        {mergedPosts.filter((post) => !deletedPostIds.has(post.id)).map((post) => {
+        {visiblePosts.filter((post) => !deletedPostIds.has(post.id)).map((post) => {
           const postInteraction = interactions[post.id] || { comments: [], reactions: [], viewerReaction: null };
           const isCommentsOpen = Boolean(expandedComments[post.id]);
           const isBusy = interactionBusyPostId === post.id;
@@ -409,6 +487,11 @@ export default function MainFeedPage() {
                   >
                     @{post.author_username || "dyespace-user"}
                   </Link>
+                  {post.author_blessed_until && new Date(post.author_blessed_until) > new Date() ? (
+                    <span className="inline-flex rounded-full border border-fuchsia-300/45 bg-fuchsia-500/15 px-2 py-0.5 text-[11px] font-semibold text-fuchsia-100">
+                      Cosmic Blessing
+                    </span>
+                  ) : null}
                   {categoryMeta ? (
                     <Link
                       href={`/explore?tab=${encodeURIComponent(categoryMeta.value)}`}
@@ -422,15 +505,17 @@ export default function MainFeedPage() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="rounded-full bg-green-900/30 px-2 py-1 text-xs text-green-200">{post.is_for_sale ? "For Sale" : "Just Shared"}</span>
-                {isOwner && (
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      className="rounded-full border border-cyan-300/25 bg-black/20 px-3 py-1 text-xs text-cyan-300 hover:bg-cyan-900/30 transition"
-                      onClick={() => { setEditingPostId(post.id); setEditPostContent(displayContent ?? ""); }}
-                    >
-                      Edit
-                    </button>
+                {(isOwner || isAdmin) && (
+                  <div className="flex items-center gap-2">
+                    {isOwner ? (
+                      <button
+                        type="button"
+                        className="rounded-full border border-cyan-300/25 bg-black/20 px-3 py-1 text-xs text-cyan-300 hover:bg-cyan-900/30 transition"
+                        onClick={() => { setEditingPostId(post.id); setEditPostContent(displayContent ?? ""); }}
+                      >
+                        Edit
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       className="rounded-full border border-rose-300/25 bg-black/20 px-3 py-1 text-xs text-rose-300 hover:bg-rose-900/30 transition"
@@ -438,6 +523,57 @@ export default function MainFeedPage() {
                     >
                       Delete
                     </button>
+                    {isAdmin && session?.user?.id !== post.user_id ? (
+                      <details className="relative">
+                        <summary className="rounded-full border border-violet-300/25 bg-black/20 px-3 py-1 text-xs text-violet-200 hover:bg-violet-900/30 transition cursor-pointer">
+                          Admin
+                        </summary>
+                        <div className="absolute right-0 z-10 mt-2 w-56 rounded-2xl border border-violet-300/20 bg-slate-950/95 p-3 shadow-[0_20px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+                          <button
+                            type="button"
+                            className="mb-2 w-full rounded-xl border border-fuchsia-300/30 bg-fuchsia-500/10 px-3 py-2 text-left text-xs font-semibold text-fuchsia-100 hover:bg-fuchsia-500/15"
+                            onClick={() => void handleAdminAction(post.user_id, "mute", 4)}
+                          >
+                            Mute 4h
+                          </button>
+                          <button
+                            type="button"
+                            className="mb-2 w-full rounded-xl border border-fuchsia-300/30 bg-fuchsia-500/10 px-3 py-2 text-left text-xs font-semibold text-fuchsia-100 hover:bg-fuchsia-500/15"
+                            onClick={() => void handleAdminAction(post.user_id, "mute", 8)}
+                          >
+                            Mute 8h
+                          </button>
+                          <button
+                            type="button"
+                            className="mb-2 w-full rounded-xl border border-fuchsia-300/30 bg-fuchsia-500/10 px-3 py-2 text-left text-xs font-semibold text-fuchsia-100 hover:bg-fuchsia-500/15"
+                            onClick={() => void handleAdminAction(post.user_id, "mute", 12)}
+                          >
+                            Mute 12h
+                          </button>
+                          <button
+                            type="button"
+                            className="mb-2 w-full rounded-xl border border-cyan-300/30 bg-cyan-500/10 px-3 py-2 text-left text-xs font-semibold text-cyan-100 hover:bg-cyan-500/15"
+                            onClick={() => void handleAdminAction(post.user_id, "cosmic_timeout", 4)}
+                          >
+                            Cosmic Timeout 4h
+                          </button>
+                          <button
+                            type="button"
+                            className="mb-2 w-full rounded-xl border border-emerald-300/30 bg-emerald-500/10 px-3 py-2 text-left text-xs font-semibold text-emerald-100 hover:bg-emerald-500/15"
+                            onClick={() => void handleAdminAction(post.user_id, "send_to_void")}
+                          >
+                            Send to the Void (24h)
+                          </button>
+                          <button
+                            type="button"
+                            className="w-full rounded-xl border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-left text-xs font-semibold text-amber-100 hover:bg-amber-500/15"
+                            onClick={() => void handleAdminAction(post.user_id, "cosmic_blessing")}
+                          >
+                            Cosmic Blessing
+                          </button>
+                        </div>
+                      </details>
+                    ) : null}
                   </div>
                 )}
               </div>
@@ -604,6 +740,57 @@ export default function MainFeedPage() {
                               <span className="text-xs text-[color:var(--post-highlight)]/80">@{comment.author.username || "user"}</span>
                               <span className="text-xs text-[color:var(--post-text)]/45">{new Date(comment.created_at).toLocaleString()}</span>
                             </div>
+                            {isAdmin && session?.user?.id !== comment.author.id ? (
+                              <details className="mt-2 relative">
+                                <summary className="inline-flex cursor-pointer rounded-full border border-violet-300/25 bg-black/20 px-2 py-1 text-[11px] font-semibold text-violet-200 hover:bg-violet-900/30 transition">
+                                  Admin Tools
+                                </summary>
+                                <div className="absolute right-0 z-10 mt-2 w-56 rounded-2xl border border-violet-300/20 bg-slate-950/95 p-3 shadow-[0_20px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+                                  <button
+                                    type="button"
+                                    className="mb-2 w-full rounded-xl border border-fuchsia-300/30 bg-fuchsia-500/10 px-3 py-2 text-left text-xs font-semibold text-fuchsia-100 hover:bg-fuchsia-500/15"
+                                    onClick={() => void handleAdminAction(comment.author.id, "mute", 4)}
+                                  >
+                                    Mute 4h
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="mb-2 w-full rounded-xl border border-fuchsia-300/30 bg-fuchsia-500/10 px-3 py-2 text-left text-xs font-semibold text-fuchsia-100 hover:bg-fuchsia-500/15"
+                                    onClick={() => void handleAdminAction(comment.author.id, "mute", 8)}
+                                  >
+                                    Mute 8h
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="mb-2 w-full rounded-xl border border-fuchsia-300/30 bg-fuchsia-500/10 px-3 py-2 text-left text-xs font-semibold text-fuchsia-100 hover:bg-fuchsia-500/15"
+                                    onClick={() => void handleAdminAction(comment.author.id, "mute", 12)}
+                                  >
+                                    Mute 12h
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="mb-2 w-full rounded-xl border border-cyan-300/30 bg-cyan-500/10 px-3 py-2 text-left text-xs font-semibold text-cyan-100 hover:bg-cyan-500/15"
+                                    onClick={() => void handleAdminAction(comment.author.id, "cosmic_timeout", 4)}
+                                  >
+                                    Cosmic Timeout 4h
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="mb-2 w-full rounded-xl border border-emerald-300/30 bg-emerald-500/10 px-3 py-2 text-left text-xs font-semibold text-emerald-100 hover:bg-emerald-500/15"
+                                    onClick={() => void handleAdminAction(comment.author.id, "send_to_void")}
+                                  >
+                                    Send to the Void
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="w-full rounded-xl border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-left text-xs font-semibold text-amber-100 hover:bg-amber-500/15"
+                                    onClick={() => void handleAdminAction(comment.author.id, "cosmic_blessing")}
+                                  >
+                                    Cosmic Blessing
+                                  </button>
+                                </div>
+                              </details>
+                            ) : null}
                               {editingCommentId === comment.id ? (
                                 <div className="mt-2 flex flex-col gap-2">
                                   <textarea
@@ -635,15 +822,17 @@ export default function MainFeedPage() {
                               ) : (
                                 <p className="mt-2 whitespace-pre-wrap text-[color:var(--post-text)]/90">{comment.content}</p>
                               )}
-                              {session?.user?.id === comment.author.id && editingCommentId !== comment.id && (
+                              {(session?.user?.id === comment.author.id || isAdmin) && editingCommentId !== comment.id && (
                                 <div className="mt-2 flex gap-3">
-                                  <button
-                                    type="button"
-                                    className="text-xs text-cyan-400 hover:underline transition"
-                                    onClick={() => { setEditingCommentId(comment.id); setEditCommentContent(comment.content); }}
-                                  >
-                                    Edit
-                                  </button>
+                                  {session?.user?.id === comment.author.id ? (
+                                    <button
+                                      type="button"
+                                      className="text-xs text-cyan-400 hover:underline transition"
+                                      onClick={() => { setEditingCommentId(comment.id); setEditCommentContent(comment.content); }}
+                                    >
+                                      Edit
+                                    </button>
+                                  ) : null}
                                   <button
                                     type="button"
                                     className="text-xs text-rose-400 hover:underline transition"

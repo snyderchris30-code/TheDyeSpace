@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createAdminClient, loadProfileStatus, isMuted } from "@/lib/admin-utils";
 import {
   REACTION_EMOJIS,
   buildInteractionsFromRows,
@@ -21,19 +21,6 @@ type ReactionBody = {
   postId?: string;
   emoji?: ReactionEmoji;
 };
-
-function createAdminClient() {
-  const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!serviceUrl || !serviceKey) {
-    throw new Error("Server misconfiguration: service role key missing");
-  }
-
-  return createServiceClient(serviceUrl, serviceKey, {
-    auth: { persistSession: false },
-  });
-}
 
 async function insertNotificationRecord(
   adminClient: ReturnType<typeof createAdminClient>,
@@ -193,6 +180,11 @@ export async function POST(req: NextRequest) {
 
   try {
     const adminClient = createAdminClient();
+    const currentUserStatus = await loadProfileStatus(adminClient, user.id);
+    if (isMuted(currentUserStatus)) {
+      return NextResponse.json({ error: "You are muted and cannot react at this time." }, { status: 403 });
+    }
+
     const { data: post, error: postError } = await adminClient
       .from("posts")
       .select("id, user_id")
