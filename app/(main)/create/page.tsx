@@ -15,14 +15,6 @@ export default function CreatePostPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
-  const ensureStorageBuckets = async () => {
-    const response = await fetch("/api/storage/profile-buckets", { method: "POST" });
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      throw new Error(body?.error || "Storage is not ready for uploads right now.");
-    }
-  };
-
   const handleCreatePost = async () => {
     setStatus(null);
     if (!content.trim()) {
@@ -41,27 +33,24 @@ export default function CreatePostPage() {
 
       let imageUrls: string[] = [];
       if (images.length > 0) {
-        await ensureStorageBuckets();
-
-        const uploadedUrls: string[] = [];
-        for (const [index, image] of images.entries()) {
-          const fileExt = image.name.split(".").pop() || "png";
-          const filePath = `${userId}-${Date.now()}-${index}.${fileExt}`;
-          const { error: uploadError } = await supabase.storage
-            .from("posts")
-            .upload(filePath, image, { upsert: true, contentType: image.type || undefined });
-
-          if (uploadError) {
-            throw uploadError;
-          }
-
-          const {
-            data: { publicUrl },
-          } = supabase.storage.from("posts").getPublicUrl(filePath);
-          uploadedUrls.push(publicUrl);
+        const uploadBody = new FormData();
+        for (const image of images) {
+          uploadBody.append("images", image);
         }
 
-        imageUrls = uploadedUrls;
+        const uploadResponse = await fetch("/api/posts/upload", {
+          method: "POST",
+          body: uploadBody,
+        });
+
+        const uploadResult = await uploadResponse.json().catch(() => ({}));
+        if (!uploadResponse.ok) {
+          throw new Error(uploadResult?.error || "Failed to upload images.");
+        }
+
+        imageUrls = Array.isArray(uploadResult?.imageUrls)
+          ? uploadResult.imageUrls.filter((url: unknown): url is string => typeof url === "string" && url.length > 0)
+          : [];
       }
 
 
