@@ -33,6 +33,38 @@ function createAdminClient() {
   });
 }
 
+async function insertNotificationRecord(
+  adminClient: ReturnType<typeof createAdminClient>,
+  payload: Record<string, any>
+) {
+  const { data, error } = await adminClient
+    .from("notifications")
+    .insert(payload)
+    .select("id")
+    .limit(1);
+
+  if (!error) {
+    return data?.[0]?.id ?? null;
+  }
+
+  const cacheError = String(error.message || "").includes("Could not find the 'post_id' column of 'notifications' in the schema cache");
+  if (cacheError && payload.post_id !== undefined) {
+    const fallbackPayload = { ...payload };
+    delete fallbackPayload.post_id;
+    const { data: fallbackData, error: fallbackError } = await adminClient
+      .from("notifications")
+      .insert(fallbackPayload)
+      .select("id")
+      .limit(1);
+
+    if (!fallbackError) {
+      return fallbackData?.[0]?.id ?? null;
+    }
+  }
+
+  throw error;
+}
+
 async function createCommentNotification(
   adminClient: ReturnType<typeof createAdminClient>,
   ownerId: string | null | undefined,
@@ -53,28 +85,22 @@ async function createCommentNotification(
     read: false,
   };
 
-  const { data, error } = await adminClient
-    .from("notifications")
-    .insert(payload)
-    .select("id")
-    .limit(1);
-
-  if (error) {
+  try {
+    const notificationId = await insertNotificationRecord(adminClient, payload);
+    console.info("[notifications] Comment notification created", {
+      notificationId,
+      ownerId,
+      actorId,
+      postId,
+    });
+  } catch (error: any) {
     console.error("[notifications] Failed to create comment notification", {
       ownerId,
       actorId,
       postId,
-      error: error.message,
+      error: error?.message || error,
     });
-    return;
   }
-
-  console.info("[notifications] Comment notification created", {
-    notificationId: data?.[0]?.id ?? null,
-    ownerId,
-    actorId,
-    postId,
-  });
 }
 
 async function loadLegacyInteraction(adminClient: ReturnType<typeof createAdminClient>, postId: string, viewerId?: string | null) {
