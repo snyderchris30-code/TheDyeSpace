@@ -1033,7 +1033,16 @@ export default function ProfileEditor() {
                             referrerPolicy="strict-origin-when-cross-origin"
                           />
                         ) : (
-                          <img src={song.thumbnailUrl} alt="YouTube thumbnail" className="h-40 w-full object-cover" loading="lazy" />
+                          <div className="relative h-40 w-full overflow-hidden rounded-2xl bg-slate-900 sm:h-52">
+                            <Image
+                              src={song.thumbnailUrl}
+                              alt="YouTube thumbnail"
+                              className="object-cover"
+                              loading="lazy"
+                              fill
+                              unoptimized
+                            />
+                          </div>
                         )}
                       </div>
                       <h3 className="mt-3 line-clamp-2 text-sm font-semibold text-cyan-50">

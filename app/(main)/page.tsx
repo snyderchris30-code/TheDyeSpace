@@ -467,10 +467,10 @@ export default function MainFeedPage() {
           return (
           <article
             key={post.id}
-            className={`bg-gradient-to-br from-teal-900/40 via-blue-950/40 to-emerald-900/40 border fractal-border rounded-[1.5rem] p-4 transition hover:-translate-y-1 hover:shadow-2xl sm:rounded-3xl sm:p-5 ${fontClass(post.author_theme?.font_style)}`}
+            className={`bg-gradient-to-br from-teal-900/40 via-blue-950/40 to-emerald-900/40 border fractal-border rounded-[1.5rem] p-5 transition hover:-translate-y-1 hover:shadow-2xl sm:rounded-3xl sm:p-6 ${fontClass(post.author_theme?.font_style)}`}
             ref={(element) => applyPostThemeVars(element, post.author_theme)}
           >
-            <header className="mb-3 flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
+            <header className="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:justify-between sm:gap-4">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Link
@@ -578,14 +578,14 @@ export default function MainFeedPage() {
                 )}
               </div>
             </header>
-            <div className="block w-full text-left">
+            <div className="block w-full text-left space-y-4">
               <button
                 type="button"
                 className="block w-full text-left hover:opacity-80 transition"
                 onClick={() => setExpandedComments((prev) => ({ ...prev, [post.id]: !prev[post.id] }))}
               >
                 {editingPostId === post.id ? null : (
-                  <p className="mb-3 text-sm leading-6 text-[color:var(--post-text)]/92 sm:text-base sm:leading-7">{visibleContent || "No description provided yet."}</p>
+                  <p className="mb-3 text-sm leading-7 text-[color:var(--post-text)]/92 sm:text-base sm:leading-8">{visibleContent || "No description provided yet."}</p>
                 )}
               </button>
               {editingPostId === post.id && (
@@ -617,20 +617,22 @@ export default function MainFeedPage() {
                 </div>
               )}
               {post.image_urls && post.image_urls.length > 0 && (
-                <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
+                <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
                   {post.image_urls.map((imgUrl, idx) => (
-                    <button key={idx} type="button" className="group relative aspect-[4/5] w-full overflow-hidden rounded-2xl cursor-zoom-in sm:aspect-[4/4]" onClick={() => {
+                    <button key={idx} type="button" className="group relative w-full overflow-hidden rounded-2xl cursor-zoom-in" onClick={() => {
                       setLightbox({ open: true, url: imgUrl });
                     }}>
-                      <Image
-                        src={imgUrl}
-                        alt={`Post image ${idx + 1}`}
-                        className="absolute inset-0 h-full w-full border border-cyan-500/40 object-cover transition duration-200 group-hover:scale-105"
-                        loading="lazy"
-                        tabIndex={0}
-                        fill
-                        unoptimized
-                      />
+                      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-slate-900 sm:aspect-[16/9]">
+                        <Image
+                          src={imgUrl}
+                          alt={`Post image ${idx + 1}`}
+                          className="absolute inset-0 h-full w-full object-cover transition duration-200 group-hover:scale-105"
+                          loading="lazy"
+                          tabIndex={0}
+                          fill
+                          unoptimized
+                        />
+                      </div>
                       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent px-3 py-4 text-left text-xs text-cyan-50/85 sm:text-sm">
                         Tap to expand
                       </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Bell } from "lucide-react";
 import Link from "next/link";
@@ -16,7 +16,8 @@ type Notification = {
 };
 
 export default function NotificationsPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
+  const auth = useMemo(() => supabase.auth, [supabase]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
@@ -31,7 +32,7 @@ export default function NotificationsPage() {
     return `@${actor} interacted with your account`;
   };
 
-  const fetchNotifications = async (targetUserId: string) => {
+  const fetchNotifications = useCallback(async (targetUserId: string) => {
     const { data, error: fetchError } = await supabase
       .from("notifications")
       .select("id, actor_name, type, message, read, created_at, post_id")
@@ -46,57 +47,57 @@ export default function NotificationsPage() {
 
     setError(null);
     setNotifications((data || []) as Notification[]);
-  };
+  }, [supabase]);
 
   useEffect(() => {
     let isMounted = true;
 
     const load = async () => {
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-      const currentUserId = userData?.user?.id || null;
+        const { data: userData, error: userError } = await auth.getUser();
+        const currentUserId = userData?.user?.id || null;
 
-      if (!isMounted) return;
+        if (!isMounted) return;
 
-      if (userError) {
-        setError(userError.message || "Failed to load your session.");
+        if (userError) {
+          setError(userError.message || "Failed to load your session.");
+          setLoading(false);
+          return;
+        }
+
+        if (!currentUserId) {
+          setUserId(null);
+          setNotifications([]);
+          setLoading(false);
+          return;
+        }
+
+        setUserId(currentUserId);
+        await fetchNotifications(currentUserId);
+        if (!isMounted) return;
         setLoading(false);
-        return;
-      }
+      };
 
-      if (!currentUserId) {
-        setUserId(null);
-        setNotifications([]);
-        setLoading(false);
-        return;
-      }
+      void load();
 
-      setUserId(currentUserId);
-      await fetchNotifications(currentUserId);
-      if (!isMounted) return;
-      setLoading(false);
-    };
+      const {
+        data: { subscription },
+      } = auth.onAuthStateChange((_event, session) => {
+        const nextUserId = session?.user?.id || null;
+        setUserId(nextUserId);
 
-    void load();
+        if (!nextUserId) {
+          setNotifications([]);
+          return;
+        }
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      const nextUserId = session?.user?.id || null;
-      setUserId(nextUserId);
-
-      if (!nextUserId) {
-        setNotifications([]);
-        return;
-      }
-
-      void fetchNotifications(nextUserId);
-    });
+        void fetchNotifications(nextUserId);
+      });
 
     return () => {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, [supabase]);
+  }, [fetchNotifications, auth]);
 
   const markAsRead = async (notifId: string) => {
     if (!userId) return;
