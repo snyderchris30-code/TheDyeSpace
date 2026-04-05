@@ -463,6 +463,7 @@ export default function ProfileEditor() {
       });
       applyProfileToForm(viewedProfile);
     } catch (error: any) {
+      console.error("Failed to load profile:", error);
       const message = typeof error?.message === "string" ? error.message : "Unable to load this profile.";
       setLoadError(message);
       setStatus({ type: "error", text: message });
