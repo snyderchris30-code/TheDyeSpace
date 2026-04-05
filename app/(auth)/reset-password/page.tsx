@@ -6,6 +6,8 @@ import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+const INVALID_RESET_LINK_MESSAGE = "This reset link is invalid or has expired. Please request a new one.";
+
 export default function ResetPasswordPage() {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
@@ -33,15 +35,15 @@ export default function ResetPasswordPage() {
       if (urlError) {
         if (!isMounted) return;
         setCanReset(false);
-        setError(decodeURIComponent(urlError));
+        setError(INVALID_RESET_LINK_MESSAGE);
         setInitializing(false);
         return;
       }
 
       const type = urlParams.get("type") || hashParams.get("type");
-      const code = urlParams.get("code");
-      const accessToken = hashParams.get("access_token");
-      const refreshToken = hashParams.get("refresh_token");
+      const code = urlParams.get("code") || hashParams.get("code");
+      const accessToken = urlParams.get("access_token") || hashParams.get("access_token");
+      const refreshToken = urlParams.get("refresh_token") || hashParams.get("refresh_token");
 
       if (type === "recovery" && code) {
         const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
@@ -49,7 +51,7 @@ export default function ResetPasswordPage() {
 
         if (exchangeError) {
           setCanReset(false);
-          setError(exchangeError.message || "Invalid or expired reset link. Please request a new one.");
+          setError(INVALID_RESET_LINK_MESSAGE);
           setInitializing(false);
           return;
         }
@@ -68,7 +70,7 @@ export default function ResetPasswordPage() {
 
         if (sessionError) {
           setCanReset(false);
-          setError(sessionError.message || "Invalid or expired reset link. Please request a new one.");
+          setError(INVALID_RESET_LINK_MESSAGE);
           setInitializing(false);
           return;
         }
@@ -86,7 +88,7 @@ export default function ResetPasswordPage() {
         setCanReset(true);
       } else {
         setCanReset(false);
-        setError("Invalid or expired reset link. Please request a new one.");
+        setError(INVALID_RESET_LINK_MESSAGE);
       }
 
       setInitializing(false);
@@ -138,17 +140,17 @@ export default function ResetPasswordPage() {
       const { error: err } = await supabase.auth.updateUser({ password });
 
       if (err) {
-        setError(err.message);
+        setError(INVALID_RESET_LINK_MESSAGE);
       } else {
         await supabase.auth.signOut();
-        setMessage("Password reset successfully. Redirecting to login...");
+        setMessage("Password updated successfully");
         window.setTimeout(() => {
           router.push("/login?reset=success");
           router.refresh();
         }, 1200);
       }
     } catch (e: any) {
-      setError(e?.message || "An error occurred. Please try again.");
+      setError(INVALID_RESET_LINK_MESSAGE);
     } finally {
       setLoading(false);
     }
@@ -208,8 +210,11 @@ export default function ResetPasswordPage() {
         ) : (
           <div className="text-center">
             <div className="text-red-300 font-semibold mb-4">{error}</div>
-            <Link href="/forgot-password" className="underline text-pink-300 hover:text-yellow-300">
-              Request a new reset link
+            <Link
+              href="/forgot-password"
+              className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-slate-800 border border-pink-500/50 text-pink-200 hover:text-yellow-200 hover:border-yellow-400/60 transition-colors"
+            >
+              Go back to Forgot Password
             </Link>
           </div>
         )}
