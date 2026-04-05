@@ -23,7 +23,7 @@ export default function Navbar({ user }: { user?: { avatar_url?: string } }) {
 
     fetchUserCount();
 
-    // Subscribe to new users
+    // Realtime subscription fires when replication is enabled on the table
     subscription = supabase
       .channel('public:profiles')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'profiles' }, () => {
@@ -31,7 +31,11 @@ export default function Navbar({ user }: { user?: { avatar_url?: string } }) {
       })
       .subscribe();
 
+    // Polling fallback: refresh every 30 s in case realtime is not enabled
+    const interval = window.setInterval(fetchUserCount, 30_000);
+
     return () => {
+      window.clearInterval(interval);
       supabase.removeChannel(subscription);
     };
   }, []);

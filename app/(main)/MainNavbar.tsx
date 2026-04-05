@@ -95,6 +95,7 @@ export default function MainNavbar() {
 
     void fetchUserCount();
 
+    // Realtime subscription fires when replication is enabled on the table
     const channel = supabase
       .channel("public:profiles:navbar-count")
       .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
@@ -102,8 +103,14 @@ export default function MainNavbar() {
       })
       .subscribe();
 
+    // Polling fallback: refresh every 30 s in case realtime is not enabled
+    const interval = window.setInterval(() => {
+      void fetchUserCount();
+    }, 30_000);
+
     return () => {
       active = false;
+      window.clearInterval(interval);
       void supabase.removeChannel(channel);
     };
   }, []);
