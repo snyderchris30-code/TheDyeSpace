@@ -390,7 +390,7 @@ export default function MainNavbar() {
             </button>
             {/* Settings Dropdown Menu */}
             {settingsOpen && (
-              <div data-dropdown-box="true" className="dropdown-menu absolute right-0 mt-2 w-56 rounded-xl border border-cyan-400/40 bg-black/95 p-2 shadow-2xl z-50">
+              <div data-dropdown-box="true" className="fixed left-1/2 top-24 z-50 w-[min(92vw,320px)] -translate-x-1/2 rounded-xl border border-cyan-400/40 bg-black/95 p-2 shadow-2xl animate-fade-in sm:top-28">
                 <div className="flex justify-end mb-1">
                   <button data-dropdown-trigger="true" aria-label="Close" title="Close" className="text-cyan-400 hover:text-white p-1" onClick={() => setSettingsOpen(false)}>
                     <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M6 6l8 8M6 14L14 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
