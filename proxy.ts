@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 
-const AUTH_ROUTES = new Set(['/login', '/signup', '/auth/forgot-password']);
+const REDIRECT_IF_AUTH_ROUTES = new Set(['/signup']);
+const PUBLIC_ROUTES = new Set(['/login', '/forgot-password', '/reset-password']);
 const PROTECTED_ROUTE_PREFIXES = ['/create', '/notifications'];
 const PROTECTED_EXACT_ROUTES = new Set(['/profile']);
 
@@ -18,6 +19,10 @@ export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (PUBLIC_ROUTES.has(pathname)) {
+    return NextResponse.next();
+  }
 
   if (!supabaseUrl || !supabaseAnonKey) {
     return NextResponse.next();
@@ -55,7 +60,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (user && AUTH_ROUTES.has(pathname)) {
+  if (user && REDIRECT_IF_AUTH_ROUTES.has(pathname)) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 

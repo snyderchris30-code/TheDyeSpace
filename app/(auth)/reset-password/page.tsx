@@ -1,25 +1,28 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 export default function ResetPasswordPage() {
+  const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
+  const [initializing, setInitializing] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(false);
-  const [isValidToken, setIsValidToken] = useState<boolean | null>(null);
-  const router = useRouter();
+  const [canReset, setCanReset] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
 
     async function initializeRecoverySession() {
-      const supabase = createClient();
-      const searchParams = new URLSearchParams(window.location.search);
+      setInitializing(true);
+      setError(null);
+
       const hash = window.location.hash.startsWith("#")
         ? window.location.hash.slice(1)
         : window.location.hash;
@@ -28,39 +31,34 @@ export default function ResetPasswordPage() {
       const urlError = searchParams.get("error_description") || hashParams.get("error_description");
       if (urlError) {
         if (!isMounted) return;
-        setIsValidToken(false);
+        setCanReset(false);
         setError(decodeURIComponent(urlError));
+        setInitializing(false);
         return;
       }
 
       const type = searchParams.get("type") || hashParams.get("type");
-      if (type !== "recovery") {
-        if (!isMounted) return;
-        setIsValidToken(false);
-        setError("Invalid or expired reset link. Please request a new one.");
-        return;
-      }
-
       const code = searchParams.get("code");
-      if (code) {
+      const accessToken = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
+
+      if (type === "recovery" && code) {
         const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
         if (!isMounted) return;
 
         if (exchangeError) {
-          setIsValidToken(false);
+          setCanReset(false);
           setError(exchangeError.message || "Invalid or expired reset link. Please request a new one.");
+          setInitializing(false);
           return;
         }
 
-        setIsValidToken(true);
-        setShowForm(true);
+        setCanReset(true);
+        setInitializing(false);
         return;
       }
 
-      const accessToken = hashParams.get("access_token");
-      const refreshToken = hashParams.get("refresh_token");
-
-      if (accessToken && refreshToken) {
+      if (type === "recovery" && accessToken && refreshToken) {
         const { error: sessionError } = await supabase.auth.setSession({
           access_token: accessToken,
           refresh_token: refreshToken,
@@ -68,13 +66,15 @@ export default function ResetPasswordPage() {
         if (!isMounted) return;
 
         if (sessionError) {
-          setIsValidToken(false);
+          setCanReset(false);
           setError(sessionError.message || "Invalid or expired reset link. Please request a new one.");
+          setInitializing(false);
           return;
         }
 
-        setIsValidToken(true);
-        setShowForm(true);
+        window.history.replaceState({}, document.title, "/reset-password");
+        setCanReset(true);
+        setInitializing(false);
         return;
       }
 
@@ -82,20 +82,34 @@ export default function ResetPasswordPage() {
       if (!isMounted) return;
 
       if (sessionData.session) {
-        setIsValidToken(true);
-        setShowForm(true);
+        setCanReset(true);
       } else {
-        setIsValidToken(false);
+        setCanReset(false);
         setError("Invalid or expired reset link. Please request a new one.");
       }
+
+      setInitializing(false);
     }
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (!isMounted) return;
+
+      if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") {
+        setCanReset(true);
+        setError(null);
+        setInitializing(false);
+      }
+    });
 
     initializeRecoverySession();
 
     return () => {
       isMounted = false;
+      subscription.unsubscribe();
     };
-  }, []);
+  }, [searchParams, supabase]);
 
   async function handleResetPassword(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -119,18 +133,18 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    const supabase = createClient();
-
     try {
       const { error: err } = await supabase.auth.updateUser({ password });
 
       if (err) {
         setError(err.message);
       } else {
-        setMessage("Password reset successfully!");
-        setTimeout(() => {
-          router.push("/");
-        }, 1500);
+        await supabase.auth.signOut();
+        setMessage("Password reset successfully. Redirecting to login...");
+        window.setTimeout(() => {
+          router.push("/login?reset=success");
+          router.refresh();
+        }, 1200);
       }
     } catch (e: any) {
       setError(e?.message || "An error occurred. Please try again.");
@@ -139,7 +153,7 @@ export default function ResetPasswordPage() {
     }
   }
 
-  if (isValidToken === null) {
+  if (initializing) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[70vh]">
         <div className="bg-black/60 backdrop-blur-lg p-8 rounded-2xl shadow-2xl border border-purple-900 flex flex-col gap-4 w-full max-w-md">
@@ -160,7 +174,7 @@ export default function ResetPasswordPage() {
         className="bg-black/60 backdrop-blur-lg p-8 rounded-2xl shadow-2xl border border-purple-900 flex flex-col gap-4 w-full max-w-md"
       >
         <h1 className="glow-text text-3xl mb-2 text-center">Set New Password</h1>
-        {isValidToken && showForm ? (
+        {canReset ? (
           <>
             <p className="text-center text-sm text-slate-300 mb-4">
               Enter your new password below.
@@ -199,7 +213,7 @@ export default function ResetPasswordPage() {
           </div>
         )}
 
-        {error && (
+        {error && canReset && (
           <div className="text-center text-red-300 font-semibold mt-2">{error}</div>
         )}
         {message && (

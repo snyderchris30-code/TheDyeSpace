@@ -22,9 +22,16 @@ export default function LoginPage() {
   });
   const [message, setMessage] = useState<string | null>(
     typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("verify") === "true"
-        ? "Please verify your email before logging in. Check your inbox."
-        : null
+      ? (() => {
+          const params = new URLSearchParams(window.location.search);
+          if (params.get("reset") === "success") {
+            return "Password updated. Log in with your new password.";
+          }
+
+          return params.get("verify") === "true"
+            ? "Please verify your email before logging in. Check your inbox."
+            : null;
+        })()
       : null
   );
   const router = useRouter();

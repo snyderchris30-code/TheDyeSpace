@@ -35,6 +35,7 @@ import { Providers } from './providers';
 import PWARegister from './PWARegister';
 import BackgroundParallax from './BackgroundParallax';
 import MeltingRouteTransition from './MeltingRouteTransition';
+import AuthRecoveryRedirect from './AuthRecoveryRedirect';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -47,6 +48,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className={`flex flex-col min-h-screen text-white overflow-x-hidden ${inter.variable} ${spaceGrotesk.variable} font-sans`}>
         <Providers>
+          <AuthRecoveryRedirect />
           <PWARegister />
           <BackgroundParallax />
           <div className="site-background" />
