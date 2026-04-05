@@ -83,7 +83,11 @@ function isOwnRouteUsername(routeUsername: string, user: any) {
     user &&
       [user.id, user.user_metadata?.username, user.email]
         .filter(Boolean)
-        .some((value: string) => normalizeUsername(value) === routeUsername)
+        .some(
+          (value: string) =>
+            normalizeUsername(value) === routeUsername ||
+            sanitizeUsernameInput(value) === routeUsername
+        )
   );
 }
 
@@ -381,7 +385,11 @@ export default function ProfileEditor() {
         sessionUser &&
           [sessionUser.id, sessionUser.user_metadata?.username, sessionUser.email]
             .filter(Boolean)
-            .some((value: string) => normalizeUsername(value) === routeUsername)
+            .some(
+              (value: string) =>
+                normalizeUsername(value) === routeUsername ||
+                sanitizeUsernameInput(value) === routeUsername
+            )
       );
 
       setLoading(true);
