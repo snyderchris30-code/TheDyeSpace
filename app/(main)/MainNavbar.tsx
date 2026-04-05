@@ -325,40 +325,6 @@ export default function MainNavbar() {
             Install App
           </button>
         )}
-
-        {usersOpen && (
-          <div data-dropdown-box="true" className="fixed left-1/2 top-24 z-[9999] w-[min(92vw,380px)] -translate-x-1/2 rounded-xl border border-cyan-400/40 bg-black/90 p-3 shadow-2xl animate-fade-in sm:top-28">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="font-semibold text-cyan-200">User Directory</span>
-              <button
-                type="button"
-                className="text-xs text-cyan-200 hover:text-white"
-                onClick={() => setUsersOpen(false)}
-              >
-                Close
-              </button>
-            </div>
-            <div className="max-h-[70vh] space-y-1 overflow-auto">
-              {usersLoading ? (
-                <p className="text-sm text-cyan-100/75">Loading users...</p>
-              ) : usersList.length === 0 ? (
-                <p className="text-sm text-cyan-100/75">No users found.</p>
-              ) : (
-                usersList.map((profile) => (
-                  <Link
-                    key={profile.id}
-                    href={`/profile/${encodeURIComponent(profile.username || "")}`}
-                    className="block rounded-lg border border-cyan-300/15 bg-slate-950/60 px-3 py-2 text-sm text-cyan-100 transition hover:border-cyan-300/45 hover:bg-cyan-900/20"
-                    onClick={() => setUsersOpen(false)}
-                  >
-                    <span className="font-semibold">{profile.display_name || profile.username || "DyeSpace User"}</span>
-                    <span className="ml-2 text-xs text-cyan-300/80">@{profile.username}</span>
-                  </Link>
-                ))
-              )}
-            </div>
-          </div>
-        )}
         <IconButton href="/" label="Home" icon={<Home size={18} />} isActive={pathname === "/"} />
         <IconButton href="/explore" label="Explore" icon={<Compass size={18} />} isActive={pathname?.startsWith("/explore")} />
         {isLoggedIn && (
