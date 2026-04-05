@@ -47,13 +47,38 @@ async function createLikeNotification(
     return;
   }
 
-  await adminClient.from("notifications").insert({
+  const payload = {
     user_id: ownerId,
     actor_name: actorName,
     type: "like",
     post_id: postId,
     message: `${actorName} reacted ${emoji} to your post.`,
     read: false,
+  };
+
+  const { data, error } = await adminClient
+    .from("notifications")
+    .insert(payload)
+    .select("id")
+    .limit(1);
+
+  if (error) {
+    console.error("[notifications] Failed to create like notification", {
+      ownerId,
+      actorId,
+      postId,
+      emoji,
+      error: error.message,
+    });
+    return;
+  }
+
+  console.info("[notifications] Like notification created", {
+    notificationId: data?.[0]?.id ?? null,
+    ownerId,
+    actorId,
+    postId,
+    emoji,
   });
 }
 

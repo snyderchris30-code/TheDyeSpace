@@ -708,15 +708,6 @@ export default function ProfileEditor() {
     }
   };
 
-  const applyPalette = (palette: { background_color: string; text_color: string; highlight_color: string }) => {
-    setDraft((prev) => ({
-      ...prev,
-      background_color: palette.background_color,
-      text_color: palette.text_color,
-      highlight_color: palette.highlight_color,
-    }));
-  };
-
   const handleSave = async () => {
     setIsSaving(true);
     setStatus(null);
@@ -1348,7 +1339,7 @@ export default function ProfileEditor() {
 
         {editing && isOwner ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-            <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-cyan-300/30 bg-slate-950/95 p-6 shadow-2xl backdrop-blur-xl">
+            <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-cyan-300/30 bg-transparent p-6 shadow-2xl backdrop-blur-xl">
               <div className="mb-5 flex items-center justify-between">
                 <h2 className="text-2xl font-semibold text-cyan-100">Edit Profile</h2>
                 <button
@@ -1364,13 +1355,7 @@ export default function ProfileEditor() {
                 </button>
               </div>
 
-              <div ref={previewRef} className={`mb-6 rounded-2xl border border-white/15 p-5 ${fontClass(draft.font_style)}`}>
-                <p className="text-xs uppercase tracking-[0.35em] text-[color:var(--profile-highlight)]">Live Preview</p>
-                <h3 className="mt-2 text-2xl font-semibold text-[color:var(--profile-text)]">{draft.display_name || "Display Name"}</h3>
-                <p className="text-sm text-[color:var(--profile-highlight)]">@{draft.username || "username"}</p>
-                <p className="mt-3 whitespace-pre-wrap text-[color:var(--profile-text)]/90">{draft.bio || "Your bio preview appears here."}</p>
-                <p className="mt-3 text-xs text-[color:var(--profile-highlight)]/90">{(draft.youtube_urls || []).length} saved song{(draft.youtube_urls || []).length === 1 ? "" : "s"}</p>
-              </div>
+
 
               <div className="grid gap-5 sm:grid-cols-2">
                 <label className="block sm:col-span-2">
@@ -1454,27 +1439,8 @@ export default function ProfileEditor() {
 
                 <div className="sm:col-span-2 rounded-2xl border border-cyan-300/20 bg-black/25 p-4">
                   <div className="mb-3">
-                    <p className="text-sm font-semibold text-cyan-100">Color Theme</p>
-                    <p className="text-xs text-cyan-100/70">Pick colors manually or use a preset palette. Preview updates instantly.</p>
-                  </div>
-
-                  <div className="mb-4 grid gap-3 sm:grid-cols-3">
-                    {PROFILE_COLOR_PALETTES.map((palette) => (
-                      <button
-                        key={palette.name}
-                        type="button"
-                        className="rounded-xl border border-cyan-300/25 bg-slate-950/50 p-3 text-left transition hover:border-cyan-300/45 hover:bg-slate-900/65"
-                        onClick={() => applyPalette(palette)}
-                        title={`Apply ${palette.name}`}
-                      >
-                        <p className="text-xs font-semibold text-cyan-100">{palette.name}</p>
-                        <div className="mt-2 space-y-1 text-[10px] text-cyan-100/80">
-                          <p>BG {palette.background_color}</p>
-                          <p>TXT {palette.text_color}</p>
-                          <p>ACC {palette.highlight_color}</p>
-                        </div>
-                      </button>
-                    ))}
+                    <p className="text-sm font-semibold text-cyan-100">Colors</p>
+                    <p className="text-xs text-cyan-100/70">Customize your profile colors.</p>
                   </div>
 
                   <div className="grid gap-4 sm:grid-cols-3">

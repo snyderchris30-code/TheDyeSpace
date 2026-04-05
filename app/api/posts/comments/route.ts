@@ -44,13 +44,36 @@ async function createCommentNotification(
     return;
   }
 
-  await adminClient.from("notifications").insert({
+  const payload = {
     user_id: ownerId,
     actor_name: actorName,
     type: "comment",
     post_id: postId,
     message: `${actorName} commented on your post.`,
     read: false,
+  };
+
+  const { data, error } = await adminClient
+    .from("notifications")
+    .insert(payload)
+    .select("id")
+    .limit(1);
+
+  if (error) {
+    console.error("[notifications] Failed to create comment notification", {
+      ownerId,
+      actorId,
+      postId,
+      error: error.message,
+    });
+    return;
+  }
+
+  console.info("[notifications] Comment notification created", {
+    notificationId: data?.[0]?.id ?? null,
+    ownerId,
+    actorId,
+    postId,
   });
 }
 

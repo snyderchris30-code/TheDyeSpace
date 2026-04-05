@@ -19,6 +19,47 @@ function createAdminClient() {
   });
 }
 
+async function createFollowNotification(
+  adminClient: ReturnType<typeof createAdminClient>,
+  followedId: string,
+  followerId: string,
+  actorName: string
+) {
+  if (!followedId || !followerId || followedId === followerId) {
+    return;
+  }
+
+  const payload = {
+    user_id: followedId,
+    actor_name: actorName,
+    type: "follow",
+    post_id: null,
+    message: `${actorName} started following you.`,
+    read: false,
+  };
+
+  const { data, error } = await adminClient
+    .from("notifications")
+    .insert(payload)
+    .select("id")
+    .limit(1);
+
+  if (error) {
+    console.error("[notifications] Failed to create follow notification", {
+      followedId,
+      followerId,
+      error: error.message,
+    });
+    return;
+  }
+
+  console.info("[notifications] Follow notification created", {
+    notificationId: data?.[0]?.id ?? null,
+    followedId,
+    followerId,
+  });
+}
+
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerClient();
@@ -98,6 +139,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ isFollowing: false, followFeatureReady: true });
     }
 
+    const { data: existingFollow, error: existingFollowError } = await adminClient
+      .from("user_follows")
+      .select("follower_id")
+      .eq("follower_id", user.id)
+      .eq("followed_id", targetUserId)
+      .maybeSingle();
+
+    if (existingFollowError) {
+      if (isMissingUserFollowsTable(existingFollowError)) {
+        return NextResponse.json(
+          { error: "Follow feature is not ready yet. Please run the user_follows migration.", followFeatureReady: false },
+          { status: 503 }
+        );
+      }
+      return NextResponse.json({ error: existingFollowError.message }, { status: 500 });
+    }
+
+    const isNewFollow = !existingFollow;
+
     const { error } = await adminClient.from("user_follows").upsert({
       follower_id: user.id,
       followed_id: targetUserId,
@@ -111,6 +171,23 @@ export async function POST(req: NextRequest) {
         );
       }
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    if (isNewFollow) {
+      const { data: actorProfile } = await adminClient
+        .from("profiles")
+        .select("username, display_name")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      const actorName =
+        actorProfile?.display_name?.trim() ||
+        actorProfile?.username?.trim() ||
+        user.user_metadata?.username ||
+        user.email ||
+        "A user";
+
+      await createFollowNotification(adminClient, targetUserId, user.id, actorName);
     }
 
     return NextResponse.json({ isFollowing: true, followFeatureReady: true });
