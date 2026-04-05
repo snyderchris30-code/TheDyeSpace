@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { resolveProfileUsername } from "@/lib/profile-identity";
+import { sanitizeUsernameInput } from "@/lib/profile-identity";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -25,10 +25,22 @@ export default function ProfilePage() {
         .from("profiles")
         .select("username")
         .eq("id", user.id)
-        .single();
+        .limit(1)
+        .maybeSingle();
 
-      const username = resolveProfileUsername(profile?.username, user.user_metadata?.username, user.email, user.id);
-      if (username) {
+      let username = sanitizeUsernameInput(profile?.username);
+
+      // If the profile record does not exist yet, initialize it first,
+      // then redirect using the saved username from the profiles table.
+      if (username.length < 3) {
+        const initRes = await fetch("/api/profile/init", { method: "POST" });
+        if (initRes.ok) {
+          const initBody = await initRes.json().catch(() => ({}));
+          username = sanitizeUsernameInput(initBody?.profile?.username);
+        }
+      }
+
+      if (username.length >= 3) {
         router.replace(`/profile/${encodeURIComponent(username)}`);
       } else {
         router.replace("/");

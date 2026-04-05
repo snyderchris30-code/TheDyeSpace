@@ -77,7 +77,13 @@ type ProfilePost = {
 type InteractionMap = Record<string, AggregatedPostInteraction>;
 
 function normalizeUsername(value: string) {
-  return decodeURIComponent(value || "").trim().toLowerCase();
+  const decoded = decodeURIComponent(value || "").trim();
+  const sanitized = sanitizeUsernameInput(decoded);
+  if (sanitized) {
+    return sanitized;
+  }
+
+  return decoded.toLowerCase().replace(/^@+/, "");
 }
 
 function isOwnRouteUsername(routeUsername: string, user: any) {
@@ -426,8 +432,16 @@ export default function ProfileEditor() {
 
     void syncSession();
 
-    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
-      setSession(nextSession);
+    const { data: listener } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
+      if (event === "SIGNED_OUT") {
+        setSession(null);
+        return;
+      }
+
+      if (nextSession) {
+        setSession(nextSession);
+      }
+
       if (nextSession?.user && isOwnRouteUsername(routeUsername, nextSession.user)) {
         await fetchOrCreateOwnProfile(nextSession.user);
       }

@@ -51,8 +51,15 @@ export default function MainNavbar() {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
+    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (event === "SIGNED_OUT") {
+        setSession(null);
+        return;
+      }
+
+      if (nextSession) {
+        setSession(nextSession);
+      }
     });
     return () => { listener?.subscription.unsubscribe(); };
   }, []);

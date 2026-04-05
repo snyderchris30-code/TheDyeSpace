@@ -144,11 +144,18 @@ export default function ExplorePage() {
 
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
-      setSessionUserId(data.user?.id || null);
+    supabase.auth.getSession().then(({ data }) => {
+      setSessionUserId(data.session?.user?.id || null);
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSessionUserId(nextSession?.user?.id || null);
+    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (event === "SIGNED_OUT") {
+        setSessionUserId(null);
+        return;
+      }
+
+      if (nextSession?.user?.id) {
+        setSessionUserId(nextSession.user.id);
+      }
     });
     return () => {
       listener?.subscription.unsubscribe();
