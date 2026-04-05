@@ -10,39 +10,44 @@ export default function ProfilePage() {
 
   useEffect(() => {
     const redirectToProfile = async () => {
-      const supabase = createClient();
-      const { data: sessionData } = await supabase.auth.getSession();
-      const user = sessionData?.session?.user;
+      try {
+        const supabase = createClient();
+        const { data: sessionData } = await supabase.auth.getSession();
+        const user = sessionData?.session?.user;
 
-      if (!user) {
-        // Not logged in, redirect to login
-        router.replace("/login?redirect=/profile");
-        return;
-      }
-
-      // Get the user's username from their profile
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("username")
-        .eq("id", user.id)
-        .limit(1)
-        .maybeSingle();
-
-      let username = sanitizeUsernameInput(profile?.username);
-
-      // If the profile record does not exist yet, initialize it first,
-      // then redirect using the saved username from the profiles table.
-      if (username.length < 3) {
-        const initRes = await fetch("/api/profile/init", { method: "POST" });
-        if (initRes.ok) {
-          const initBody = await initRes.json().catch(() => ({}));
-          username = sanitizeUsernameInput(initBody?.profile?.username);
+        if (!user) {
+          // Not logged in, redirect to login
+          router.replace("/login?redirect=/profile");
+          return;
         }
-      }
 
-      if (username.length >= 3) {
-        router.replace(`/profile/${encodeURIComponent(username)}`);
-      } else {
+        // Get the user's username from their profile
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("username")
+          .eq("id", user.id)
+          .limit(1)
+          .maybeSingle();
+
+        let username = sanitizeUsernameInput(profile?.username);
+
+        // If the profile record does not exist yet, initialize it first,
+        // then redirect using the saved username from the profiles table.
+        if (username.length < 3) {
+          const initRes = await fetch("/api/profile/init", { method: "POST" });
+          if (initRes.ok) {
+            const initBody = await initRes.json().catch(() => ({}));
+            username = sanitizeUsernameInput(initBody?.profile?.username);
+          }
+        }
+
+        if (username.length >= 3) {
+          router.replace(`/profile/${encodeURIComponent(username)}`);
+        } else {
+          router.replace("/");
+        }
+      } catch (error) {
+        console.error("Error redirecting to profile:", error);
         router.replace("/");
       }
     };

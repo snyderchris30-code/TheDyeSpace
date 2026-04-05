@@ -412,44 +412,42 @@ export default function ProfileEditor() {
   );
 
   const loadProfile = useCallback(async () => {
-    const { data } = await supabase.auth.getSession();
-    setSession(data.session);
-    const sessionUser = data.session?.user;
-
-    if (sessionUser?.id) {
-      void loadOwnRole(sessionUser.id);
-    } else {
-      setIsAdmin(false);
-    }
-
-    if (!routeUsername) {
-      setLoading(false);
-      return;
-    }
-
-    const isOwnRoute = Boolean(
-      sessionUser &&
-        [sessionUser.id, sessionUser.user_metadata?.username, sessionUser.email]
-          .filter(Boolean)
-          .some(
-            (value: string) =>
-              normalizeUsername(value) === routeUsername ||
-              sanitizeUsernameInput(value) === routeUsername
-          )
-    );
-
-    setLoading(true);
-    setLoadError(null);
-    setStatus(null);
-
-    if (isOwnRoute && sessionUser) {
-      await fetchOrCreateOwnProfile(sessionUser);
-      setLoading(false);
-      return;
-    }
-
-    setIsOwner(false);
     try {
+      const { data } = await supabase.auth.getSession();
+      setSession(data.session);
+      const sessionUser = data.session?.user;
+
+      if (sessionUser?.id) {
+        void loadOwnRole(sessionUser.id);
+      } else {
+        setIsAdmin(false);
+      }
+
+      if (!routeUsername) {
+        return;
+      }
+
+      const isOwnRoute = Boolean(
+        sessionUser &&
+          [sessionUser.id, sessionUser.user_metadata?.username, sessionUser.email]
+            .filter(Boolean)
+            .some(
+              (value: string) =>
+                normalizeUsername(value) === routeUsername ||
+                sanitizeUsernameInput(value) === routeUsername
+            )
+      );
+
+      setLoading(true);
+      setLoadError(null);
+      setStatus(null);
+
+      if (isOwnRoute && sessionUser) {
+        await fetchOrCreateOwnProfile(sessionUser);
+        return;
+      }
+
+      setIsOwner(false);
       const viewedProfile = await fetchProfileByUsername(routeUsername);
       if (!viewedProfile) {
         throw new Error("Profile not found.");
@@ -467,6 +465,7 @@ export default function ProfileEditor() {
     } catch (error: any) {
       const message = typeof error?.message === "string" ? error.message : "Unable to load this profile.";
       setLoadError(message);
+      setStatus({ type: "error", text: message });
     } finally {
       setLoading(false);
     }
