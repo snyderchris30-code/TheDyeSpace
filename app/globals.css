@@ -112,7 +112,6 @@
 
 :root {
   --neon-starfield-image: url("/background.jpg");
-  --bg-parallax-offset: 0px;
   --site-text: #e7fbff;
   --site-panel: rgba(6, 12, 24, 0.7);
   --site-panel-border: rgba(111, 255, 232, 0.18);
@@ -182,13 +181,12 @@ html.light {
   background-position:
     15% 18%,
     82% 14%,
-    center calc(50% + var(--bg-parallax-offset));
+    center 50%;
   background-size:
     cover,
     cover,
     contain;
   background-repeat: no-repeat;
-  filter: saturate(1.06) contrast(1.02);
 }
 
 html.light .site-background {
@@ -208,15 +206,10 @@ html.light .site-background {
     background-position:
       12% 12%,
       86% 12%,
-      center calc(48% + var(--bg-parallax-offset));
+      center 48%;
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  :root {
-    --bg-parallax-offset: 0px;
-  }
-}
 
 .transition-video-page {
   position: relative;

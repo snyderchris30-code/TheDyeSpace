@@ -292,7 +292,7 @@ export default function MainNavbar() {
         )}
 
         {usersOpen && (
-          <div data-dropdown-box="true" className="fixed left-1/2 top-24 z-50 w-[min(92vw,380px)] -translate-x-1/2 rounded-xl border border-cyan-400/40 bg-black/90 p-3 shadow-2xl animate-fade-in sm:top-28">
+          <div data-dropdown-box="true" className="fixed left-1/2 top-24 z-[9999] w-[min(92vw,380px)] -translate-x-1/2 rounded-xl border border-cyan-400/40 bg-black/90 p-3 shadow-2xl animate-fade-in sm:top-28">
             <div className="mb-2 flex items-center justify-between">
               <span className="font-semibold text-cyan-200">User Directory</span>
               <button
@@ -359,7 +359,7 @@ export default function MainNavbar() {
               </span>
             </button>
             {notifDrop && (
-              <div data-dropdown-box="true" className="fixed left-1/2 top-24 z-50 w-[min(92vw,360px)] -translate-x-1/2 rounded-xl border border-sky-500 bg-black/90 p-3 shadow-2xl animate-fade-in sm:top-28">
+              <div data-dropdown-box="true" className="fixed left-1/2 top-24 z-[9999] w-[min(92vw,360px)] -translate-x-1/2 rounded-xl border border-sky-500 bg-black/90 p-3 shadow-2xl animate-fade-in sm:top-28">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="font-semibold text-cyan-200">Notifications</span>
                   <button onClick={markAllRead} className="text-xs text-green-200 hover:text-white">Mark all read</button>
@@ -397,7 +397,7 @@ export default function MainNavbar() {
             </button>
             {/* Settings Dropdown Menu */}
             {settingsOpen && (
-              <div data-dropdown-box="true" className="fixed left-1/2 top-24 z-50 w-[min(92vw,320px)] -translate-x-1/2 rounded-xl border border-cyan-400/40 bg-black/95 p-2 shadow-2xl animate-fade-in sm:top-28">
+              <div data-dropdown-box="true" className="fixed left-1/2 top-24 z-[9999] w-[min(92vw,320px)] -translate-x-1/2 rounded-xl border border-cyan-400/40 bg-black/95 p-2 shadow-2xl animate-fade-in sm:top-28">
                 <div className="flex justify-end mb-1">
                   <button data-dropdown-trigger="true" aria-label="Close" title="Close" className="text-cyan-400 hover:text-white p-1" onClick={() => setSettingsOpen(false)}>
                     <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M6 6l8 8M6 14L14 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
