@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useState, useEffect } from "react";
 import Link from "next/link";
 import { Bell, User, Home, Compass, LogOut, HeartHandshake, Users, Settings, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -111,7 +111,7 @@ export default function MainNavbar() {
     return () => { active = false; listener?.subscription.unsubscribe(); };
   }, []);
 
-  const loadUsersList = async () => {
+  const loadUsersList = useCallback(async () => {
     setUsersLoading(true);
     try {
       const supabase = createClient();
@@ -131,35 +131,38 @@ export default function MainNavbar() {
     } finally {
       setUsersLoading(false);
     }
-  };
+  }, []);
+
+  const loadUserCount = useCallback(async () => {
+    const supabase = createClient();
+    const { count } = await supabase
+      .from("profiles")
+      .select("id", { count: "exact", head: true });
+
+    setUserCount(count ?? null);
+  }, []);
 
   useEffect(() => {
     const supabase = createClient();
     let active = true;
 
-    const fetchUserCount = async () => {
-      const { count } = await supabase
-        .from("profiles")
-        .select("id", { count: "exact", head: true });
-
-      if (active) {
-        setUserCount(count ?? null);
-      }
-    };
-
-    void fetchUserCount();
+    void loadUserCount();
 
     // Realtime subscription fires when replication is enabled on the table
     const channel = supabase
       .channel("public:profiles:navbar-count")
       .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
-        void fetchUserCount();
+        if (active) {
+          void loadUserCount();
+        }
       })
       .subscribe();
 
     // Polling fallback: refresh every 30 s in case realtime is not enabled
     const interval = window.setInterval(() => {
-      void fetchUserCount();
+      if (active) {
+        void loadUserCount();
+      }
     }, 30_000);
 
     return () => {
@@ -167,7 +170,18 @@ export default function MainNavbar() {
       window.clearInterval(interval);
       void supabase.removeChannel(channel);
     };
-  }, []);
+  }, [loadUserCount]);
+
+  const handleUsersDirectoryToggle = useCallback(() => {
+    setUsersOpen((open) => {
+      const nextOpen = !open;
+      if (nextOpen) {
+        void loadUserCount();
+        void loadUsersList();
+      }
+      return nextOpen;
+    });
+  }, [loadUserCount, loadUsersList]);
 
   const handleSignOut = async () => {
     try {
@@ -353,12 +367,7 @@ export default function MainNavbar() {
             <button
               data-dropdown-trigger="true"
               type="button"
-              onClick={() => {
-                setUsersOpen((open) => !open);
-                if (!usersOpen) {
-                  void loadUsersList();
-                }
-              }}
+              onClick={handleUsersDirectoryToggle}
               aria-label="Open user list"
               title="Open user list"
               className="flex h-9 items-center gap-1.5 rounded-xl border border-cyan-200/25 bg-black/30 px-2 text-xs font-semibold text-cyan-100 shadow-[0_0_14px_rgba(34,211,238,0.12)] transition hover:border-cyan-200/45 hover:bg-cyan-300/10 ml-2"
