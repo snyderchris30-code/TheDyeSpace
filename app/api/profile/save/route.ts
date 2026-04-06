@@ -10,6 +10,7 @@ import {
   type FontStyle,
 } from "@/lib/profile-theme";
 import { resolveProfileUsername } from "@/lib/profile-identity";
+import { normalizeMusicPlayerUrls, normalizeYoutubeVideoUrls } from "@/lib/youtube-media";
 
 type SaveBody = {
   username?: string;
@@ -22,33 +23,8 @@ type SaveBody = {
   highlight_color?: string;
   font_style?: FontStyle;
   youtube_urls?: string[];
+  music_player_urls?: string[];
 };
-
-const YOUTUBE_URL_REGEX = /(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
-
-function normalizeYoutubeUrls(input: unknown): string[] {
-  if (!Array.isArray(input)) return [];
-
-  const uniqueUrls = new Set<string>();
-
-  for (const rawValue of input) {
-    if (typeof rawValue !== "string") continue;
-    const trimmed = rawValue.trim();
-    if (!trimmed) continue;
-
-    const match = trimmed.match(YOUTUBE_URL_REGEX);
-    if (!match) continue;
-
-    const videoId = match[1];
-    uniqueUrls.add(`https://www.youtube.com/watch?v=${videoId}`);
-
-    if (uniqueUrls.size >= 25) {
-      break;
-    }
-  }
-
-  return Array.from(uniqueUrls);
-}
 
 export async function POST(req: NextRequest) {
   const supabase = await createSupabaseServerClient();
@@ -90,6 +66,7 @@ export async function POST(req: NextRequest) {
     highlight_color?: string | null;
     font_style?: FontStyle | null;
     youtube_urls?: string[] | null;
+    music_player_urls?: string[] | null;
   };
 
   const safeUsername = resolveProfileUsername(
@@ -101,9 +78,14 @@ export async function POST(req: NextRequest) {
   );
 
   const nextYoutubeUrls = body.youtube_urls
-    ? normalizeYoutubeUrls(body.youtube_urls)
+    ? normalizeYoutubeVideoUrls(body.youtube_urls)
     : Array.isArray(existingThemeSettings.youtube_urls)
-      ? normalizeYoutubeUrls(existingThemeSettings.youtube_urls)
+      ? normalizeYoutubeVideoUrls(existingThemeSettings.youtube_urls)
+      : [];
+  const nextMusicPlayerUrls = body.music_player_urls
+    ? normalizeMusicPlayerUrls(body.music_player_urls)
+    : Array.isArray(existingThemeSettings.music_player_urls)
+      ? normalizeMusicPlayerUrls(existingThemeSettings.music_player_urls)
       : [];
   const nextFontStyle = body.font_style
     ? normalizeFontStyle(body.font_style)
@@ -128,6 +110,7 @@ export async function POST(req: NextRequest) {
           highlight_color: body.highlight_color ?? existingThemeSettings.highlight_color ?? DEFAULT_HIGHLIGHT_COLOR,
           font_style: nextFontStyle,
           youtube_urls: nextYoutubeUrls,
+          music_player_urls: nextMusicPlayerUrls,
         },
       },
       { onConflict: "id", ignoreDuplicates: false }
