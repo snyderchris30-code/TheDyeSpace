@@ -38,19 +38,54 @@ async function createFollowNotification(
     read: false,
   };
 
-  const { data, error } = await adminClient
+  console.info("[notifications] Attempting follow notification", {
+    followedId,
+    followerId,
+    actorName,
+  });
+
+  let data: Array<{ id: string }> | null = null;
+
+  const { data: firstData, error } = await adminClient
     .from("notifications")
     .insert(payload)
     .select("id")
     .limit(1);
 
+  data = firstData as Array<{ id: string }> | null;
+
   if (error) {
-    console.error("[notifications] Failed to create follow notification", {
-      followedId,
-      followerId,
-      error: error.message,
-    });
-    return;
+    const cacheError = String(error.message || "").includes(
+      "Could not find the 'post_id' column of 'notifications' in the schema cache"
+    );
+
+    if (cacheError) {
+      const fallbackPayload = { ...payload };
+      delete (fallbackPayload as Record<string, unknown>).post_id;
+      const { data: fallbackData, error: fallbackError } = await adminClient
+        .from("notifications")
+        .insert(fallbackPayload)
+        .select("id")
+        .limit(1);
+
+      if (!fallbackError) {
+        data = fallbackData as Array<{ id: string }> | null;
+      } else {
+        console.error("[notifications] Failed to create follow notification", {
+          followedId,
+          followerId,
+          error: fallbackError.message,
+        });
+        return;
+      }
+    } else {
+      console.error("[notifications] Failed to create follow notification", {
+        followedId,
+        followerId,
+        error: error.message,
+      });
+      return;
+    }
   }
 
   console.info("[notifications] Follow notification created", {

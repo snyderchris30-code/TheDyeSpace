@@ -10,27 +10,15 @@ import { createClient } from "@/lib/supabase/client";
 import { resolveProfileUsername } from "@/lib/profile-identity";
 import { INVITE_EXPIRATION_DEFAULT_HOURS, formatInviteDurationLabel } from "@/lib/app-config";
 
-async function fetchNotifications(): Promise<Array<{ id: string; actor_name: string; type: string; message: string; read: boolean; created_at: string }>> {
-  const supabase = createClient();
-  const { data: sessionData } = await supabase.auth.getSession();
-  const userId = sessionData?.session?.user?.id;
-  if (!userId) {
+type NotificationItem = { id: string; actor_name: string; type: string; message: string; read: boolean; created_at: string };
+
+async function fetchNotifications(): Promise<NotificationItem[]> {
+  const response = await fetch("/api/notifications", { cache: "no-store" });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
     return [];
   }
-
-  const { data, error } = await supabase
-    .from("notifications")
-    .select("id,actor_name,type,message,read,created_at")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .limit(20);
-
-  if (error) {
-    // Suppress noisy error log for notification fetch failures
-    return [];
-  }
-
-  return data || [];
+  return Array.isArray(body?.notifications) ? (body.notifications as NotificationItem[]) : [];
 }
 
 type DirectoryProfile = {
@@ -201,12 +189,11 @@ export default function MainNavbar() {
   const unreadCount = notifications.filter((item) => !item.read).length;
 
   const markAllRead = async () => {
-    const supabase = createClient();
-    const { data: sessionData } = await supabase.auth.getSession();
-    const userId = sessionData?.session?.user?.id;
-    if (!userId) return;
-
-    await supabase.from("notifications").update({ read: true }).eq("user_id", userId);
+    await fetch("/api/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ markAll: true }),
+    });
     refetch();
     queryClient.invalidateQueries({ queryKey: ["notifications"] });
   };
@@ -450,8 +437,8 @@ export default function MainNavbar() {
               >
                 <Bell size={18} />
                 {unreadCount > 0 && (
-                  <span className="absolute -right-1.5 -top-1.5 rounded-full border border-cyan-200/60 bg-cyan-400 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-slate-950 shadow-[0_0_14px_rgba(34,211,238,0.35)]">
-                    {unreadCount}
+                  <span className="absolute -right-1.5 -top-1.5 rounded-full border border-red-200/75 bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white shadow-[0_0_14px_rgba(239,68,68,0.45)]">
+                    {unreadCount > 99 ? "99+" : unreadCount}
                   </span>
                 )}
                 <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 -translate-x-1/2 translate-y-1 whitespace-nowrap rounded-md border border-cyan-200/35 bg-slate-950/95 px-2 py-1 text-[11px] font-medium text-cyan-100 opacity-0 shadow-[0_0_14px_rgba(34,211,238,0.18)] transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100">

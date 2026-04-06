@@ -33,21 +33,19 @@ export default function NotificationsPage() {
   };
 
   const fetchNotifications = useCallback(async (targetUserId: string) => {
-    const { data, error: fetchError } = await supabase
-      .from("notifications")
-      .select("id, actor_name, type, message, read, created_at, post_id")
-      .eq("user_id", targetUserId)
-      .order("created_at", { ascending: false });
+    const response = await fetch("/api/notifications", { cache: "no-store" });
+    const body = await response.json().catch(() => ({}));
 
-    if (fetchError) {
-      setError(fetchError.message || "Failed to load notifications.");
+    if (!response.ok) {
+      setError(body?.error || "Failed to load notifications.");
       setNotifications([]);
       return;
     }
 
     setError(null);
-    setNotifications((data || []) as Notification[]);
-  }, [supabase]);
+    const list = Array.isArray(body?.notifications) ? body.notifications : [];
+    setNotifications(list as Notification[]);
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -104,14 +102,15 @@ export default function NotificationsPage() {
 
     setNotifications((prev) => prev.map((item) => (item.id === notifId ? { ...item, read: true } : item)));
 
-    const { error: updateError } = await supabase
-      .from("notifications")
-      .update({ read: true })
-      .eq("id", notifId)
-      .eq("user_id", userId);
+    const response = await fetch("/api/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notificationId: notifId }),
+    });
 
-    if (updateError) {
-      setError(updateError.message || "Failed to mark notification as read.");
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      setError(body?.error || "Failed to mark notification as read.");
       await fetchNotifications(userId);
     }
   };
@@ -157,7 +156,7 @@ export default function NotificationsPage() {
                     <p className="text-base leading-relaxed mt-2 font-medium">{formatMessage(notif)}</p>
                     {notif.post_id ? (
                       <Link
-                        href="/"
+                        href="/explore"
                         className="mt-2 inline-block text-xs text-cyan-300 underline underline-offset-2 hover:text-cyan-200"
                         onClick={(event) => {
                           event.stopPropagation();

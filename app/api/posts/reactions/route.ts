@@ -71,6 +71,13 @@ async function createLikeNotification(
   emoji: ReactionEmoji
 ) {
   if (!ownerId || ownerId === actorId) {
+    console.info("[notifications] Skipping like notification", {
+      reason: !ownerId ? "missing_owner" : "self_action",
+      ownerId,
+      actorId,
+      postId,
+      emoji,
+    });
     return;
   }
 
@@ -82,6 +89,14 @@ async function createLikeNotification(
     message: `${actorName} reacted ${emoji} to your post.`,
     read: false,
   };
+
+  console.info("[notifications] Attempting like notification", {
+    ownerId,
+    actorId,
+    postId,
+    emoji,
+    actorName,
+  });
 
   try {
     const notificationId = await insertNotificationRecord(adminClient, payload);

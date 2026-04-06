@@ -68,6 +68,12 @@ async function createCommentNotification(
   postId: string
 ) {
   if (!ownerId || ownerId === actorId) {
+    console.info("[notifications] Skipping comment notification", {
+      reason: !ownerId ? "missing_owner" : "self_action",
+      ownerId,
+      actorId,
+      postId,
+    });
     return;
   }
 
@@ -79,6 +85,13 @@ async function createCommentNotification(
     message: `${actorName} commented on your post.`,
     read: false,
   };
+
+  console.info("[notifications] Attempting comment notification", {
+    ownerId,
+    actorId,
+    postId,
+    actorName,
+  });
 
   try {
     const notificationId = await insertNotificationRecord(adminClient, payload);
