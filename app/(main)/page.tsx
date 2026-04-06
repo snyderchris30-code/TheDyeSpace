@@ -12,6 +12,9 @@ import { REACTION_EMOJIS, type AggregatedPostInteraction, type ReactionEmoji } f
 import { fontClass, resolveProfileAppearance, type ProfileAppearance } from "@/lib/profile-theme";
 import EmojiPicker from "@/app/EmojiPicker";
 import InlineEmojiText from "@/app/InlineEmojiText";
+import AdminActionMenu from "@/app/AdminActionMenu";
+import UserIdentity from "@/app/UserIdentity";
+import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import { appendEmojiToText } from "@/lib/custom-emojis";
 
 const PAGE_SIZE = 8;
@@ -29,7 +32,8 @@ type Post = {
   author_at_name?: string;
   author_username?: string | null;
   author_theme?: ProfileAppearance | null;
-  author_blessed_until?: string | null;
+  author_verified_badge?: boolean;
+  author_member_number?: number | null;
   author_voided_until?: string | null;
 };
 
@@ -41,7 +45,8 @@ type ProfileRow = {
   display_name: string | null;
   theme_settings?: ProfileAppearance | null;
   voided_until?: string | null;
-  blessed_until?: string | null;
+  verified_badge?: boolean | null;
+  member_number?: number | null;
 };
 
 function isEmailLike(value: string | null | undefined) {
@@ -119,7 +124,7 @@ export default function MainFeedPage() {
   const LightboxModal = dynamic(() => import("../LightboxModal"), { ssr: false });
   // Lightbox state
   const [lightbox, setLightbox] = useState<{ open: boolean; url: string | null }>({ open: false, url: null });
-  const { data, isLoading, isFetchingNextPage, fetchNextPage, hasNextPage, error } = useInfiniteQuery({
+  const { data, isLoading, isFetchingNextPage, fetchNextPage, hasNextPage, error, refetch } = useInfiniteQuery({
     queryKey: ["posts"],
     queryFn: fetchPosts,
     getNextPageParam: (lastPage) => {
@@ -347,7 +352,7 @@ export default function MainFeedPage() {
   }, [setPostCounts]);
 
   const handleAdminAction = useCallback(
-    async (targetUserId: string, action: "mute" | "cosmic_timeout" | "send_to_void" | "cosmic_blessing", durationHours?: number) => {
+    async (targetUserId: string, action: AdminActionName, durationHours?: number) => {
       if (!session?.user) {
         setAdminActionStatus("Please sign in as an admin to perform this action.");
         return;
@@ -355,22 +360,15 @@ export default function MainFeedPage() {
 
       setAdminActionStatus(null);
       try {
-        const res = await fetch("/api/admin/users", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ targetUserId, action, durationHours }),
-        });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(body?.error || "Admin action failed.");
-        }
-
+        const body = await runAdminUserAction({ targetUserId, action, durationHours });
         setAdminActionStatus(body?.message || "Admin action applied successfully.");
+        await refetch();
+        await loadInteractions(posts.map((post) => post.id));
       } catch (error: any) {
         setAdminActionStatus(typeof error?.message === "string" ? error.message : "Admin action failed.");
       }
     },
-    [session?.user]
+    [loadInteractions, posts, refetch, session?.user]
   );
 
   const handleSaveCommentEdit = useCallback(async (commentId: string, postId: string) => {
@@ -453,25 +451,16 @@ export default function MainFeedPage() {
             <header className="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:justify-between sm:gap-4">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Link
-                    href={post.author_username ? `/profile/${post.author_username}` : '#'}
-                    className="font-bold text-[color:var(--post-text)] hover:text-[color:var(--post-highlight)] hover:underline"
-                    prefetch={false}
-                  >
-                    {post.author_display_name || "DyeSpace User"}
-                  </Link>
-                  <Link
-                    href={post.author_username ? `/profile/${post.author_username}` : '#'}
-                    className="text-xs text-[color:var(--post-highlight)]/85 hover:text-[color:var(--post-highlight)] hover:underline"
-                    prefetch={false}
-                  >
-                    @{post.author_username || "dyespace-user"}
-                  </Link>
-                  {post.author_blessed_until && new Date(post.author_blessed_until) > new Date() ? (
-                    <span className="inline-flex rounded-full border border-fuchsia-300/45 bg-fuchsia-500/15 px-2 py-0.5 text-[11px] font-semibold text-fuchsia-100">
-                      Cosmic Blessing
-                    </span>
-                  ) : null}
+                  <UserIdentity
+                    displayName={post.author_display_name || "DyeSpace User"}
+                    username={post.author_username || null}
+                    verifiedBadge={post.author_verified_badge === true}
+                    memberNumber={post.author_member_number ?? null}
+                    className="min-w-0"
+                    nameClassName="font-bold text-[color:var(--post-text)] hover:text-[color:var(--post-highlight)] hover:underline"
+                    usernameClassName="text-xs text-[color:var(--post-highlight)]/85 hover:text-[color:var(--post-highlight)] hover:underline"
+                    metaClassName="text-xs text-[color:var(--post-text)]/70"
+                  />
                   {categoryMeta ? (
                     <Link
                       href={`/explore?tab=${encodeURIComponent(categoryMeta.value)}`}
@@ -503,57 +492,7 @@ export default function MainFeedPage() {
                     >
                       Delete
                     </button>
-                    {isAdmin && session?.user?.id !== post.user_id ? (
-                      <details className="relative">
-                        <summary className="rounded-full border border-violet-300/25 bg-black/20 px-3 py-1 text-xs text-violet-200 hover:bg-violet-900/30 transition cursor-pointer">
-                          Admin
-                        </summary>
-                        <div className="absolute right-0 z-10 mt-2 w-56 rounded-2xl border border-violet-300/20 bg-slate-950/95 p-3 shadow-[0_20px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl">
-                          <button
-                            type="button"
-                            className="mb-2 w-full rounded-xl border border-fuchsia-300/30 bg-fuchsia-500/10 px-3 py-2 text-left text-xs font-semibold text-fuchsia-100 hover:bg-fuchsia-500/15"
-                            onClick={() => void handleAdminAction(post.user_id, "mute", 4)}
-                          >
-                            Mute 4h
-                          </button>
-                          <button
-                            type="button"
-                            className="mb-2 w-full rounded-xl border border-fuchsia-300/30 bg-fuchsia-500/10 px-3 py-2 text-left text-xs font-semibold text-fuchsia-100 hover:bg-fuchsia-500/15"
-                            onClick={() => void handleAdminAction(post.user_id, "mute", 8)}
-                          >
-                            Mute 8h
-                          </button>
-                          <button
-                            type="button"
-                            className="mb-2 w-full rounded-xl border border-fuchsia-300/30 bg-fuchsia-500/10 px-3 py-2 text-left text-xs font-semibold text-fuchsia-100 hover:bg-fuchsia-500/15"
-                            onClick={() => void handleAdminAction(post.user_id, "mute", 12)}
-                          >
-                            Mute 12h
-                          </button>
-                          <button
-                            type="button"
-                            className="mb-2 w-full rounded-xl border border-cyan-300/30 bg-cyan-500/10 px-3 py-2 text-left text-xs font-semibold text-cyan-100 hover:bg-cyan-500/15"
-                            onClick={() => void handleAdminAction(post.user_id, "cosmic_timeout", 4)}
-                          >
-                            Cosmic Timeout 4h
-                          </button>
-                          <button
-                            type="button"
-                            className="mb-2 w-full rounded-xl border border-emerald-300/30 bg-emerald-500/10 px-3 py-2 text-left text-xs font-semibold text-emerald-100 hover:bg-emerald-500/15"
-                            onClick={() => void handleAdminAction(post.user_id, "send_to_void")}
-                          >
-                            Send to the Void (24h)
-                          </button>
-                          <button
-                            type="button"
-                            className="w-full rounded-xl border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-left text-xs font-semibold text-amber-100 hover:bg-amber-500/15"
-                            onClick={() => void handleAdminAction(post.user_id, "cosmic_blessing")}
-                          >
-                            Cosmic Blessing
-                          </button>
-                        </div>
-                      </details>
-                    ) : null}
+                    {isAdmin && session?.user?.id !== post.user_id ? <AdminActionMenu targetUserId={post.user_id} onAction={handleAdminAction} /> : null}
                   </div>
                 )}
               </div>
@@ -720,62 +659,20 @@ export default function MainFeedPage() {
                             className={`min-w-0 flex-1 ${fontClass(comment.author.theme_settings?.font_style)}`}
                             ref={(element) => applyPostThemeVars(element, comment.author.theme_settings)}
                           >
-                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                              <span className="font-semibold text-[color:var(--post-text)]">{comment.author.display_name || comment.author.username || "DyeSpace User"}</span>
-                              <span className="text-xs text-[color:var(--post-highlight)]/80">@{comment.author.username || "user"}</span>
-                              <span className="text-xs text-[color:var(--post-text)]/45">{new Date(comment.created_at).toLocaleString()}</span>
+                            <div className="flex items-start justify-between gap-3">
+                              <UserIdentity
+                                displayName={comment.author.display_name}
+                                username={comment.author.username}
+                                verifiedBadge={comment.author.verified_badge}
+                                memberNumber={comment.author.member_number}
+                                timestampText={new Date(comment.created_at).toLocaleString()}
+                                className="min-w-0"
+                                nameClassName="font-semibold text-[color:var(--post-text)] hover:text-[color:var(--post-highlight)] hover:underline"
+                                usernameClassName="text-xs text-[color:var(--post-highlight)]/80 hover:text-[color:var(--post-highlight)] hover:underline"
+                                metaClassName="text-xs text-[color:var(--post-text)]/45"
+                              />
+                              {isAdmin && session?.user?.id !== comment.author.id ? <AdminActionMenu targetUserId={comment.author.id} onAction={handleAdminAction} label="Admin Tools" /> : null}
                             </div>
-                            {isAdmin && session?.user?.id !== comment.author.id ? (
-                              <details className="mt-2 relative">
-                                <summary className="inline-flex cursor-pointer rounded-full border border-violet-300/25 bg-black/20 px-2 py-1 text-[11px] font-semibold text-violet-200 hover:bg-violet-900/30 transition">
-                                  Admin Tools
-                                </summary>
-                                <div className="absolute right-0 z-10 mt-2 w-56 rounded-2xl border border-violet-300/20 bg-slate-950/95 p-3 shadow-[0_20px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl">
-                                  <button
-                                    type="button"
-                                    className="mb-2 w-full rounded-xl border border-fuchsia-300/30 bg-fuchsia-500/10 px-3 py-2 text-left text-xs font-semibold text-fuchsia-100 hover:bg-fuchsia-500/15"
-                                    onClick={() => void handleAdminAction(comment.author.id, "mute", 4)}
-                                  >
-                                    Mute 4h
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="mb-2 w-full rounded-xl border border-fuchsia-300/30 bg-fuchsia-500/10 px-3 py-2 text-left text-xs font-semibold text-fuchsia-100 hover:bg-fuchsia-500/15"
-                                    onClick={() => void handleAdminAction(comment.author.id, "mute", 8)}
-                                  >
-                                    Mute 8h
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="mb-2 w-full rounded-xl border border-fuchsia-300/30 bg-fuchsia-500/10 px-3 py-2 text-left text-xs font-semibold text-fuchsia-100 hover:bg-fuchsia-500/15"
-                                    onClick={() => void handleAdminAction(comment.author.id, "mute", 12)}
-                                  >
-                                    Mute 12h
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="mb-2 w-full rounded-xl border border-cyan-300/30 bg-cyan-500/10 px-3 py-2 text-left text-xs font-semibold text-cyan-100 hover:bg-cyan-500/15"
-                                    onClick={() => void handleAdminAction(comment.author.id, "cosmic_timeout", 4)}
-                                  >
-                                    Cosmic Timeout 4h
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="mb-2 w-full rounded-xl border border-emerald-300/30 bg-emerald-500/10 px-3 py-2 text-left text-xs font-semibold text-emerald-100 hover:bg-emerald-500/15"
-                                    onClick={() => void handleAdminAction(comment.author.id, "send_to_void")}
-                                  >
-                                    Send to the Void
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="w-full rounded-xl border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-left text-xs font-semibold text-amber-100 hover:bg-amber-500/15"
-                                    onClick={() => void handleAdminAction(comment.author.id, "cosmic_blessing")}
-                                  >
-                                    Cosmic Blessing
-                                  </button>
-                                </div>
-                              </details>
-                            ) : null}
                               {editingCommentId === comment.id ? (
                                 <div className="mt-2 flex flex-col gap-2">
                                   <textarea

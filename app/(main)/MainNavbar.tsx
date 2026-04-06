@@ -6,7 +6,10 @@ import { Bell, User, Home, Compass, LogOut, HeartHandshake, Users, Settings, Tra
 import { useRouter } from "next/navigation";
 import { usePathname } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import AdminActionMenu from "@/app/AdminActionMenu";
+import UserIdentity from "@/app/UserIdentity";
 import { createClient } from "@/lib/supabase/client";
+import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import { resolveProfileUsername } from "@/lib/profile-identity";
 import { INVITE_EXPIRATION_DEFAULT_HOURS, formatInviteDurationLabel } from "@/lib/app-config";
 
@@ -25,6 +28,8 @@ type DirectoryProfile = {
   id: string;
   username: string | null;
   display_name: string | null;
+  verified_badge?: boolean | null;
+  member_number?: number | null;
 };
 
 export default function MainNavbar() {
@@ -112,7 +117,7 @@ export default function MainNavbar() {
       const supabase = createClient();
       const { data, error } = await supabase
         .from("profiles")
-        .select("id,username,display_name")
+        .select("id,username,display_name,verified_badge,member_number")
         .not("username", "is", null)
         .order("display_name", { ascending: true })
         .limit(300);
@@ -227,6 +232,17 @@ export default function MainNavbar() {
       window.setTimeout(() => setSmokeInviteStatus(null), 2500);
     } catch (error: any) {
       setSmokeInviteStatus(typeof error?.message === "string" ? error.message : "Could not send smoke session invite.");
+    }
+  };
+
+  const handleAdminAction = async (targetUserId: string, action: AdminActionName, durationHours?: number) => {
+    setSmokeInviteStatus(null);
+    try {
+      const body = await runAdminUserAction({ targetUserId, action, durationHours });
+      setSmokeInviteStatus(body?.message || "Admin action applied.");
+      window.setTimeout(() => setSmokeInviteStatus(null), 2500);
+    } catch (error: any) {
+      setSmokeInviteStatus(typeof error?.message === "string" ? error.message : "Admin action failed.");
     }
   };
 
@@ -373,14 +389,19 @@ export default function MainNavbar() {
                   ) : (
                     usersList.map((profile) => (
                       <div key={profile.id} className="rounded-lg border border-cyan-300/15 bg-slate-950/60 px-3 py-2 text-sm text-cyan-100">
-                        <Link
-                          href={`/profile/${encodeURIComponent(profile.username || "")}`}
-                          className="block transition hover:text-cyan-50"
-                          onClick={() => setUsersOpen(false)}
-                        >
-                          <span className="font-semibold">{profile.display_name || profile.username || "DyeSpace User"}</span>
-                          <span className="ml-2 text-xs text-cyan-300/80">@{profile.username}</span>
-                        </Link>
+                        <div className="flex items-start justify-between gap-3">
+                          <UserIdentity
+                            displayName={profile.display_name}
+                            username={profile.username}
+                            verifiedBadge={profile.verified_badge}
+                            memberNumber={profile.member_number}
+                            className="min-w-0"
+                            nameClassName="font-semibold text-cyan-100 hover:text-cyan-50"
+                            usernameClassName="text-xs text-cyan-300/80 hover:text-cyan-100 hover:underline"
+                            metaClassName="text-xs text-cyan-300/60"
+                          />
+                          {isAdmin && session?.user?.id && profile.id !== session.user.id ? <AdminActionMenu targetUserId={profile.id} onAction={handleAdminAction} align="left" /> : null}
+                        </div>
                         {isAdmin && session?.user?.id && profile.id !== session.user.id ? (
                           <button
                             type="button"

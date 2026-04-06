@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
       },
       { onConflict: "id", ignoreDuplicates: false }
     )
-    .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings, created_at")
+    .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings, verified_badge, member_number, created_at")
     .limit(1)
     .maybeSingle();
 

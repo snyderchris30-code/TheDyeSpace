@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createAdminClient, userIsAdmin } from "@/lib/admin-utils";
+import { type AdminActionName } from "@/lib/admin-actions";
 
 type AdminActionBody = {
   targetUserId?: string;
-  action?: "mute" | "cosmic_timeout" | "send_to_void" | "cosmic_blessing" | "shadow_ban" | "clear_shadow_ban" | "invite_smoke_room_2" | "revoke_smoke_room_2";
+  action?: AdminActionName;
   durationHours?: number;
 };
 
-const VALID_ACTIONS = ["mute", "cosmic_timeout", "send_to_void", "cosmic_blessing", "shadow_ban", "clear_shadow_ban", "invite_smoke_room_2", "revoke_smoke_room_2"] as const;
+const VALID_ACTIONS: AdminActionName[] = ["mute", "cosmic_timeout", "send_to_void", "shadow_ban", "clear_shadow_ban", "give_verified_badge", "remove_verified_badge", "invite_smoke_room_2", "revoke_smoke_room_2"];
 const MUTE_DURATIONS = [4, 8, 12];
+const SHADOW_BAN_DURATIONS = [4, 8, 12, 24];
 const VOID_DURATION_HOURS = 24;
-const BLESS_DURATION_HOURS = 24;
+const COSMIC_TIMEOUT_DURATIONS = [4];
 
 export async function POST(req: NextRequest) {
   try {
@@ -63,7 +65,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "cosmic_timeout") {
-      if (!durationHours || !MUTE_DURATIONS.includes(durationHours)) {
+      if (!durationHours || !COSMIC_TIMEOUT_DURATIONS.includes(durationHours)) {
         return NextResponse.json({ error: "Invalid cosmic timeout duration." }, { status: 400 });
       }
       const expiresAt = new Date(now.getTime() + durationHours * 60 * 60 * 1000).toISOString();
@@ -77,23 +79,17 @@ export async function POST(req: NextRequest) {
       message = `User sent to the Void for ${VOID_DURATION_HOURS} hours.`;
     }
 
-    if (action === "cosmic_blessing") {
-      const expiresAt = new Date(now.getTime() + BLESS_DURATION_HOURS * 60 * 60 * 1000).toISOString();
-      updates = { blessed_until: expiresAt };
-      message = `Cosmic blessing granted for ${BLESS_DURATION_HOURS} hours.`;
-    }
-
     if (action === "shadow_ban") {
-      const expiresAt = durationHours
-        ? new Date(now.getTime() + durationHours * 60 * 60 * 1000).toISOString()
-        : null;
+      if (!durationHours || !SHADOW_BAN_DURATIONS.includes(durationHours)) {
+        return NextResponse.json({ error: "Invalid shadow ban duration." }, { status: 400 });
+      }
+
+      const expiresAt = new Date(now.getTime() + durationHours * 60 * 60 * 1000).toISOString();
       updates = {
         shadow_banned: true,
         shadow_banned_until: expiresAt,
       };
-      message = expiresAt
-        ? `User shadow banned for ${durationHours} hours.`
-        : "User shadow banned indefinitely.";
+      message = `User shadow banned for ${durationHours} hours.`;
     }
 
     if (action === "clear_shadow_ban") {
@@ -102,6 +98,16 @@ export async function POST(req: NextRequest) {
         shadow_banned_until: null,
       };
       message = "Shadow ban removed.";
+    }
+
+    if (action === "give_verified_badge") {
+      updates = { verified_badge: true };
+      message = "Verified Badge granted.";
+    }
+
+    if (action === "remove_verified_badge") {
+      updates = { verified_badge: false };
+      message = "Verified Badge removed.";
     }
 
     if (action === "invite_smoke_room_2") {

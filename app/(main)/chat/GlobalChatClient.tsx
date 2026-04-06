@@ -1,5 +1,8 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
+import AdminActionMenu from "@/app/AdminActionMenu";
+import UserIdentity from "@/app/UserIdentity";
+import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import { createClient } from "@/lib/supabase/client";
 
 interface ChatMessage {
@@ -9,12 +12,17 @@ interface ChatMessage {
   message: string;
   created_at: string;
   room?: string | null;
+  author?: ProfileFlags | null;
 }
 
 type ProfileFlags = {
   id: string;
   role?: string | null;
   smoke_room_2_invited?: boolean | null;
+  username?: string | null;
+  display_name?: string | null;
+  verified_badge?: boolean | null;
+  member_number?: number | null;
   shadow_banned?: boolean | null;
   shadow_banned_until?: string | null;
 };
@@ -39,6 +47,7 @@ export default function GlobalChat() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [canAccessRoom2, setCanAccessRoom2] = useState(false);
   const [adminActionStatus, setAdminActionStatus] = useState<string | null>(null);
+  const [viewerProfile, setViewerProfile] = useState<ProfileFlags | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -55,13 +64,14 @@ export default function GlobalChat() {
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("role,smoke_room_2_invited")
+        .select("id,role,smoke_room_2_invited,username,display_name,verified_badge,member_number")
         .eq("id", nextUser.id)
         .maybeSingle();
 
       const admin = profile?.role === "admin";
       setIsAdmin(admin);
       setCanAccessRoom2(admin || profile?.smoke_room_2_invited === true);
+      setViewerProfile((profile as ProfileFlags) ?? null);
     });
   }, []);
 
@@ -79,11 +89,6 @@ export default function GlobalChat() {
     }
 
     const rows = data as ChatMessage[];
-    if (isAdmin) {
-      setMessages(rows);
-      setLoading(false);
-      return;
-    }
 
     const userIds = [...new Set(rows.map((row) => row.user_id).filter(Boolean))];
     if (!userIds.length) {
@@ -94,18 +99,18 @@ export default function GlobalChat() {
 
     const { data: profiles } = await supabase
       .from("profiles")
-      .select("id,shadow_banned,shadow_banned_until")
+      .select("id,username,display_name,verified_badge,member_number,shadow_banned,shadow_banned_until")
       .in("id", userIds);
 
     const profileById = new Map<string, ProfileFlags>();
     (profiles || []).forEach((profile) => profileById.set(profile.id, profile as ProfileFlags));
 
-    setMessages(
-      rows.filter((msg) => {
+    const visibleRows = isAdmin ? rows : rows.filter((msg) => {
         if (msg.user_id === user?.id) return true;
         return !profileIsShadowBanned(profileById.get(msg.user_id));
-      })
-    );
+      });
+
+    setMessages(visibleRows.map((msg) => ({ ...msg, author: profileById.get(msg.user_id) ?? null })));
 
     setLoading(false);
   }, [isAdmin, user?.id]);
@@ -163,6 +168,7 @@ export default function GlobalChat() {
       message: text,
       created_at: new Date().toISOString(),
       room: MAIN_ROOM,
+      author: viewerProfile,
     };
     setMessages((msgs) => [...msgs, optimistic]);
     setInput("");
@@ -219,27 +225,20 @@ export default function GlobalChat() {
   const handleAdminAction = useCallback(
     async (
       targetUserId: string,
-      action: "mute" | "shadow_ban" | "clear_shadow_ban" | "invite_smoke_room_2" | "revoke_smoke_room_2",
+      action: AdminActionName,
       durationHours?: number
     ) => {
       if (!user?.id || !isAdmin) return;
       setAdminActionStatus(null);
       try {
-        const res = await fetch("/api/admin/users", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ targetUserId, action, durationHours }),
-        });
-        const body = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(body?.error || "Admin action failed.");
-        }
+        const body = await runAdminUserAction({ targetUserId, action, durationHours });
         setAdminActionStatus(body?.message || "Admin action applied.");
+        await fetchMessages();
       } catch (error: any) {
         setAdminActionStatus(typeof error?.message === "string" ? error.message : "Admin action failed.");
       }
     },
-    [isAdmin, user?.id]
+    [fetchMessages, isAdmin, user?.id]
   );
 
   return (
@@ -263,8 +262,17 @@ export default function GlobalChat() {
           messages.map((msg) => (
             <div key={msg.id} className="flex items-start gap-2 group bg-black/30 rounded-xl p-2 hover:bg-cyan-900/20 transition">
               <div className="flex-1">
-                <span className="font-bold text-cyan-200">{msg.username}</span>
-                <span className="ml-2 text-xs text-cyan-400">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                <UserIdentity
+                  displayName={msg.author?.display_name || msg.author?.username || msg.username}
+                  username={msg.author?.username ?? null}
+                  verifiedBadge={msg.author?.verified_badge}
+                  memberNumber={msg.author?.member_number}
+                  timestampText={new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  className="mb-1"
+                  nameClassName="font-bold text-cyan-200 hover:text-cyan-100"
+                  usernameClassName="text-xs text-cyan-300/80 hover:text-cyan-100 hover:underline"
+                  metaClassName="text-xs text-cyan-400"
+                />
                 {editingId === msg.id ? (
                   <div className="mt-1 flex gap-2">
                     <input
@@ -306,46 +314,7 @@ export default function GlobalChat() {
                     </button>
                   </>
                 ) : user && isAdmin ? (
-                  <details className="relative">
-                    <summary className="cursor-pointer text-xs text-violet-300 hover:underline">Admin</summary>
-                    <div className="absolute right-0 z-20 mt-1 w-48 rounded-xl border border-violet-300/25 bg-slate-950/95 p-2 shadow-xl">
-                      <button
-                        type="button"
-                        className="mb-1 w-full rounded-lg border border-fuchsia-300/30 bg-fuchsia-500/10 px-2 py-1 text-left text-[11px] text-fuchsia-100 hover:bg-fuchsia-500/15"
-                        onClick={() => void handleAdminAction(msg.user_id, "mute", 4)}
-                      >
-                        Mute 4h
-                      </button>
-                      <button
-                        type="button"
-                        className="mb-1 w-full rounded-lg border border-rose-300/30 bg-rose-500/10 px-2 py-1 text-left text-[11px] text-rose-100 hover:bg-rose-500/15"
-                        onClick={() => void handleAdminAction(msg.user_id, "shadow_ban")}
-                      >
-                        Shadow Ban
-                      </button>
-                      <button
-                        type="button"
-                        className="mb-1 w-full rounded-lg border border-teal-300/30 bg-teal-500/10 px-2 py-1 text-left text-[11px] text-teal-100 hover:bg-teal-500/15"
-                        onClick={() => void handleAdminAction(msg.user_id, "clear_shadow_ban")}
-                      >
-                        Remove Shadow Ban
-                      </button>
-                      <button
-                        type="button"
-                        className="mb-1 w-full rounded-lg border border-red-300/30 bg-red-500/10 px-2 py-1 text-left text-[11px] text-red-100 hover:bg-red-500/15"
-                        onClick={() => void handleAdminAction(msg.user_id, "invite_smoke_room_2")}
-                      >
-                        Invite to 2.0
-                      </button>
-                      <button
-                        type="button"
-                        className="w-full rounded-lg border border-slate-300/30 bg-slate-500/10 px-2 py-1 text-left text-[11px] text-slate-100 hover:bg-slate-500/15"
-                        onClick={() => void handleAdminAction(msg.user_id, "revoke_smoke_room_2")}
-                      >
-                        Revoke 2.0 Invite
-                      </button>
-                    </div>
-                  </details>
+                  <AdminActionMenu targetUserId={msg.user_id} onAction={handleAdminAction} />
                 ) : user ? (
                   <button
                     className="text-xs text-pink-400 hover:underline"

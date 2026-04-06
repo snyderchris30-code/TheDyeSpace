@@ -6,10 +6,13 @@ import dynamic from "next/dynamic";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import AdminActionMenu from "@/app/AdminActionMenu";
 import Link from "next/link";
 import { fontClass, resolveProfileAppearance, type ProfileAppearance } from "@/lib/profile-theme";
 import { normalizePostImageUrls } from "@/lib/post-media";
 import InlineEmojiText from "@/app/InlineEmojiText";
+import UserIdentity from "@/app/UserIdentity";
+import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import { Home, Users, BookOpen, PartyPopper, Tag, Ban } from "lucide-react";
 
 type ExplorePost = {
@@ -24,6 +27,8 @@ type ExplorePost = {
   author_at_name?: string;
   author_username?: string | null;
   author_theme?: ProfileAppearance | null;
+  author_verified_badge?: boolean;
+  author_member_number?: number | null;
 };
 
 type ProfileRow = {
@@ -31,6 +36,8 @@ type ProfileRow = {
   username: string | null;
   display_name: string | null;
   theme_settings?: ProfileAppearance | null;
+  verified_badge?: boolean | null;
+  member_number?: number | null;
   shadow_banned?: boolean | null;
   shadow_banned_until?: string | null;
 };
@@ -143,6 +150,8 @@ export default function ExplorePage() {
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [viewerIsAdmin, setViewerIsAdmin] = useState(false);
   const [marketplaceOnly, setMarketplaceOnly] = useState(false);
+  const [adminActionStatus, setAdminActionStatus] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -258,7 +267,7 @@ export default function ExplorePage() {
         if (userIds.length) {
           const { data: profilesData, error: profilesError } = await supabase
             .from("profiles")
-            .select("id,username,display_name,theme_settings,shadow_banned,shadow_banned_until")
+            .select("id,username,display_name,theme_settings,verified_badge,member_number,shadow_banned,shadow_banned_until")
             .in("id", userIds);
 
           if (profilesError) {
@@ -278,6 +287,8 @@ export default function ExplorePage() {
             author_at_name: formatAtName(profile),
             author_username: profile?.username ?? null,
             author_theme: profile?.theme_settings ?? null,
+            author_verified_badge: profile?.verified_badge === true,
+            author_member_number: profile?.member_number ?? null,
           };
         });
 
@@ -304,7 +315,18 @@ export default function ExplorePage() {
     return () => {
       active = false;
     };
-  }, [tab, search, marketplaceOnly, viewerIsAdmin, sessionUserId]);
+  }, [marketplaceOnly, reloadKey, search, sessionUserId, tab, viewerIsAdmin]);
+
+  const handleAdminAction = useCallback(async (targetUserId: string, action: AdminActionName, durationHours?: number) => {
+    setAdminActionStatus(null);
+    try {
+      const body = await runAdminUserAction({ targetUserId, action, durationHours });
+      setAdminActionStatus(body?.message || "Admin action applied successfully.");
+      setReloadKey((value) => value + 1);
+    } catch (error: any) {
+      setAdminActionStatus(typeof error?.message === "string" ? error.message : "Admin action failed.");
+    }
+  }, []);
 
   const title = useMemo(() => {
     if (tab === "following") return "Following Feed";
@@ -387,6 +409,7 @@ export default function ExplorePage() {
 
         {loading && <p className="text-cyan-200">Loading posts...</p>}
         {error && <p className="text-rose-300">{error}</p>}
+        {adminActionStatus ? <p className="mb-4 text-sm text-cyan-100">{adminActionStatus}</p> : null}
 
         {!loading && !error && posts.length === 0 && (
           <div className="rounded-2xl border border-cyan-300/20 bg-slate-950/45 p-8 text-cyan-100/75">
@@ -414,20 +437,16 @@ export default function ExplorePage() {
                   className="mb-3 block whitespace-pre-wrap text-sm leading-6 text-[color:var(--post-text)]/92 sm:text-base sm:leading-7"
                 />
               <div className="mb-3">
-                <Link
-                  href={post.author_username ? `/profile/${post.author_username}` : '#'}
-                  className="text-sm font-semibold text-[color:var(--post-text)] hover:text-[color:var(--post-highlight)] hover:underline"
-                  prefetch={false}
-                >
-                  {post.author_display_name || "DyeSpace User"}
-                </Link>
-                <Link
-                  href={post.author_username ? `/profile/${post.author_username}` : '#'}
-                  className="ml-1 text-xs text-[color:var(--post-highlight)]/85 hover:text-[color:var(--post-highlight)] hover:underline"
-                  prefetch={false}
-                >
-                  @{post.author_username || "dyespace-user"}
-                </Link>
+                <UserIdentity
+                  displayName={post.author_display_name || "DyeSpace User"}
+                  username={post.author_username || null}
+                  verifiedBadge={post.author_verified_badge === true}
+                  memberNumber={post.author_member_number ?? null}
+                  className="min-w-0"
+                  nameClassName="text-sm font-semibold text-[color:var(--post-text)] hover:text-[color:var(--post-highlight)] hover:underline"
+                  usernameClassName="text-xs text-[color:var(--post-highlight)]/85 hover:text-[color:var(--post-highlight)] hover:underline"
+                  metaClassName="text-xs text-[color:var(--post-text)]/55"
+                />
                 {getCategoryMeta(post.content) ? (
                   <Link
                     href={`/explore?tab=${encodeURIComponent(getCategoryMeta(post.content)!.value)}`}
@@ -471,7 +490,10 @@ export default function ExplorePage() {
                 <span>{new Date(post.created_at).toLocaleString()}</span>
                 <span>{post.likes} likes</span>
               </div>
-              <ReportPostButton postId={post.id} />
+              <div className="flex items-center justify-between gap-3">
+                <ReportPostButton postId={post.id} />
+                {viewerIsAdmin && sessionUserId !== post.user_id ? <AdminActionMenu targetUserId={post.user_id} onAction={handleAdminAction} /> : null}
+              </div>
             </article>
           ))}
         </div>

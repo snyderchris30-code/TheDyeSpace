@@ -43,6 +43,8 @@ export type InteractionProfileRow = {
   username: string | null;
   display_name: string | null;
   avatar_url: string | null;
+  verified_badge?: boolean | null;
+  member_number?: number | null;
   theme_settings?: ProfileAppearance | null;
 };
 
@@ -56,6 +58,8 @@ export type AggregatedPostComment = {
     username: string | null;
     display_name: string | null;
     avatar_url: string | null;
+    verified_badge?: boolean | null;
+    member_number?: number | null;
     theme_settings?: ProfileAppearance | null;
   };
 };
@@ -165,6 +169,8 @@ export function buildInteractionsByPost(
           username: profile.username ?? null,
           display_name: profile.display_name ?? null,
           avatar_url: profile.avatar_url ?? null,
+          verified_badge: profile.verified_badge ?? null,
+          member_number: profile.member_number ?? null,
           theme_settings: themeSettings,
         },
       });
@@ -229,6 +235,8 @@ export function buildInteractionsFromRows(
         username: author?.username ?? null,
         display_name: author?.display_name ?? null,
         avatar_url: author?.avatar_url ?? null,
+        verified_badge: author?.verified_badge ?? null,
+        member_number: author?.member_number ?? null,
         theme_settings: author?.theme_settings ?? null,
       },
     });

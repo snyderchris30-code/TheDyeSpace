@@ -19,7 +19,8 @@ type FeedPost = {
   author_username: string | null;
   author_theme: ProfileAppearance | null;
   author_voided_until: string | null;
-  author_blessed_until: string | null;
+  author_verified_badge: boolean;
+  author_member_number: number | null;
 };
 
 type ProfileRow = {
@@ -28,7 +29,8 @@ type ProfileRow = {
   display_name: string | null;
   theme_settings?: ProfileAppearance | null;
   voided_until?: string | null;
-  blessed_until?: string | null;
+  verified_badge?: boolean | null;
+  member_number?: number | null;
   shadow_banned?: boolean | null;
   shadow_banned_until?: string | null;
   role?: string | null;
@@ -101,7 +103,7 @@ export async function GET(request: NextRequest) {
   if (userIds.length) {
     const { data: profilesData, error: profilesError } = await supabase
       .from("profiles")
-      .select("id,username,display_name,theme_settings,voided_until,blessed_until,shadow_banned,shadow_banned_until")
+      .select("id,username,display_name,theme_settings,voided_until,verified_badge,member_number,shadow_banned,shadow_banned_until")
       .in("id", userIds);
 
     if (!profilesError) {
@@ -129,7 +131,8 @@ export async function GET(request: NextRequest) {
       author_username: profile?.username ?? null,
       author_theme: profile?.theme_settings ?? null,
       author_voided_until: profile?.voided_until ?? null,
-      author_blessed_until: profile?.blessed_until ?? null,
+      author_verified_badge: profile?.verified_badge === true,
+      author_member_number: profile?.member_number ?? null,
     };
   });
 

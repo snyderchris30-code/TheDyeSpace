@@ -20,7 +20,7 @@ function isShadowBanned(profile?: { shadow_banned?: boolean | null; shadow_banne
 async function loadLegacyInteractions(adminClient: ReturnType<typeof createAdminClient>, postIds: string[], viewerId?: string | null) {
   const { data: profiles, error } = await adminClient
     .from("profiles")
-    .select("id, username, display_name, avatar_url, theme_settings");
+    .select("id, username, display_name, avatar_url, verified_badge, member_number, theme_settings");
 
   if (error) {
     throw error;
@@ -75,7 +75,7 @@ async function loadRelationalInteractions(adminClient: ReturnType<typeof createA
   if (userIds.length) {
     const primaryProfileResponse = await adminClient
       .from("profiles")
-      .select("id, username, display_name, avatar_url, theme_settings, voided_until, shadow_banned, shadow_banned_until")
+      .select("id, username, display_name, avatar_url, verified_badge, member_number, theme_settings, voided_until, shadow_banned, shadow_banned_until")
       .in("id", userIds);
 
     const missingStatusColumns = String(primaryProfileResponse.error?.message || "").includes("Could not find the")
@@ -89,7 +89,7 @@ async function loadRelationalInteractions(adminClient: ReturnType<typeof createA
     if (missingStatusColumns) {
       const fallbackProfileResponse = await adminClient
         .from("profiles")
-        .select("id, username, display_name, avatar_url, theme_settings")
+        .select("id, username, display_name, avatar_url, verified_badge, member_number, theme_settings")
         .in("id", userIds);
       profileRows = fallbackProfileResponse.data as typeof profileRows;
       profilesError = fallbackProfileResponse.error;

@@ -5,7 +5,8 @@ export type AdminProfileStatus = {
   role?: string | null;
   muted_until?: string | null;
   voided_until?: string | null;
-  blessed_until?: string | null;
+  verified_badge?: boolean | null;
+  member_number?: number | null;
   shadow_banned?: boolean | null;
   shadow_banned_until?: string | null;
   smoke_room_2_invited?: boolean | null;
@@ -42,7 +43,7 @@ export async function userIsAdmin(adminClient: ReturnType<typeof createAdminClie
 export async function loadProfileStatus(adminClient: ReturnType<typeof createAdminClient>, userId: string) {
   const { data, error } = await adminClient
     .from("profiles")
-    .select("id,role,muted_until,voided_until,blessed_until,shadow_banned,shadow_banned_until,smoke_room_2_invited")
+    .select("id,role,muted_until,voided_until,verified_badge,member_number,shadow_banned,shadow_banned_until,smoke_room_2_invited")
     .eq("id", userId)
     .limit(1)
     .maybeSingle<AdminProfileStatus>();
@@ -66,10 +67,8 @@ export function isVoided(profile?: Pick<AdminProfileStatus, "voided_until"> | nu
   return !Number.isNaN(until.getTime()) && until > new Date();
 }
 
-export function isBlessed(profile?: Pick<AdminProfileStatus, "blessed_until"> | null) {
-  if (!profile?.blessed_until) return false;
-  const until = new Date(profile.blessed_until);
-  return !Number.isNaN(until.getTime()) && until > new Date();
+export function hasVerifiedBadge(profile?: Pick<AdminProfileStatus, "verified_badge"> | null) {
+  return profile?.verified_badge === true;
 }
 
 export function isShadowBanned(profile?: Pick<AdminProfileStatus, "shadow_banned" | "shadow_banned_until"> | null) {

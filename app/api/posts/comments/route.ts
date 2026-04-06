@@ -157,7 +157,7 @@ async function createCommentNotification(
 async function loadLegacyInteraction(adminClient: ReturnType<typeof createAdminClient>, postId: string, viewerId?: string | null) {
   const { data: profiles, error } = await adminClient
     .from("profiles")
-    .select("id, username, display_name, avatar_url, theme_settings");
+    .select("id, username, display_name, avatar_url, verified_badge, member_number, theme_settings");
 
   if (error) {
     throw error;
@@ -205,7 +205,7 @@ async function loadRelationalInteraction(adminClient: ReturnType<typeof createAd
   if (userIds.length) {
     const primaryProfileResponse = await adminClient
       .from("profiles")
-      .select("id, username, display_name, avatar_url, shadow_banned, shadow_banned_until")
+      .select("id, username, display_name, avatar_url, verified_badge, member_number, shadow_banned, shadow_banned_until")
       .in("id", userIds);
 
     const missingShadowColumns = String(primaryProfileResponse.error?.message || "").includes("Could not find the")
@@ -218,7 +218,7 @@ async function loadRelationalInteraction(adminClient: ReturnType<typeof createAd
     if (missingShadowColumns) {
       const fallbackProfileResponse = await adminClient
         .from("profiles")
-        .select("id, username, display_name, avatar_url")
+        .select("id, username, display_name, avatar_url, verified_badge, member_number")
         .in("id", userIds);
       profileRows = fallbackProfileResponse.data as typeof profileRows;
       profilesError = fallbackProfileResponse.error;

@@ -19,6 +19,8 @@ export interface Profile {
   avatar_url: string | null;
   banner_url: string | null;
   theme_settings: ProfileThemeSettings | null;
+  verified_badge?: boolean | null;
+  member_number?: number | null;
   created_at: string;
 }
 
