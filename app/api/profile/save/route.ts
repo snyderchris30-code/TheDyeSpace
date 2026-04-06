@@ -24,6 +24,7 @@ type SaveBody = {
   font_style?: FontStyle;
   youtube_urls?: string[];
   music_player_urls?: string[];
+  show_music_player?: boolean;
 };
 
 export async function POST(req: NextRequest) {
@@ -67,6 +68,7 @@ export async function POST(req: NextRequest) {
     font_style?: FontStyle | null;
     youtube_urls?: string[] | null;
     music_player_urls?: string[] | null;
+    show_music_player?: boolean | null;
   };
 
   const safeUsername = resolveProfileUsername(
@@ -111,6 +113,7 @@ export async function POST(req: NextRequest) {
           font_style: nextFontStyle,
           youtube_urls: nextYoutubeUrls,
           music_player_urls: nextMusicPlayerUrls,
+          show_music_player: body.show_music_player ?? existingThemeSettings.show_music_player ?? true,
         },
       },
       { onConflict: "id", ignoreDuplicates: false }

@@ -68,6 +68,7 @@ type FormState = {
   highlight_color: string;
   font_style: FontStyle;
   youtube_urls: string[];
+  show_music_player: boolean;
 };
 
 type PlaylistSong = {
@@ -257,6 +258,7 @@ export default function ProfileEditor() {
     highlight_color: DEFAULT_HIGHLIGHT_COLOR,
     font_style: DEFAULT_FONT_STYLE,
     youtube_urls: [],
+    show_music_player: true,
   });
   const [draft, setDraft] = useState<FormState>({
     display_name: "",
@@ -269,6 +271,7 @@ export default function ProfileEditor() {
     highlight_color: DEFAULT_HIGHLIGHT_COLOR,
     font_style: DEFAULT_FONT_STYLE,
     youtube_urls: [],
+    show_music_player: true,
   });
   const [editing, setEditing] = useState(false);
   const [posts, setPosts] = useState<ProfilePost[]>([]);
@@ -296,6 +299,7 @@ export default function ProfileEditor() {
       highlight_color: appearance?.highlight_color || DEFAULT_HIGHLIGHT_COLOR,
       font_style: normalizeFontStyle(appearance?.font_style),
       youtube_urls: normalizeYoutubeUrls(Array.isArray(appearance?.youtube_urls) ? appearance.youtube_urls : []),
+      show_music_player: appearance?.show_music_player !== false,
     };
     setForm(nextForm);
     setDraft(nextForm);
@@ -638,6 +642,7 @@ export default function ProfileEditor() {
         highlight_color: payloadState.highlight_color,
         font_style: payloadState.font_style,
         youtube_urls: payloadState.youtube_urls,
+        show_music_player: payloadState.show_music_player,
       };
 
       const saveRes = await fetch("/api/profile/save", {
@@ -1702,6 +1707,16 @@ export default function ProfileEditor() {
                   ) : (
                     <p className="mt-3 text-xs text-cyan-100/60">No songs added yet.</p>
                   )}
+
+                  <label className="mt-4 flex items-center gap-3 rounded-xl border border-cyan-300/20 bg-slate-950/40 px-3 py-2 text-sm text-cyan-100">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-cyan-300/30 bg-black/40"
+                      checked={draft.show_music_player}
+                      onChange={(e) => setDraft((prev) => ({ ...prev, show_music_player: e.target.checked }))}
+                    />
+                    <span>Show Music Player</span>
+                  </label>
                 </div>
 
                 <div className="sm:col-span-2 rounded-2xl border border-cyan-300/20 bg-black/25 p-4">

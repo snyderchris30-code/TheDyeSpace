@@ -27,6 +27,7 @@ export type ProfileAppearance = {
   font_style?: FontStyle | null;
   youtube_urls?: string[] | null;
   music_player_urls?: string[] | null;
+  show_music_player?: boolean | null;
 };
 
 export type ProfilePalette = {

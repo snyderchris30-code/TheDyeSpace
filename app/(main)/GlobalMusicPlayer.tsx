@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { buildMusicQueue, extractYoutubeVideoId, normalizeMusicPlayerUrls, type MusicQueueEntry } from "@/lib/youtube-media";
 import { DEFAULT_PUBLIC_MUSIC_TITLE, DEFAULT_PUBLIC_MUSIC_URL } from "@/lib/app-config";
 import { useRouter } from "next/navigation";
+import { useMusicPlayerContext } from "@/app/MusicPlayerContext";
 
 declare global {
   interface Window {
@@ -60,11 +61,18 @@ export default function GlobalMusicPlayer() {
   const [musicUrls, setMusicUrls] = useState<string[]>([]);
   const [isApiReady, setIsApiReady] = useState(false);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const {
+    isPlaying,
+    setIsPlaying,
+    currentIndex,
+    setCurrentIndex,
+    isMinimized,
+    setIsMinimized,
+    isVisible,
+    setIsVisible,
+  } = useMusicPlayerContext();
   const [isManagerOpen, setIsManagerOpen] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  const [currentIndex, setCurrentIndex] = useState(0);
   const [currentTitle, setCurrentTitle] = useState(DEFAULT_PUBLIC_MUSIC_TITLE);
   const [titleCache, setTitleCache] = useState<Record<string, string>>({});
 
@@ -119,11 +127,15 @@ export default function GlobalMusicPlayer() {
           : []
       );
 
+      const showMusicPlayer =
+        (data?.theme_settings as { show_music_player?: boolean | null } | null)?.show_music_player !== false;
+
       setProfileUsername(data?.username || null);
       setMusicUrls(nextUrls);
+      setIsVisible(showMusicPlayer);
       setStatus(null);
     },
-    [supabase]
+    [setIsVisible, supabase]
   );
 
   const persistPlaylist = useCallback(async (nextUrls: string[], successMessage?: string) => {
@@ -178,6 +190,7 @@ export default function GlobalMusicPlayer() {
       setProfileUsername(null);
       setMusicUrls([]);
       setCurrentIndex(0);
+      setIsVisible(true);
       setCurrentTitle(DEFAULT_PUBLIC_MUSIC_TITLE);
       setIsPlaying(false);
       setStatus(null);
@@ -189,7 +202,7 @@ export default function GlobalMusicPlayer() {
     return () => {
       listener?.subscription.unsubscribe();
     };
-  }, [loadProfileMusic, supabase]);
+  }, [loadProfileMusic, setCurrentIndex, setIsPlaying, setIsVisible, supabase]);
 
   useEffect(() => {
     if (!isApiReady || !playerMountRef.current || playerRef.current) {
@@ -399,6 +412,10 @@ export default function GlobalMusicPlayer() {
 
   const currentLabel = currentEntry ? titleCache[currentEntry.key] || currentTitle || currentEntry.titleHint : "Nothing playing";
 
+  if (session?.user && !isVisible) {
+    return null;
+  }
+
   return (
     <>
       <div ref={playerMountRef} className="pointer-events-none absolute h-px w-px overflow-hidden opacity-0" aria-hidden="true" />
@@ -406,7 +423,7 @@ export default function GlobalMusicPlayer() {
         <div className="overflow-hidden rounded-[1.75rem] border border-cyan-300/30 bg-[linear-gradient(135deg,rgba(6,12,24,0.94),rgba(10,20,34,0.92),rgba(8,28,31,0.9))] shadow-[0_24px_60px_rgba(0,0,0,0.42)] backdrop-blur-xl">
           <div className="flex items-center justify-between gap-3 border-b border-cyan-300/15 px-4 py-3">
             <div className="min-w-0">
-              <p className="text-[10px] uppercase tracking-[0.35em] text-cyan-300/75">Home Player</p>
+              <p className="text-[10px] uppercase tracking-[0.35em] text-cyan-300/75">Music Player</p>
               <div className="mt-1 flex items-center gap-2">
                 <Music2 className="h-4 w-4 shrink-0 text-cyan-300" />
                 <p className="truncate text-sm font-semibold text-cyan-50">{currentLabel}</p>
@@ -416,9 +433,9 @@ export default function GlobalMusicPlayer() {
               <button
                 type="button"
                 className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1 text-[11px] font-semibold text-cyan-100 hover:bg-cyan-300/20"
-                onClick={() => setIsCollapsed((prev) => !prev)}
+                onClick={() => setIsMinimized((prev) => !prev)}
               >
-                {isCollapsed ? "Open" : "Hide"}
+                {isMinimized ? "Open" : "Hide"}
               </button>
               <button
                 type="button"
@@ -430,7 +447,7 @@ export default function GlobalMusicPlayer() {
             </div>
           </div>
 
-          {!isCollapsed ? (
+          {!isMinimized ? (
             <div className="space-y-4 px-4 py-4">
               <div className="rounded-[1.35rem] border border-cyan-300/20 bg-black/25 px-4 py-3">
                 <div className="flex items-center justify-between gap-3">

@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { APP_VERSION } from '@/lib/app-config';
+import { MusicPlayerProvider } from './MusicPlayerContext';
 
 function FreshDataRuntime() {
   const pathname = usePathname();
@@ -78,8 +79,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <FreshDataRuntime />
-      {children}
+      <MusicPlayerProvider>
+        <FreshDataRuntime />
+        {children}
+      </MusicPlayerProvider>
     </QueryClientProvider>
   );
 }

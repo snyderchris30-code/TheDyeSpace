@@ -37,6 +37,7 @@ import { Providers } from './providers';
 import PWARegister from './PWARegister';
 import BackgroundParallax from './BackgroundParallax';
 import AuthRecoveryRedirect from './AuthRecoveryRedirect';
+import GlobalMusicPlayer from './(main)/GlobalMusicPlayer';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -56,6 +57,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <main className="site-shell relative z-10 flex flex-col flex-1 pt-16 overflow-y-auto overflow-x-hidden">
             {children}
           </main>
+          <GlobalMusicPlayer />
         </Providers>
       </body>
     </html>

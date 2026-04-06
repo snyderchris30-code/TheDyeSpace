@@ -61,6 +61,7 @@ export async function POST() {
           highlight_color: DEFAULT_HIGHLIGHT_COLOR,
           font_style: DEFAULT_FONT_STYLE,
           youtube_urls: [],
+          show_music_player: true,
         },
       },
       { onConflict: "id", ignoreDuplicates: false }

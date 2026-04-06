@@ -1,7 +1,6 @@
 "use client";
 
 import MainNavbar from "./MainNavbar";
-import GlobalMusicPlayer from "./GlobalMusicPlayer";
 
 export default function MainLayoutClient({ children }: { children: React.ReactNode }) {
   return (
@@ -10,7 +9,6 @@ export default function MainLayoutClient({ children }: { children: React.ReactNo
       <div className="flex-1 overflow-y-auto overflow-x-hidden pb-40">
         {children}
       </div>
-      <GlobalMusicPlayer />
     </div>
   );
 }
