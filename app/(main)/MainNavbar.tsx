@@ -470,9 +470,7 @@ export default function MainNavbar() {
           isActive={pathname?.startsWith("/suggestions")}
         />
 
-        {isLoggedIn ? (
-          <IconActionButton onClick={handleSignOut} label="Logout" icon={<LogOut size={18} />} />
-        ) : (
+        {isLoggedIn ? null : (
           <IconButton href="/login" label="Sign In" icon={<User size={18} />} isActive={pathname?.startsWith("/login")} />
         )}
       </div>

@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Lock } from "lucide-react";
 import Link from "next/link";
 import { sanitizeUsernameInput } from "@/lib/profile-identity";
+import { APP_VERSION } from "@/lib/app-config";
 
 export default function SettingsPage() {
   return (
@@ -105,8 +106,11 @@ function SettingsContent() {
 
   return (
     <div className="mx-auto max-w-lg py-8">
-      <div className="mb-8 flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-cyan-100">Account Settings</h1>
+      <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-cyan-100">Account Settings</h1>
+          <p className="mt-1 text-sm text-cyan-300">Version {APP_VERSION}</p>
+        </div>
         {username && username.length >= 3 && (
           <Link
             href={`/profile/${encodeURIComponent(username)}`}
