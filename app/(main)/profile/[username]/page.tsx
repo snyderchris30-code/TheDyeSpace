@@ -183,6 +183,34 @@ function buildPlaylist(urls: string[]): PlaylistSong[] {
     .filter((song): song is PlaylistSong => Boolean(song));
 }
 
+const PROFILE_LOAD_TIMEOUT_MS = 15000;
+const PROFILE_INIT_TIMEOUT_MS = 10000;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+    promise
+      .then((result) => {
+        window.clearTimeout(timer);
+        resolve(result);
+      })
+      .catch((error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
+async function fetchWithTimeout(input: RequestInfo, init: RequestInit | undefined, timeoutMs: number) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
 export default function ProfileEditor() {
   // Lightbox state for image modal
   const [lightbox, setLightbox] = useState<{ open: boolean; url: string | null }>({ open: false, url: null });
@@ -371,7 +399,12 @@ export default function ProfileEditor() {
       setIsOwner(true);
 
       try {
-        const existingProfile = await fetchProfileById(userId);
+        const existingProfile = await withTimeout(
+          fetchProfileById(userId),
+          PROFILE_LOAD_TIMEOUT_MS,
+          "Profile lookup timed out. Please refresh and try again."
+        );
+
         if (existingProfile) {
           applyProfileToForm(existingProfile);
           setIsAdmin(existingProfile.role === "admin");
@@ -383,7 +416,7 @@ export default function ProfileEditor() {
           return;
         }
 
-        const res = await fetch("/api/profile/init", { method: "POST" });
+        const res = await fetchWithTimeout("/api/profile/init", { method: "POST" }, PROFILE_INIT_TIMEOUT_MS);
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
           throw new Error(body?.error || "We could not initialize your profile yet. Please try again in a moment.");
@@ -413,7 +446,15 @@ export default function ProfileEditor() {
 
   const loadProfile = useCallback(async () => {
     try {
-      const { data } = await supabase.auth.getSession();
+      setLoading(true);
+      setLoadError(null);
+      setStatus(null);
+
+      const { data } = await withTimeout(
+        supabase.auth.getSession(),
+        PROFILE_LOAD_TIMEOUT_MS,
+        "Unable to validate session. Please refresh and try again."
+      );
       setSession(data.session);
       const sessionUser = data.session?.user;
 
@@ -424,7 +465,7 @@ export default function ProfileEditor() {
       }
 
       if (!routeUsername) {
-        return;
+        throw new Error("Unable to determine profile route.");
       }
 
       const isOwnRoute = Boolean(
@@ -438,17 +479,17 @@ export default function ProfileEditor() {
             )
       );
 
-      setLoading(true);
-      setLoadError(null);
-      setStatus(null);
-
       if (isOwnRoute && sessionUser) {
         await fetchOrCreateOwnProfile(sessionUser);
         return;
       }
 
       setIsOwner(false);
-      const viewedProfile = await fetchProfileByUsername(routeUsername);
+      const viewedProfile = await withTimeout(
+        fetchProfileByUsername(routeUsername),
+        PROFILE_LOAD_TIMEOUT_MS,
+        "Unable to load this profile. Please refresh and try again."
+      );
       if (!viewedProfile) {
         throw new Error("Profile not found.");
       }
@@ -464,7 +505,12 @@ export default function ProfileEditor() {
       applyProfileToForm(viewedProfile);
     } catch (error: any) {
       console.error("Failed to load profile:", error);
-      const message = typeof error?.message === "string" ? error.message : "Unable to load this profile.";
+      const message =
+        error?.name === "AbortError"
+          ? "Profile load timed out. Please refresh and try again."
+          : typeof error?.message === "string"
+          ? error.message
+          : "Unable to load this profile.";
       setLoadError(message);
       setStatus({ type: "error", text: message });
     } finally {

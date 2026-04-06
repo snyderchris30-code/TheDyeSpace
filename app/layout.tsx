@@ -35,7 +35,6 @@ export const viewport: Viewport = {
 import { Providers } from './providers';
 import PWARegister from './PWARegister';
 import BackgroundParallax from './BackgroundParallax';
-import MeltingRouteTransition from './MeltingRouteTransition';
 import AuthRecoveryRedirect from './AuthRecoveryRedirect';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -54,7 +53,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <BackgroundParallax />
           <div className="site-background" />
           <main className="site-shell relative z-10 flex flex-col flex-1 pt-16 overflow-y-auto overflow-x-hidden">
-            <MeltingRouteTransition>{children}</MeltingRouteTransition>
+            {children}
           </main>
         </Providers>
       </body>

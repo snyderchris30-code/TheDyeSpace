@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { sanitizeUsernameInput } from "@/lib/profile-identity";
 
 export default function ProfilePage() {
   const router = useRouter();
+  const [redirectError, setRedirectError] = useState<string | null>(null);
 
   useEffect(() => {
     const redirectToProfile = async () => {
@@ -46,9 +47,13 @@ export default function ProfilePage() {
         } else {
           router.replace("/");
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error("Error redirecting to profile:", error);
-        router.replace("/");
+        setRedirectError(
+          typeof error?.message === "string"
+            ? error.message
+            : "Unable to redirect to your profile. Please refresh and try again."
+        );
       }
     };
 
@@ -56,9 +61,26 @@ export default function ProfilePage() {
   }, [router]);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[70vh]">
-      <div className="text-center">
-        <p className="text-slate-300 text-lg">Loading your profile...</p>
+    <div className="flex flex-col items-center justify-center min-h-[70vh] px-4 text-center">
+      <div>
+        {redirectError ? (
+          <>
+            <h1 className="text-2xl font-semibold text-rose-100">Unable to load profile</h1>
+            <p className="mt-3 text-sm text-rose-200">{redirectError}</p>
+            <button
+              type="button"
+              className="mt-4 rounded-full border border-cyan-300/40 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-500/15"
+              onClick={() => {
+                setRedirectError(null);
+                void router.refresh();
+              }}
+            >
+              Retry
+            </button>
+          </>
+        ) : (
+          <p className="text-slate-300 text-lg">Loading your profile...</p>
+        )}
       </div>
     </div>
   );
