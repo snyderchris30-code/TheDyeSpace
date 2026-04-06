@@ -389,9 +389,18 @@ export default function MainFeedPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-3 py-5 sm:px-6 sm:py-8 lg:px-8">
-      <h1 className="mb-3 text-4xl leading-tight cosmic-headline sm:mb-4 sm:text-6xl lg:text-7xl">
-        TheDyeSpace;] <span className="mt-2 block text-lg leading-snug cosmic-headline-sub sm:inline sm:text-[1.35rem]">The Hub For Tie-Dye Loving Hippies.</span>
-      </h1>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-4">
+        <h1 className="text-4xl leading-tight cosmic-headline sm:text-6xl lg:text-7xl">
+          TheDyeSpace;] <span className="mt-2 block text-lg leading-snug cosmic-headline-sub sm:inline sm:text-[1.35rem]">The Hub For Tie-Dye Loving Hippies.</span>
+        </h1>
+        <Link
+          href="/chat"
+          className="inline-flex items-center gap-2 rounded-full border-4 border-red-600 bg-gradient-to-br from-red-700 via-red-500 to-red-700 px-8 py-4 text-2xl font-extrabold text-white shadow-lg hover:scale-105 hover:bg-red-700/90 transition-all"
+          style={{ boxShadow: "0 0 32px 4px rgba(239,68,68,0.25)" }}
+        >
+          <span role="img" aria-label="smoke">🚬</span> Smoke Lounge
+        </Link>
+      </div>
       <div className="mb-4 sm:mb-6">
         <Link
           href={session?.user ? "/create" : "/login?redirect=/create"}

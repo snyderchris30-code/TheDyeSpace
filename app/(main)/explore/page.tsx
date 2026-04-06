@@ -313,8 +313,12 @@ export default function ExplorePage() {
               </span>
             </button>
           ))}
-          <Link href="/chat" className="rounded-full border border-pink-400/60 bg-gradient-to-br from-cyan-900/60 to-pink-900/60 px-4 py-2 text-sm font-semibold text-pink-200 shadow-md hover:bg-pink-900/80 hover:text-white transition ml-auto">
-            🚬 Smoke Lounge
+          <Link
+            href="/chat"
+            className="rounded-full border-4 border-red-600 bg-gradient-to-br from-red-700 via-red-500 to-red-700 px-8 py-4 text-2xl font-extrabold text-white shadow-lg hover:scale-105 hover:bg-red-700/90 transition-all ml-auto"
+            style={{ boxShadow: "0 0 32px 4px rgba(239,68,68,0.25)" }}
+          >
+            <span role="img" aria-label="smoke">🚬</span> Smoke Lounge
           </Link>
         </div>
 
