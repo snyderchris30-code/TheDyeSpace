@@ -40,7 +40,7 @@ export default function SmokeRoom2Page() {
           href="/chat"
           className="rounded-full border border-cyan-300/40 bg-cyan-900/30 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-900/45"
         >
-          The Smoke Room
+          The Dye Chat
         </Link>
         {allowed ? (
           <Link

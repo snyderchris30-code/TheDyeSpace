@@ -22,14 +22,24 @@
   box-shadow: 0 0 32px 8px #00ffd0cc, 0 0 12px 2px #a259ff99 !important;
 }
 .cosmic-headline {
-  text-shadow: 0 0 16px #00ffea, 0 0 6px #00ff6a;
-  background: linear-gradient(90deg, #00ffea 0%, #39ff14 40%, #00bfff 80%, #fff 100%);
+  text-shadow: 0 0 14px rgba(98, 214, 255, 0.18), 0 0 28px rgba(201, 118, 255, 0.1);
+  background-image: linear-gradient(
+    180deg,
+    #55d6ff 0%,
+    #2fe2c5 18%,
+    #6a78ff 36%,
+    #bc76ff 54%,
+    #ff78c8 72%,
+    #f6c76b 100%
+  );
+  background-size: 100% 280%;
+  background-position: 50% 0%;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   text-fill-color: transparent;
   color: transparent;
-  animation: headlineGradientShift 12s ease-in-out infinite alternate;
+  animation: navbarLogoSpectrum 26s ease-in-out infinite alternate;
 }
 
 .navbar-logo {
@@ -54,7 +64,7 @@
   -webkit-text-fill-color: transparent;
   text-shadow: 0 0 14px rgba(98, 214, 255, 0.18), 0 0 28px rgba(201, 118, 255, 0.1);
   filter: drop-shadow(0 0 8px rgba(82, 214, 255, 0.12)) drop-shadow(0 0 16px rgba(255, 120, 200, 0.08));
-  animation: navbarLogoSpectrum 22s ease-in-out infinite;
+  animation: navbarLogoSpectrum 26s ease-in-out infinite alternate;
 }
 
 @keyframes navbarLogoSpectrum {
@@ -80,13 +90,23 @@
 .cosmic-headline-sub {
   font-size: 1.35rem;
   letter-spacing: 0.1em;
-  background: linear-gradient(90deg, #fff 0%, #00ffea 30%, #39ff14 60%, #00bfff 100%);
+  background-image: linear-gradient(
+    180deg,
+    #55d6ff 0%,
+    #2fe2c5 18%,
+    #6a78ff 36%,
+    #bc76ff 54%,
+    #ff78c8 72%,
+    #f6c76b 100%
+  );
+  background-size: 100% 280%;
+  background-position: 50% 24%;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   text-fill-color: transparent;
   color: transparent;
-  animation: headlineGradientShift 12s ease-in-out infinite alternate;
+  animation: navbarLogoSpectrum 26s ease-in-out infinite alternate;
 }
 .cosmic-subtext {
   background: linear-gradient(90deg, #39ff14 0%, #00bfff 60%, #000 100%);

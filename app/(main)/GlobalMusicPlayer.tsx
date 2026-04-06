@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Music2, Pause, Play, Plus, SkipBack, SkipForward, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { buildMusicQueue, extractYoutubeVideoId, normalizeMusicPlayerUrls, type MusicQueueEntry } from "@/lib/youtube-media";
+import { DEFAULT_PUBLIC_MUSIC_TITLE, DEFAULT_PUBLIC_MUSIC_URL } from "@/lib/app-config";
 
 declare global {
   interface Window {
@@ -64,11 +65,30 @@ export default function GlobalMusicPlayer() {
   const [isSaving, setIsSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [currentTitle, setCurrentTitle] = useState("Nothing playing");
+  const [currentTitle, setCurrentTitle] = useState(DEFAULT_PUBLIC_MUSIC_TITLE);
   const [titleCache, setTitleCache] = useState<Record<string, string>>({});
 
-  const queue = useMemo(() => buildMusicQueue(musicUrls), [musicUrls]);
+  const defaultPublicUrls = useMemo(() => normalizeMusicPlayerUrls([DEFAULT_PUBLIC_MUSIC_URL]), []);
+  const defaultPublicUrl = defaultPublicUrls[0] || "";
+  const mergedUrls = useMemo(() => {
+    const dedupedUserUrls = normalizeMusicPlayerUrls(musicUrls).filter((url) => url !== defaultPublicUrl);
+    return defaultPublicUrl ? [defaultPublicUrl, ...dedupedUserUrls] : dedupedUserUrls;
+  }, [defaultPublicUrl, musicUrls]);
+
+  const queue = useMemo(() => buildMusicQueue(mergedUrls), [mergedUrls]);
   const currentEntry = queue[currentIndex] ?? null;
+
+  useEffect(() => {
+    const defaultEntry = queue.find((entry) => entry.rawUrl === defaultPublicUrl);
+    if (!defaultEntry) return;
+
+    setTitleCache((prev) => {
+      if (prev[defaultEntry.key]) {
+        return prev;
+      }
+      return { ...prev, [defaultEntry.key]: DEFAULT_PUBLIC_MUSIC_TITLE };
+    });
+  }, [defaultPublicUrl, queue]);
 
   useEffect(() => {
     currentEntryRef.current = currentEntry;
@@ -97,10 +117,6 @@ export default function GlobalMusicPlayer() {
 
       setProfileUsername(data?.username || null);
       setMusicUrls(nextUrls);
-      setCurrentIndex((prev) => {
-        if (!nextUrls.length) return 0;
-        return Math.min(prev, nextUrls.length - 1);
-      });
       setStatus(null);
     },
     [supabase]
@@ -122,18 +138,21 @@ export default function GlobalMusicPlayer() {
         throw new Error(body?.error || "Could not save your playlist.");
       }
 
-      setMusicUrls(nextUrls);
-      setCurrentIndex((prev) => {
-        if (!nextUrls.length) return 0;
-        return Math.min(prev, nextUrls.length - 1);
-      });
+      setMusicUrls(normalizeMusicPlayerUrls(nextUrls).filter((url) => url !== defaultPublicUrl));
       setStatus(successMessage || "Playlist saved.");
     } catch (error: any) {
       setStatus(typeof error?.message === "string" ? error.message : "Could not save your playlist.");
     } finally {
       setIsSaving(false);
     }
-  }, []);
+  }, [defaultPublicUrl]);
+
+  useEffect(() => {
+    setCurrentIndex((prev) => {
+      if (!queue.length) return 0;
+      return Math.min(prev, queue.length - 1);
+    });
+  }, [queue.length]);
 
   useEffect(() => {
     ensureYouTubeApi(() => setIsApiReady(true));
@@ -158,7 +177,7 @@ export default function GlobalMusicPlayer() {
       setProfileUsername(null);
       setMusicUrls([]);
       setCurrentIndex(0);
-      setCurrentTitle("Nothing playing");
+      setCurrentTitle(DEFAULT_PUBLIC_MUSIC_TITLE);
       setIsPlaying(false);
       setStatus(null);
       if (playerRef.current && readyRef.current) {
@@ -230,7 +249,7 @@ export default function GlobalMusicPlayer() {
   useEffect(() => {
     if (!currentEntry || !isPlayerReady || !playerRef.current) {
       if (!queue.length) {
-        setCurrentTitle("Nothing playing");
+        setCurrentTitle(DEFAULT_PUBLIC_MUSIC_TITLE);
       }
       return;
     }
@@ -372,17 +391,23 @@ export default function GlobalMusicPlayer() {
       return;
     }
 
-    await persistPlaylist(nextUrls, `${nextUrls.length} saved to your playlist.`);
+    const userOnlyUrls = nextUrls.filter((url) => url !== defaultPublicUrl);
+    await persistPlaylist(userOnlyUrls, `${userOnlyUrls.length} saved to your playlist.`);
     setSongInput("");
   };
 
   const removeSong = async (url: string) => {
+    if (url === defaultPublicUrl) {
+      setStatus("Default public song is pinned and cannot be removed.");
+      return;
+    }
+
     const nextUrls = musicUrls.filter((item) => item !== url);
     await persistPlaylist(nextUrls, "Playlist updated.");
     if (currentEntry?.rawUrl === url) {
       loadedEntryKeyRef.current = null;
       setCurrentIndex(0);
-      setCurrentTitle(nextUrls.length ? "Select play to resume." : "Nothing playing");
+      setCurrentTitle(nextUrls.length ? "Select play to resume." : DEFAULT_PUBLIC_MUSIC_TITLE);
       setIsPlaying(false);
       playerRef.current?.pauseVideo?.();
     }
@@ -469,7 +494,71 @@ export default function GlobalMusicPlayer() {
                 </div>
               </div>
 
+              {session?.user ? (
+                <div className="rounded-[1.35rem] border border-cyan-300/20 bg-black/20 p-3">
+                  <label className="mb-2 block text-[11px] uppercase tracking-[0.24em] text-cyan-300/75">Quick Add Song</label>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                      className="flex-1 rounded-full border border-cyan-300/25 bg-slate-950/85 px-4 py-2 text-sm text-cyan-50 outline-none transition focus:border-cyan-300/45"
+                      placeholder="Paste a YouTube video or playlist URL"
+                      value={songInput}
+                      onChange={(event) => setSongInput(event.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="inline-flex items-center justify-center gap-2 rounded-full border border-cyan-300/35 bg-cyan-300/15 px-4 py-2 text-sm font-semibold text-cyan-50 hover:bg-cyan-300/25 disabled:opacity-60"
+                      onClick={() => void addSongs()}
+                      disabled={isSaving}
+                    >
+                      <Plus className="h-4 w-4" />
+                      {isSaving ? "Saving..." : "Add Song"}
+                    </button>
+                  </div>
+                  <p className="mt-2 text-[11px] text-cyan-100/65">Supports YouTube video and playlist links. Music keeps playing while you scroll, switch pages, or hide this panel.</p>
+                </div>
+              ) : (
+                <div className="rounded-[1.35rem] border border-cyan-300/20 bg-black/20 px-4 py-3 text-sm text-cyan-100/75">
+                  Sign in to add songs and save your personal playlist.
+                </div>
+              )}
+
               {status ? <p className="text-xs text-cyan-200/80">{status}</p> : null}
+
+              {!isManagerOpen && musicUrls.length > 0 ? (
+                <div className="rounded-[1.35rem] border border-cyan-300/20 bg-black/15 p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-300/80">Your Queue ({queue.length})</p>
+                    <button
+                      type="button"
+                      className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-3 py-1 text-[11px] font-semibold text-cyan-50 hover:bg-cyan-300/20"
+                      onClick={() => setIsManagerOpen(true)}
+                    >
+                      Manage
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {queue.slice(0, 3).map((entry, index) => {
+                      const label = titleCache[entry.key] || entry.titleHint;
+                      const isDefault = entry.rawUrl === defaultPublicUrl;
+                      return (
+                        <button
+                          key={entry.key}
+                          type="button"
+                          className="w-full truncate rounded-xl border border-cyan-300/12 bg-slate-950/45 px-3 py-2 text-left text-xs text-cyan-100 hover:border-cyan-300/30"
+                          onClick={() => {
+                            setCurrentIndex(index);
+                            setIsPlaying(false);
+                            loadedEntryKeyRef.current = null;
+                            setCurrentTitle(label);
+                          }}
+                        >
+                          {isDefault ? `${label} (Public)` : label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
 
               {isManagerOpen ? (
                 <div className="rounded-[1.35rem] border border-cyan-300/20 bg-black/20 p-4">
@@ -492,32 +581,17 @@ export default function GlobalMusicPlayer() {
 
                   {session?.user ? (
                     <>
-                      <textarea
-                        className="min-h-24 w-full rounded-2xl border border-cyan-300/20 bg-slate-950/80 px-4 py-3 text-sm text-cyan-50 outline-none transition focus:border-cyan-300/45"
-                        placeholder="Paste YouTube video or playlist URLs, one per line"
-                        value={songInput}
-                        onChange={(event) => setSongInput(event.target.value)}
-                      />
-                      <button
-                        type="button"
-                        className="mt-3 inline-flex items-center gap-2 rounded-full border border-cyan-300/35 bg-cyan-300/15 px-4 py-2 text-sm font-semibold text-cyan-50 hover:bg-cyan-300/25 disabled:opacity-60"
-                        onClick={() => void addSongs()}
-                        disabled={isSaving}
-                      >
-                        <Plus className="h-4 w-4" />
-                        {isSaving ? "Saving..." : "Add To Queue"}
-                      </button>
-
-                      <div className="mt-4 space-y-2">
-                        {musicUrls.length === 0 ? (
+                      <div className="space-y-2">
+                        {queue.length === 0 ? (
                           <p className="text-xs text-cyan-100/60">No songs or playlists saved yet.</p>
                         ) : (
-                          musicUrls.map((url, index) => {
-                            const entry = queue.find((item) => item.rawUrl === url);
-                            const label = entry ? titleCache[entry.key] || entry.titleHint : `Item ${index + 1}`;
+                          queue.map((entry, index) => {
+                            const url = entry.rawUrl;
+                            const label = titleCache[entry.key] || entry.titleHint;
                             const videoId = extractYoutubeVideoId(url);
+                            const isDefault = url === defaultPublicUrl;
                             return (
-                              <div key={url} className="flex items-center justify-between gap-3 rounded-2xl border border-cyan-300/12 bg-slate-950/55 px-3 py-2">
+                              <div key={entry.key} className="flex items-center justify-between gap-3 rounded-2xl border border-cyan-300/12 bg-slate-950/55 px-3 py-2">
                                 <button
                                   type="button"
                                   className="min-w-0 flex-1 text-left"
@@ -528,18 +602,22 @@ export default function GlobalMusicPlayer() {
                                     setCurrentTitle(label);
                                   }}
                                 >
-                                  <p className="truncate text-sm font-medium text-cyan-50">{label}</p>
+                                  <p className="truncate text-sm font-medium text-cyan-50">{isDefault ? `${label} (Public)` : label}</p>
                                   <p className="truncate text-[11px] text-cyan-100/55">
                                     {videoId ? "YouTube video" : "YouTube playlist"}
                                   </p>
                                 </button>
-                                <button
-                                  type="button"
-                                  className="rounded-full border border-rose-300/35 bg-rose-500/10 px-3 py-1 text-xs font-semibold text-rose-100 hover:bg-rose-500/20"
-                                  onClick={() => void removeSong(url)}
-                                >
-                                  Remove
-                                </button>
+                                {isDefault ? (
+                                  <span className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-3 py-1 text-xs font-semibold text-cyan-100">Pinned</span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="rounded-full border border-rose-300/35 bg-rose-500/10 px-3 py-1 text-xs font-semibold text-rose-100 hover:bg-rose-500/20"
+                                    onClick={() => void removeSong(url)}
+                                  >
+                                    Remove
+                                  </button>
+                                )}
                               </div>
                             );
                           })

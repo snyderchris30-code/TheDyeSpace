@@ -38,6 +38,11 @@ export function withVersionParam(pathOrUrl: string) {
 export const INVITE_EXPIRATION_DEFAULT_HOURS = 12;
 export const INVITE_EXPIRATION_OPTIONS_HOURS = [1, 12, 24, 168] as const;
 
+// Public default song shown to all users in the global homepage player.
+// Change this URL/title to update the pinned default track.
+export const DEFAULT_PUBLIC_MUSIC_URL = "https://youtu.be/7S8wllPmazM?si=uXed4emZW4N8A4Zi";
+export const DEFAULT_PUBLIC_MUSIC_TITLE = "Default Public Song";
+
 export function formatInviteDurationLabel(hours: number) {
   if (hours === 1) return "1 hour";
   if (hours === 168) return "7 days";

@@ -446,28 +446,38 @@ export default function MainNavbar() {
                 </span>
               </button>
               {notifDrop && (
-                <div data-dropdown-box="true" className="absolute right-0 top-full z-[9999] mt-2 w-[min(92vw,360px)] rounded-xl border border-sky-500 bg-black/90 p-3 shadow-2xl animate-fade-in">
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="font-semibold text-cyan-200">Notifications</span>
-                    <button onClick={markAllRead} className="text-xs text-green-200 hover:text-white">Mark all read</button>
+                <>
+                  <div
+                    className="fixed inset-0 z-[10040] bg-black/50 backdrop-blur-[1px]"
+                    onClick={() => setNotifDrop(false)}
+                    aria-hidden="true"
+                  />
+                  <div
+                    data-dropdown-box="true"
+                    className="fixed left-1/2 top-[5.25rem] z-[10050] w-[min(92vw,420px)] -translate-x-1/2 rounded-2xl border border-sky-500/70 bg-black/95 p-4 shadow-2xl animate-fade-in"
+                  >
+                    <div className="mb-3 flex items-center justify-between">
+                      <span className="font-semibold text-cyan-200">Notifications</span>
+                      <button onClick={markAllRead} className="text-xs text-green-200 hover:text-white">Mark all read</button>
+                    </div>
+                    <div className="max-h-[65vh] space-y-2 overflow-auto pr-1">
+                      {notifications.length === 0 ? (
+                        <p className="text-sm text-slate-300">No new notifications yet.</p>
+                      ) : (
+                        notifications.map((note) => (
+                          <button key={note.id} className={`w-full text-left p-2 rounded-lg transition ${note.read ? "bg-slate-900/40 text-slate-200" : "bg-sky-900/75 text-white"}`} onClick={() => setNotifDrop(false)}>
+                            <div className="flex items-center justify-between text-xs text-slate-300">
+                              <span>{note.type.toUpperCase()}</span>
+                              <span>{new Date(note.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                            </div>
+                            <div className="text-sm font-semibold">{note.actor_name}</div>
+                            <div className="text-xs leading-snug text-sky-100">{note.message}</div>
+                          </button>
+                        ))
+                      )}
+                    </div>
                   </div>
-                  <div className="max-h-[70vh] space-y-2 overflow-auto">
-                    {notifications.length === 0 ? (
-                      <p className="text-sm text-slate-300">No new notifications yet.</p>
-                    ) : (
-                      notifications.map((note) => (
-                        <button key={note.id} className={`w-full text-left p-2 rounded-lg transition ${note.read ? "bg-slate-900/40 text-slate-200" : "bg-sky-900/75 text-white"}`} onClick={() => setNotifDrop(false)}>
-                          <div className="flex items-center justify-between text-xs text-slate-300">
-                            <span>{note.type.toUpperCase()}</span>
-                            <span>{new Date(note.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                          </div>
-                          <div className="text-sm font-semibold">{note.actor_name}</div>
-                          <div className="text-xs leading-snug text-sky-100">{note.message}</div>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                </div>
+                </>
               )}
             </div>
             {isLoggedIn && (
@@ -481,7 +491,7 @@ export default function MainNavbar() {
                 }}
                 className="group relative flex h-11 w-11 items-center justify-center rounded-xl border border-cyan-200/20 bg-black/30 text-cyan-100/90 transition-all duration-200 hover:border-cyan-200/45 hover:bg-cyan-300/10 hover:text-cyan-50 hover:shadow-[0_0_18px_rgba(34,211,238,0.2)]"
               >
-                <span className="text-xl">🚬</span>
+                <Users size={18} />
                 <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 -translate-x-1/2 translate-y-1 whitespace-nowrap rounded-md border border-cyan-200/35 bg-slate-950/95 px-2 py-1 text-[11px] font-medium text-cyan-100 opacity-0 shadow-[0_0_14px_rgba(34,211,238,0.18)] transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100">
                   Pass the J
                 </span>
@@ -544,11 +554,11 @@ export default function MainNavbar() {
         )}
       </div>
       {inviteModalOpen && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/90 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-[2rem] border border-cyan-300/30 bg-slate-950/95 p-6 shadow-[0_0_50px_rgba(0,0,0,0.55)]">
+        <div className="fixed inset-0 z-[11000] grid place-items-center overflow-y-auto bg-slate-950/90 p-4 backdrop-blur-sm">
+          <div className="my-6 w-full max-w-md rounded-[2rem] border border-cyan-300/30 bg-slate-950/95 p-6 shadow-[0_0_50px_rgba(0,0,0,0.55)]">
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-2xl font-bold text-rose-100">Pass the J <span aria-hidden="true">🚬</span></h2>
+                <h2 className="text-2xl font-bold text-rose-100">Pass the J</h2>
                 <p className="mt-2 text-sm text-cyan-200">Share this invite link with your friends. Good for {formatInviteDurationLabel(INVITE_EXPIRATION_DEFAULT_HOURS)} only.</p>
               </div>
               <button

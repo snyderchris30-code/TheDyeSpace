@@ -244,13 +244,13 @@ export default function GlobalChat() {
 
   return (
     <div className="flex flex-col h-[70vh] max-w-2xl mx-auto mt-8 rounded-3xl border border-cyan-300/25 bg-slate-950/55 p-4 shadow-2xl backdrop-blur-xl cosmic-bg">
-      <h2 className="glow-text text-2xl font-bold mb-2 text-cyan-100">The Smoke Room (Global Chat)</h2>
+      <h2 className="glow-text text-2xl font-bold mb-2 text-cyan-100">The Dye Chat (Global Chat)</h2>
       {canAccessRoom2 ? (
         <a
           href="/chat/smoke-room-2"
           className="mb-2 inline-flex w-fit items-center rounded-full border border-red-300/40 bg-red-900/30 px-3 py-1 text-xs font-semibold text-red-100 hover:bg-red-900/45"
         >
-          Enter The Smoke Room 2.0
+          Enter Dye Chat 2.0
         </a>
       ) : null}
       {adminActionStatus ? (
