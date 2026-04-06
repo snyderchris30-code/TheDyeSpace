@@ -28,7 +28,18 @@ type ProfileRow = {
   theme_settings?: ProfileAppearance | null;
   voided_until?: string | null;
   blessed_until?: string | null;
+  shadow_banned?: boolean | null;
+  shadow_banned_until?: string | null;
+  role?: string | null;
 };
+
+function isShadowBanned(profile?: ProfileRow) {
+  if (!profile) return false;
+  if (profile.shadow_banned) return true;
+  if (!profile.shadow_banned_until) return false;
+  const until = new Date(profile.shadow_banned_until);
+  return !Number.isNaN(until.getTime()) && until > new Date();
+}
 
 function isEmailLike(value: string | null | undefined) {
   if (!value) return false;
@@ -52,6 +63,19 @@ function formatDisplayName(profile?: ProfileRow) {
 export async function GET(request: NextRequest) {
   const before = request.nextUrl.searchParams.get("before");
   const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  let viewerIsAdmin = false;
+  if (user?.id) {
+    const { data: viewerProfile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+    viewerIsAdmin = viewerProfile?.role === "admin";
+  }
 
   let query = supabase
     .from("posts")
@@ -76,7 +100,7 @@ export async function GET(request: NextRequest) {
   if (userIds.length) {
     const { data: profilesData, error: profilesError } = await supabase
       .from("profiles")
-      .select("id,username,display_name,theme_settings,voided_until,blessed_until")
+      .select("id,username,display_name,theme_settings,voided_until,blessed_until,shadow_banned,shadow_banned_until")
       .in("id", userIds);
 
     if (!profilesError) {
@@ -86,7 +110,14 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const result = posts.map((post) => {
+  const visiblePosts = posts.filter((post) => {
+    const profile = profilesById.get(post.user_id);
+    if (viewerIsAdmin) return true;
+    if (user?.id && post.user_id === user.id) return true;
+    return !isShadowBanned(profile);
+  });
+
+  const result = visiblePosts.map((post) => {
     const profile = profilesById.get(post.user_id);
     return {
       ...post,

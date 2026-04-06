@@ -29,7 +29,17 @@ type ProfileRow = {
   username: string | null;
   display_name: string | null;
   theme_settings?: ProfileAppearance | null;
+  shadow_banned?: boolean | null;
+  shadow_banned_until?: string | null;
 };
+
+function isShadowBanned(profile?: ProfileRow) {
+  if (!profile) return false;
+  if (profile.shadow_banned) return true;
+  if (!profile.shadow_banned_until) return false;
+  const until = new Date(profile.shadow_banned_until);
+  return !Number.isNaN(until.getTime()) && until > new Date();
+}
 
 type FeedCategory = "all" | "following" | "tutorial" | "new_boot_goofin" | "for_sale" | "sold_unavailable";
 
@@ -129,6 +139,7 @@ export default function ExplorePage() {
   const [error, setError] = useState<string | null>(null);
   const [posts, setPosts] = useState<ExplorePost[]>([]);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+  const [viewerIsAdmin, setViewerIsAdmin] = useState(false);
   const [marketplaceOnly, setMarketplaceOnly] = useState(false);
 
   useEffect(() => {
@@ -145,16 +156,38 @@ export default function ExplorePage() {
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getSession().then(({ data }) => {
-      setSessionUserId(data.session?.user?.id || null);
+      const nextUserId = data.session?.user?.id || null;
+      setSessionUserId(nextUserId);
+      if (nextUserId) {
+        supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", nextUserId)
+          .maybeSingle()
+          .then(({ data: profile }) => {
+            setViewerIsAdmin(profile?.role === "admin");
+          });
+      } else {
+        setViewerIsAdmin(false);
+      }
     });
     const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (event === "SIGNED_OUT") {
         setSessionUserId(null);
+        setViewerIsAdmin(false);
         return;
       }
 
       if (nextSession?.user?.id) {
         setSessionUserId(nextSession.user.id);
+        supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", nextSession.user.id)
+          .maybeSingle()
+          .then(({ data: profile }) => {
+            setViewerIsAdmin(profile?.role === "admin");
+          });
       }
     });
     return () => {
@@ -217,7 +250,7 @@ export default function ExplorePage() {
         if (userIds.length) {
           const { data: profilesData, error: profilesError } = await supabase
             .from("profiles")
-            .select("id,username,display_name,theme_settings")
+            .select("id,username,display_name,theme_settings,shadow_banned,shadow_banned_until")
             .in("id", userIds);
 
           if (profilesError) {
@@ -241,6 +274,8 @@ export default function ExplorePage() {
         });
 
         const filtered = withAuthorNames.filter((post) => {
+          const author = profilesById.get(post.user_id);
+          if (!viewerIsAdmin && post.user_id !== sessionUserId && isShadowBanned(author)) return false;
           if (marketplaceOnly && !post.is_for_sale) return false;
           if (tab === "following") return true;
           if (tab === "all") return true;
@@ -261,7 +296,7 @@ export default function ExplorePage() {
     return () => {
       active = false;
     };
-  }, [tab, search, marketplaceOnly]);
+  }, [tab, search, marketplaceOnly, viewerIsAdmin, sessionUserId]);
 
   const title = useMemo(() => {
     if (tab === "following") return "Following Feed";
@@ -318,7 +353,7 @@ export default function ExplorePage() {
             className="rounded-full border-4 border-red-600 bg-gradient-to-br from-red-700 via-red-500 to-red-700 px-8 py-4 text-2xl font-extrabold text-white shadow-lg hover:scale-105 hover:bg-red-700/90 transition-all ml-auto"
             style={{ boxShadow: "0 0 32px 4px rgba(239,68,68,0.25)" }}
           >
-            <span role="img" aria-label="smoke">🚬</span> Smoke Lounge
+            <span role="img" aria-label="smoke">🚬</span> The Smoke Room
           </Link>
         </div>
 

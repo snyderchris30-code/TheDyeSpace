@@ -4,11 +4,11 @@ import { createAdminClient, userIsAdmin } from "@/lib/admin-utils";
 
 type AdminActionBody = {
   targetUserId?: string;
-  action?: "mute" | "cosmic_timeout" | "send_to_void" | "cosmic_blessing";
+  action?: "mute" | "cosmic_timeout" | "send_to_void" | "cosmic_blessing" | "shadow_ban" | "clear_shadow_ban" | "invite_smoke_room_2" | "revoke_smoke_room_2";
   durationHours?: number;
 };
 
-const VALID_ACTIONS = ["mute", "cosmic_timeout", "send_to_void", "cosmic_blessing"] as const;
+const VALID_ACTIONS = ["mute", "cosmic_timeout", "send_to_void", "cosmic_blessing", "shadow_ban", "clear_shadow_ban", "invite_smoke_room_2", "revoke_smoke_room_2"] as const;
 const MUTE_DURATIONS = [4, 8, 12];
 const VOID_DURATION_HOURS = 24;
 const BLESS_DURATION_HOURS = 24;
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
     }
 
     const now = new Date();
-    let updates: Record<string, string | null> = {};
+    let updates: Record<string, string | boolean | null> = {};
     let message = "";
 
     if (action === "mute") {
@@ -81,6 +81,37 @@ export async function POST(req: NextRequest) {
       const expiresAt = new Date(now.getTime() + BLESS_DURATION_HOURS * 60 * 60 * 1000).toISOString();
       updates = { blessed_until: expiresAt };
       message = `Cosmic blessing granted for ${BLESS_DURATION_HOURS} hours.`;
+    }
+
+    if (action === "shadow_ban") {
+      const expiresAt = durationHours
+        ? new Date(now.getTime() + durationHours * 60 * 60 * 1000).toISOString()
+        : null;
+      updates = {
+        shadow_banned: true,
+        shadow_banned_until: expiresAt,
+      };
+      message = expiresAt
+        ? `User shadow banned for ${durationHours} hours.`
+        : "User shadow banned indefinitely.";
+    }
+
+    if (action === "clear_shadow_ban") {
+      updates = {
+        shadow_banned: false,
+        shadow_banned_until: null,
+      };
+      message = "Shadow ban removed.";
+    }
+
+    if (action === "invite_smoke_room_2") {
+      updates = { smoke_room_2_invited: true };
+      message = "User invited to The Smoke Room 2.0.";
+    }
+
+    if (action === "revoke_smoke_room_2") {
+      updates = { smoke_room_2_invited: false };
+      message = "User removed from The Smoke Room 2.0 invite list.";
     }
 
     const { error: updateError } = await adminClient.from("profiles").update(updates).eq("id", targetUserId);

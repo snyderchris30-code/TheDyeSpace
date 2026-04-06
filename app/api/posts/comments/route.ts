@@ -15,6 +15,14 @@ import {
   type RelationalPostReactionRow,
 } from "@/lib/post-interactions";
 
+function isShadowBanned(profile?: { shadow_banned?: boolean | null; shadow_banned_until?: string | null }) {
+  if (!profile) return false;
+  if (profile.shadow_banned) return true;
+  if (!profile.shadow_banned_until) return false;
+  const until = new Date(profile.shadow_banned_until);
+  return !Number.isNaN(until.getTime()) && until > new Date();
+}
+
 type CommentBody = {
   postId?: string;
   content?: string;
@@ -102,7 +110,7 @@ async function loadLegacyInteraction(adminClient: ReturnType<typeof createAdminC
   return buildInteractionsByPost((profiles || []) as InteractionProfileRow[], [postId], viewerId)[postId];
 }
 
-async function loadRelationalInteraction(adminClient: ReturnType<typeof createAdminClient>, postId: string, viewerId?: string | null) {
+async function loadRelationalInteraction(adminClient: ReturnType<typeof createAdminClient>, postId: string, viewerId?: string | null, viewerIsAdmin = false) {
   const { data: comments, error: commentsError } = await adminClient
     .from("post_comments")
     .select("id, post_id, user_id, content, created_at")
@@ -124,12 +132,12 @@ async function loadRelationalInteraction(adminClient: ReturnType<typeof createAd
   }
 
   const userIds = [...new Set([...(comments || []).map((comment) => comment.user_id), ...(reactions || []).map((reaction) => reaction.user_id)])];
-  let profiles: InteractionProfileRow[] = [];
+  let profiles: Array<InteractionProfileRow & { shadow_banned?: boolean | null; shadow_banned_until?: string | null }> = [];
 
   if (userIds.length) {
     const { data: profileRows, error: profilesError } = await adminClient
       .from("profiles")
-      .select("id, username, display_name, avatar_url")
+      .select("id, username, display_name, avatar_url, shadow_banned, shadow_banned_until")
       .in("id", userIds);
 
     if (profilesError) {
@@ -139,10 +147,18 @@ async function loadRelationalInteraction(adminClient: ReturnType<typeof createAd
     profiles = (profileRows || []) as InteractionProfileRow[];
   }
 
+  const shadowBannedAuthors = new Set(profiles.filter((profile) => isShadowBanned(profile)).map((profile) => profile.id));
+  const visibleComments = viewerIsAdmin
+    ? (comments || [])
+    : (comments || []).filter((comment) => comment.user_id === viewerId || !shadowBannedAuthors.has(comment.user_id));
+  const visibleReactions = viewerIsAdmin
+    ? (reactions || [])
+    : (reactions || []).filter((reaction) => reaction.user_id === viewerId || !shadowBannedAuthors.has(reaction.user_id));
+
   return buildInteractionsFromRows(
     [postId],
-    (comments || []) as RelationalPostCommentRow[],
-    (reactions || []) as RelationalPostReactionRow[],
+    visibleComments as RelationalPostCommentRow[],
+    visibleReactions as RelationalPostReactionRow[],
     profiles,
     viewerId
   )[postId];
@@ -168,6 +184,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const adminClient = createAdminClient();
+    const viewerIsAdmin = await userIsAdmin(adminClient, user.id);
     const currentUserStatus = await loadProfileStatus(adminClient, user.id);
     if (isMuted(currentUserStatus)) {
       return NextResponse.json({ error: "You are muted and cannot post comments at this time." }, { status: 403 });
@@ -199,7 +216,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (!insertError) {
-      const interaction = await loadRelationalInteraction(adminClient, body.postId, user.id);
+      const interaction = await loadRelationalInteraction(adminClient, body.postId, user.id, viewerIsAdmin);
       const commentsCount = interaction?.comments.length ?? 0;
 
       const { error: updatePostError } = await adminClient
@@ -326,7 +343,8 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
   }
 
-  const interaction = await loadRelationalInteraction(adminClient, body.postId, user.id);
+  const viewerIsAdmin = await userIsAdmin(adminClient, user.id);
+  const interaction = await loadRelationalInteraction(adminClient, body.postId, user.id, viewerIsAdmin);
   return NextResponse.json({ interaction, commentsCount: interaction?.comments.length ?? 0 });
 }
 
@@ -403,7 +421,8 @@ export async function DELETE(req: NextRequest) {
     }
   }
 
-  const interaction = await loadRelationalInteraction(adminClient, postId, user.id);
+  const viewerIsAdmin = await userIsAdmin(adminClient, user.id);
+  const interaction = await loadRelationalInteraction(adminClient, postId, user.id, viewerIsAdmin);
   const commentsCount = interaction?.comments.length ?? 0;
   await adminClient.from("posts").update({ comments_count: commentsCount }).eq("id", postId);
 

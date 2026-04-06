@@ -40,6 +40,8 @@ type ProfileRow = {
   muted_until?: string | null;
   voided_until?: string | null;
   blessed_until?: string | null;
+  shadow_banned?: boolean | null;
+  shadow_banned_until?: string | null;
 };
 
 type StatusState = {
@@ -229,7 +231,7 @@ export default function ProfileEditor() {
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
-  const [profileStatus, setProfileStatus] = useState<Pick<ProfileRow, "muted_until" | "voided_until" | "blessed_until"> | null>(null);
+  const [profileStatus, setProfileStatus] = useState<Pick<ProfileRow, "muted_until" | "voided_until" | "blessed_until" | "shadow_banned" | "shadow_banned_until"> | null>(null);
   const [isOwner, setIsOwner] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isFollowing, setIsFollowing] = useState(false);
@@ -302,7 +304,7 @@ export default function ProfileEditor() {
     async (userId: string) => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings, created_at, role, muted_until, voided_until, blessed_until")
+        .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings, created_at, role, muted_until, voided_until, blessed_until, shadow_banned, shadow_banned_until")
         .eq("id", userId)
         .limit(1)
         .maybeSingle<ProfileRow>();
@@ -320,7 +322,7 @@ export default function ProfileEditor() {
     async (username: string) => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings, created_at, role, muted_until, voided_until, blessed_until")
+        .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings, created_at, role, muted_until, voided_until, blessed_until, shadow_banned, shadow_banned_until")
         .eq("username", username)
         .limit(1)
         .maybeSingle<ProfileRow>();
@@ -413,6 +415,8 @@ export default function ProfileEditor() {
             muted_until: existingProfile.muted_until ?? null,
             voided_until: existingProfile.voided_until ?? null,
             blessed_until: existingProfile.blessed_until ?? null,
+            shadow_banned: existingProfile.shadow_banned ?? null,
+            shadow_banned_until: existingProfile.shadow_banned_until ?? null,
           });
           return;
         }
@@ -431,6 +435,8 @@ export default function ProfileEditor() {
             muted_until: (createdProfile as ProfileRow)?.muted_until ?? null,
             voided_until: (createdProfile as ProfileRow)?.voided_until ?? null,
             blessed_until: (createdProfile as ProfileRow)?.blessed_until ?? null,
+            shadow_banned: (createdProfile as ProfileRow)?.shadow_banned ?? null,
+            shadow_banned_until: (createdProfile as ProfileRow)?.shadow_banned_until ?? null,
           });
         }
       } catch (error: any) {
@@ -502,6 +508,8 @@ export default function ProfileEditor() {
         muted_until: viewedProfile.muted_until ?? null,
         voided_until: viewedProfile.voided_until ?? null,
         blessed_until: viewedProfile.blessed_until ?? null,
+        shadow_banned: viewedProfile.shadow_banned ?? null,
+        shadow_banned_until: viewedProfile.shadow_banned_until ?? null,
       });
       applyProfileToForm(viewedProfile);
     } catch (error: any) {
@@ -943,7 +951,7 @@ export default function ProfileEditor() {
   }, [updatePostCounters]);
 
   const handleAdminAction = useCallback(
-    async (targetUserId: string, action: "mute" | "cosmic_timeout" | "send_to_void" | "cosmic_blessing", durationHours?: number) => {
+    async (targetUserId: string, action: "mute" | "cosmic_timeout" | "send_to_void" | "cosmic_blessing" | "shadow_ban" | "clear_shadow_ban" | "invite_smoke_room_2" | "revoke_smoke_room_2", durationHours?: number) => {
       if (!session?.user) {
         setStatus({ type: "error", text: "Please sign in as an admin to perform this action." });
         return;
@@ -976,6 +984,10 @@ export default function ProfileEditor() {
   const profileIsVoided = Boolean(profileVoidedUntil && profileVoidedUntil > new Date());
   const profileBlessedUntil = profileStatus?.blessed_until ? new Date(profileStatus.blessed_until) : null;
   const profileIsBlessed = Boolean(profileBlessedUntil && profileBlessedUntil > new Date());
+  const profileShadowBannedUntil = profileStatus?.shadow_banned_until ? new Date(profileStatus.shadow_banned_until) : null;
+  const profileIsShadowBanned = Boolean(
+    profileStatus?.shadow_banned || (profileShadowBannedUntil && profileShadowBannedUntil > new Date())
+  );
   const typedUsername = sanitizeUsernameInput(draft.username);
   const usernameSavePreview = resolveProfileUsername(draft.username, form.username, session?.user?.email, session?.user?.id);
   const isUsernameFallback = typedUsername.length < 3 && usernameSavePreview !== typedUsername;
@@ -1348,6 +1360,34 @@ export default function ProfileEditor() {
                               >
                                 Give Cosmic Blessing
                               </button>
+                              <button
+                                type="button"
+                                className="rounded-xl border border-rose-300/25 bg-rose-500/10 px-3 py-2 text-left text-xs font-semibold text-rose-100 hover:bg-rose-500/15"
+                                onClick={() => void handleAdminAction(profileUserId, "shadow_ban")}
+                              >
+                                Shadow Ban (Indefinite)
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded-xl border border-teal-300/25 bg-teal-500/10 px-3 py-2 text-left text-xs font-semibold text-teal-100 hover:bg-teal-500/15"
+                                onClick={() => void handleAdminAction(profileUserId, "clear_shadow_ban")}
+                              >
+                                Remove Shadow Ban
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded-xl border border-red-300/25 bg-red-500/10 px-3 py-2 text-left text-xs font-semibold text-red-100 hover:bg-red-500/15"
+                                onClick={() => void handleAdminAction(profileUserId, "invite_smoke_room_2")}
+                              >
+                                Invite to The Smoke Room 2.0
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded-xl border border-slate-300/25 bg-slate-500/10 px-3 py-2 text-left text-xs font-semibold text-slate-100 hover:bg-slate-500/15"
+                                onClick={() => void handleAdminAction(profileUserId, "revoke_smoke_room_2")}
+                              >
+                                Revoke Smoke Room 2.0 Invite
+                              </button>
                             </div>
                           </div>
                         </details>
@@ -1373,9 +1413,9 @@ export default function ProfileEditor() {
                 <div className="rounded-[1.75rem] border border-cyan-300/20 bg-slate-950/45 p-8 text-cyan-100 shadow-xl backdrop-blur-xl">
                   Loading posts...
                 </div>
-              ) : profileIsVoided && !isAdmin && !isOwner ? (
+              ) : (profileIsVoided || profileIsShadowBanned) && !isAdmin && !isOwner ? (
                 <div className="rounded-[1.75rem] border border-violet-300/20 bg-violet-950/45 p-8 text-violet-100 shadow-xl backdrop-blur-xl">
-                  This user has been sent to the Void. Their posts are hidden from public view for now.
+                  This user is currently hidden from public discovery. Their posts are not visible right now.
                 </div>
               ) : posts.length === 0 ? (
                 <div className="rounded-[1.75rem] border border-cyan-300/20 bg-slate-950/45 p-8 text-cyan-100/75 shadow-xl backdrop-blur-xl">

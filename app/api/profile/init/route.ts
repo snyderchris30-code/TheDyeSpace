@@ -52,6 +52,9 @@ export async function POST() {
         muted_until: null,
         voided_until: null,
         blessed_until: null,
+        shadow_banned: false,
+        shadow_banned_until: null,
+        smoke_room_2_invited: false,
         theme_settings: {
           background_color: DEFAULT_BACKGROUND_COLOR,
           text_color: DEFAULT_TEXT_COLOR,
@@ -63,7 +66,7 @@ export async function POST() {
       { onConflict: "id", ignoreDuplicates: false }
     )
     .select(
-      "id, username, display_name, bio, avatar_url, banner_url, theme_settings, created_at, role, muted_until, voided_until, blessed_until"
+      "id, username, display_name, bio, avatar_url, banner_url, theme_settings, created_at, role, muted_until, voided_until, blessed_until, shadow_banned, shadow_banned_until, smoke_room_2_invited"
     )
     .limit(1)
     .maybeSingle();

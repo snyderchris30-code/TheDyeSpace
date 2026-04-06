@@ -9,6 +9,14 @@ import {
   type RelationalPostReactionRow,
 } from "@/lib/post-interactions";
 
+function isShadowBanned(profile?: { shadow_banned?: boolean | null; shadow_banned_until?: string | null }) {
+  if (!profile) return false;
+  if (profile.shadow_banned) return true;
+  if (!profile.shadow_banned_until) return false;
+  const until = new Date(profile.shadow_banned_until);
+  return !Number.isNaN(until.getTime()) && until > new Date();
+}
+
 async function loadLegacyInteractions(adminClient: ReturnType<typeof createAdminClient>, postIds: string[], viewerId?: string | null) {
   const { data: profiles, error } = await adminClient
     .from("profiles")
@@ -50,12 +58,12 @@ async function loadRelationalInteractions(adminClient: ReturnType<typeof createA
   }
 
   const userIds = [...new Set([...(comments || []).map((comment) => comment.user_id), ...(reactions || []).map((reaction) => reaction.user_id)])];
-  let profiles: Array<InteractionProfileRow & { voided_until?: string | null }> = [];
+  let profiles: Array<InteractionProfileRow & { voided_until?: string | null; shadow_banned?: boolean | null; shadow_banned_until?: string | null }> = [];
 
   if (userIds.length) {
     const { data: profileRows, error: profilesError } = await adminClient
       .from("profiles")
-      .select("id, username, display_name, avatar_url, theme_settings, voided_until")
+      .select("id, username, display_name, avatar_url, theme_settings, voided_until, shadow_banned, shadow_banned_until")
       .in("id", userIds);
 
     if (profilesError) {
@@ -68,10 +76,17 @@ async function loadRelationalInteractions(adminClient: ReturnType<typeof createA
   const visibleComments = comments || [];
   if (!viewerIsAdmin) {
     const voidedAuthors = new Set(profiles.filter((profile) => isVoided(profile)).map((profile) => profile.id));
+    const shadowBannedAuthors = new Set(profiles.filter((profile) => isShadowBanned(profile)).map((profile) => profile.id));
     return buildInteractionsFromRows(
       postIds,
-      visibleComments.filter((comment) => !voidedAuthors.has(comment.user_id)) as RelationalPostCommentRow[],
-      (reactions || []) as RelationalPostReactionRow[],
+      visibleComments.filter((comment) => {
+        if (comment.user_id === viewerId) return true;
+        return !voidedAuthors.has(comment.user_id) && !shadowBannedAuthors.has(comment.user_id);
+      }) as RelationalPostCommentRow[],
+      (reactions || []).filter((reaction) => {
+        if (reaction.user_id === viewerId) return true;
+        return !shadowBannedAuthors.has(reaction.user_id);
+      }) as RelationalPostReactionRow[],
       profiles,
       viewerId
     );

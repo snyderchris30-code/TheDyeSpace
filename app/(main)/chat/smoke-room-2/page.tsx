@@ -1,30 +1,37 @@
 "use client";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import GlobalChatClient from "./GlobalChatClient";
 
-export default function Page() {
-  const [canAccessRoom2, setCanAccessRoom2] = useState(false);
+const SmokeRoom2Client = dynamic(() => import("../SmokeRoom2Client"), { ssr: false });
+
+export default function SmokeRoom2Page() {
+  const [allowed, setAllowed] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getSession().then(async ({ data }) => {
       const user = data.session?.user;
       if (!user) {
-        setCanAccessRoom2(false);
+        setAllowed(false);
+        setLoading(false);
         return;
       }
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("role, smoke_room_2_invited")
+        .select("role,smoke_room_2_invited")
         .eq("id", user.id)
         .maybeSingle();
 
-      setCanAccessRoom2(profile?.role === "admin" || profile?.smoke_room_2_invited === true);
+      setAllowed(profile?.role === "admin" || profile?.smoke_room_2_invited === true);
+      setLoading(false);
     });
   }, []);
+
+  if (loading) return <div className="text-center text-cyan-200 mt-10">Loading...</div>;
 
   return (
     <div className="mx-auto max-w-4xl px-4">
@@ -35,7 +42,7 @@ export default function Page() {
         >
           The Smoke Room
         </Link>
-        {canAccessRoom2 ? (
+        {allowed ? (
           <Link
             href="/chat/smoke-room-2"
             className="rounded-full border border-red-300/40 bg-red-900/30 px-4 py-2 text-sm font-semibold text-red-100 hover:bg-red-900/45"
@@ -45,7 +52,7 @@ export default function Page() {
         ) : null}
       </div>
 
-      <GlobalChatClient />
+      <SmokeRoom2Client allowed={allowed} />
     </div>
   );
 }
