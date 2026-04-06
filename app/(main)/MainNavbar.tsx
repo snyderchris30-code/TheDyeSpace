@@ -8,6 +8,7 @@ import { usePathname } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { resolveProfileUsername } from "@/lib/profile-identity";
+import { INVITE_EXPIRATION_DEFAULT_HOURS, formatInviteDurationLabel } from "@/lib/app-config";
 
 async function fetchNotifications(): Promise<Array<{ id: string; actor_name: string; type: string; message: string; read: boolean; created_at: string }>> {
   const supabase = createClient();
@@ -47,6 +48,9 @@ export default function MainNavbar() {
   const [usersOpen, setUsersOpen] = useState(false);
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersList, setUsersList] = useState<DirectoryProfile[]>([]);
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [inviteCopied, setInviteCopied] = useState(false);
+  const [inviteLink, setInviteLink] = useState("");
 
   useEffect(() => {
     const supabase = createClient();
@@ -56,6 +60,7 @@ export default function MainNavbar() {
       if (!active) return;
       if (!user) {
         setProfileHref("/login");
+        setInviteLink("");
         return;
       }
 
@@ -79,6 +84,9 @@ export default function MainNavbar() {
 
       if (active) {
         setProfileHref(nextHref);
+        if (typeof window !== "undefined") {
+          setInviteLink(`${window.location.origin}/signup?invite=${encodeURIComponent(user.id)}`);
+        }
       }
     };
 
@@ -90,6 +98,7 @@ export default function MainNavbar() {
       if (event === "SIGNED_OUT") {
         setSession(null);
         setProfileHref("/login");
+        setInviteLink("");
         return;
       }
 
@@ -192,6 +201,17 @@ export default function MainNavbar() {
     await supabase.from("notifications").update({ read: true }).eq("user_id", userId);
     refetch();
     queryClient.invalidateQueries({ queryKey: ["notifications"] });
+  };
+
+  const handleCopyInviteLink = async () => {
+    if (!inviteLink) return;
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      setInviteCopied(true);
+      window.setTimeout(() => setInviteCopied(false), 2000);
+    } catch {
+      setInviteCopied(false);
+    }
   };
 
   const isLoggedIn = Boolean(session?.user);
@@ -421,6 +441,23 @@ export default function MainNavbar() {
                 </div>
               )}
             </div>
+            {isLoggedIn && (
+              <button
+                type="button"
+                aria-label="Pass the J"
+                title="Pass the J"
+                onClick={() => {
+                  setInviteModalOpen(true);
+                  setInviteCopied(false);
+                }}
+                className="group relative flex h-11 w-11 items-center justify-center rounded-xl border border-cyan-200/20 bg-black/30 text-cyan-100/90 transition-all duration-200 hover:border-cyan-200/45 hover:bg-cyan-300/10 hover:text-cyan-50 hover:shadow-[0_0_18px_rgba(34,211,238,0.2)]"
+              >
+                <span className="text-xl">🚬</span>
+                <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 -translate-x-1/2 translate-y-1 whitespace-nowrap rounded-md border border-cyan-200/35 bg-slate-950/95 px-2 py-1 text-[11px] font-medium text-cyan-100 opacity-0 shadow-[0_0_14px_rgba(34,211,238,0.18)] transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100">
+                  Pass the J
+                </span>
+              </button>
+            )}
             {/* Settings Dropdown Trigger */}
             <div className="relative">
               <button
@@ -474,6 +511,36 @@ export default function MainNavbar() {
           <IconButton href="/login" label="Sign In" icon={<User size={18} />} isActive={pathname?.startsWith("/login")} />
         )}
       </div>
+      {inviteModalOpen && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/90 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-[2rem] border border-cyan-300/30 bg-slate-950/95 p-6 shadow-[0_0_50px_rgba(0,0,0,0.55)]">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-bold text-rose-100">Pass the J <span aria-hidden="true">🚬</span></h2>
+                <p className="mt-2 text-sm text-cyan-200">Share this invite link with your friends. Good for {formatInviteDurationLabel(INVITE_EXPIRATION_DEFAULT_HOURS)} only.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInviteModalOpen(false)}
+                className="rounded-full border border-cyan-200/20 bg-black/30 px-3 py-2 text-sm text-cyan-100 transition hover:bg-cyan-300/10"
+              >
+                Close
+              </button>
+            </div>
+            <div className="mb-4 rounded-3xl border border-cyan-300/20 bg-slate-900/80 p-4 text-sm text-cyan-100">
+              <label className="mb-2 block text-xs uppercase tracking-[0.25em] text-cyan-300/80">Invite Link</label>
+              <div className="min-h-[3rem] break-words text-sm leading-6">{inviteLink || "Loading invite link..."}</div>
+            </div>
+            <button
+              type="button"
+              onClick={handleCopyInviteLink}
+              className="w-full rounded-full bg-cyan-400/15 px-5 py-3 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-400/25"
+            >
+              {inviteCopied ? "Copied!" : "Copy Link"}
+            </button>
+          </div>
+        </div>
+      )}
     </nav>
   );
 }
