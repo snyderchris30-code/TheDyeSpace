@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { withVersionParam } from "@/lib/app-config";
 
 export default function PWARegister() {
   useEffect(() => {
@@ -12,7 +13,7 @@ export default function PWARegister() {
       return;
     }
 
-    navigator.serviceWorker.register("/sw.js").catch(() => {
+    navigator.serviceWorker.register(withVersionParam("/sw.js")).catch(() => {
       // Silent fail: app remains fully functional without offline support.
     });
   }, []);

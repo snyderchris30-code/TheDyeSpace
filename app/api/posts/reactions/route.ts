@@ -121,6 +121,7 @@ async function loadRelationalInteraction(adminClient: ReturnType<typeof createAd
     .from("post_comments")
     .select("id, post_id, user_id, content, created_at")
     .eq("post_id", postId)
+    .is("deleted_at", null)
     .order("created_at", { ascending: true });
 
   if (commentsError) {
@@ -189,6 +190,7 @@ export async function POST(req: NextRequest) {
       .from("posts")
       .select("id, user_id")
       .eq("id", body.postId)
+      .is("deleted_at", null)
       .maybeSingle();
 
     if (postError || !post) {

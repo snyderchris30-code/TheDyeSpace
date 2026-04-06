@@ -33,6 +33,7 @@ async function loadRelationalInteractions(adminClient: ReturnType<typeof createA
     .from("post_comments")
     .select("id, post_id, user_id, content, created_at")
     .in("post_id", postIds)
+    .is("deleted_at", null)
     .order("created_at", { ascending: true });
 
   if (commentsError) {

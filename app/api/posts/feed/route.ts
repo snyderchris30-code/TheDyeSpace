@@ -56,6 +56,7 @@ export async function GET(request: NextRequest) {
   let query = supabase
     .from("posts")
     .select("id,user_id,content,image_urls,likes,comments_count,is_for_sale,created_at")
+    .is("deleted_at", null)
     .order("created_at", { ascending: false })
     .limit(PAGE_SIZE);
 

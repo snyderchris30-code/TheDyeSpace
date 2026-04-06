@@ -1,6 +1,7 @@
 import './globals.css';
 import type { Metadata, Viewport } from 'next';
 import { Inter, Space_Grotesk } from 'next/font/google';
+import { withVersionParam } from '@/lib/app-config';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], variable: '--font-space-grotesk' });
@@ -8,13 +9,13 @@ const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], variable: '--font-space
 export const metadata: Metadata = {
   title: 'TheDyeSpace',
   description: 'A cosmic, psychedelic commune for tie-dye artists and creative souls.',
-  manifest: '/manifest.json',
+  manifest: withVersionParam('/manifest.json'),
   icons: {
     icon: [
-      { url: '/logo.png', sizes: '512x512', type: 'image/png' },
+      { url: withVersionParam('/logo.png'), sizes: '512x512', type: 'image/png' },
     ],
-    apple: [{ url: '/logo.png', sizes: '180x180', type: 'image/png' }],
-    shortcut: [{ url: '/logo.png', type: 'image/png' }],
+    apple: [{ url: withVersionParam('/logo.png'), sizes: '180x180', type: 'image/png' }],
+    shortcut: [{ url: withVersionParam('/logo.png'), type: 'image/png' }],
   },
   appleWebApp: {
     capable: true,

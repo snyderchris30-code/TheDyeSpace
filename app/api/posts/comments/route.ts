@@ -107,6 +107,7 @@ async function loadRelationalInteraction(adminClient: ReturnType<typeof createAd
     .from("post_comments")
     .select("id, post_id, user_id, content, created_at")
     .eq("post_id", postId)
+    .is("deleted_at", null)
     .order("created_at", { ascending: true });
 
   if (commentsError) {
@@ -176,6 +177,7 @@ export async function POST(req: NextRequest) {
       .from("posts")
       .select("id, user_id")
       .eq("id", body.postId)
+      .is("deleted_at", null)
       .maybeSingle();
 
     if (postError || !post) {
@@ -364,9 +366,41 @@ export async function DELETE(req: NextRequest) {
     }
   }
 
-  const { error: deleteError } = await adminClient.from("post_comments").delete().eq("id", commentId);
-  if (deleteError) {
-    return NextResponse.json({ error: deleteError.message }, { status: 500 });
+  const mode = searchParams.get("mode") || "soft";
+
+  if (mode === "permanent") {
+    const admin = await userIsAdmin(adminClient, user.id);
+    if (!admin) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const { error: deleteError } = await adminClient.from("post_comments").delete().eq("id", commentId);
+    if (deleteError) {
+      return NextResponse.json({ error: deleteError.message }, { status: 500 });
+    }
+  } else if (mode === "restore") {
+    const admin = await userIsAdmin(adminClient, user.id);
+    if (!admin) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const { error: restoreError } = await adminClient
+      .from("post_comments")
+      .update({ deleted_at: null })
+      .eq("id", commentId);
+
+    if (restoreError) {
+      return NextResponse.json({ error: restoreError.message }, { status: 500 });
+    }
+  } else {
+    const { error: softDeleteError } = await adminClient
+      .from("post_comments")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", commentId);
+
+    if (softDeleteError) {
+      return NextResponse.json({ error: softDeleteError.message }, { status: 500 });
+    }
   }
 
   const interaction = await loadRelationalInteraction(adminClient, postId, user.id);

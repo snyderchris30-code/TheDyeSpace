@@ -367,6 +367,7 @@ export default function ProfileEditor() {
           .from("posts")
           .select("id, user_id, content, image_urls, likes, comments_count, is_for_sale, created_at")
           .eq("user_id", userId)
+          .is("deleted_at", null)
           .order("created_at", { ascending: false });
 
         if (error) {

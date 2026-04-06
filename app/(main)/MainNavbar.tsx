@@ -48,6 +48,8 @@ export default function MainNavbar() {
   const [usersOpen, setUsersOpen] = useState(false);
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersList, setUsersList] = useState<DirectoryProfile[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [smokeInviteStatus, setSmokeInviteStatus] = useState<string | null>(null);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
   const [inviteLink, setInviteLink] = useState("");
@@ -61,6 +63,7 @@ export default function MainNavbar() {
       if (!user) {
         setProfileHref("/login");
         setInviteLink("");
+        setIsAdmin(false);
         return;
       }
 
@@ -70,16 +73,20 @@ export default function MainNavbar() {
       try {
         const { data: profileData, error } = await supabase
           .from("profiles")
-          .select("username")
+          .select("username,role")
           .eq("id", user.id)
           .limit(1)
           .maybeSingle();
 
-        if (!error && profileData?.username) {
-          nextHref = `/profile/${encodeURIComponent(profileData.username)}`;
+        if (!error && profileData) {
+          if (profileData?.username) {
+            nextHref = `/profile/${encodeURIComponent(profileData.username)}`;
+          }
+          setIsAdmin(profileData.role === "admin");
         }
       } catch {
         // Keep fallback route when profile lookup fails.
+        setIsAdmin(false);
       }
 
       if (active) {
@@ -99,6 +106,7 @@ export default function MainNavbar() {
         setSession(null);
         setProfileHref("/login");
         setInviteLink("");
+        setIsAdmin(false);
         return;
       }
 
@@ -211,6 +219,27 @@ export default function MainNavbar() {
       window.setTimeout(() => setInviteCopied(false), 2000);
     } catch {
       setInviteCopied(false);
+    }
+  };
+
+  const handleInviteToSmokeSession = async (targetUserId: string) => {
+    setSmokeInviteStatus(null);
+    try {
+      const response = await fetch("/api/admin/smoke-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId }),
+      });
+
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body?.error || "Could not send smoke session invite.");
+      }
+
+      setSmokeInviteStatus("Smoke session invite sent.");
+      window.setTimeout(() => setSmokeInviteStatus(null), 2500);
+    } catch (error: any) {
+      setSmokeInviteStatus(typeof error?.message === "string" ? error.message : "Could not send smoke session invite.");
     }
   };
 
@@ -347,21 +376,34 @@ export default function MainNavbar() {
                   </button>
                 </div>
                 <div className="max-h-[70vh] space-y-1 overflow-auto">
+                  {smokeInviteStatus ? (
+                    <p className="mb-2 rounded-lg border border-cyan-300/25 bg-cyan-900/25 px-2 py-1 text-xs text-cyan-100">{smokeInviteStatus}</p>
+                  ) : null}
                   {usersLoading ? (
                     <p className="text-sm text-cyan-100/75">Loading users...</p>
                   ) : usersList.length === 0 ? (
                     <p className="text-sm text-cyan-100/75">No users found.</p>
                   ) : (
                     usersList.map((profile) => (
-                      <Link
-                        key={profile.id}
-                        href={`/profile/${encodeURIComponent(profile.username || "")}`}
-                        className="block rounded-lg border border-cyan-300/15 bg-slate-950/60 px-3 py-2 text-sm text-cyan-100 transition hover:border-cyan-300/45 hover:bg-cyan-900/20"
-                        onClick={() => setUsersOpen(false)}
-                      >
-                        <span className="font-semibold">{profile.display_name || profile.username || "DyeSpace User"}</span>
-                        <span className="ml-2 text-xs text-cyan-300/80">@{profile.username}</span>
-                      </Link>
+                      <div key={profile.id} className="rounded-lg border border-cyan-300/15 bg-slate-950/60 px-3 py-2 text-sm text-cyan-100">
+                        <Link
+                          href={`/profile/${encodeURIComponent(profile.username || "")}`}
+                          className="block transition hover:text-cyan-50"
+                          onClick={() => setUsersOpen(false)}
+                        >
+                          <span className="font-semibold">{profile.display_name || profile.username || "DyeSpace User"}</span>
+                          <span className="ml-2 text-xs text-cyan-300/80">@{profile.username}</span>
+                        </Link>
+                        {isAdmin && session?.user?.id && profile.id !== session.user.id ? (
+                          <button
+                            type="button"
+                            className="mt-2 rounded-full border border-cyan-300/30 bg-cyan-900/25 px-3 py-1 text-xs text-cyan-100 hover:bg-cyan-900/45"
+                            onClick={() => void handleInviteToSmokeSession(profile.id)}
+                          >
+                            Invite to Smoke Session
+                          </button>
+                        ) : null}
+                      </div>
                     ))
                   )}
                 </div>
@@ -485,6 +527,9 @@ export default function MainNavbar() {
                   <Link href="/privacy" className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Privacy Policy</Link>
                   <Link href="/guidelines" className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Community Guidelines</Link>
                   <Link href="/suggestions" className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Suggestions & Support</Link>
+                  {isAdmin ? (
+                    <Link href="/deleted-items" className="block px-4 py-2 text-amber-200 hover:bg-cyan-900/40 rounded">Deleted Items</Link>
+                  ) : null}
                   {isLoggedIn ? (
                     <button onClick={handleSignOut} className="w-full text-left px-4 py-2 text-pink-300 hover:bg-cyan-900/40 rounded flex items-center gap-2">
                       <LogOut size={18} /> Logout

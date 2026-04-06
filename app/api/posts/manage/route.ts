@@ -73,7 +73,7 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ success: true, content });
 }
 
-// DELETE /api/posts/manage?postId=... — delete a post
+// DELETE /api/posts/manage?postId=... — soft-delete by default
 export async function DELETE(req: NextRequest) {
   const supabase = await createSupabaseServerClient();
   const {
@@ -87,6 +87,7 @@ export async function DELETE(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const postId = searchParams.get("postId");
+  const mode = searchParams.get("mode") || "soft";
   if (!postId) {
     return NextResponse.json({ error: "postId is required" }, { status: 400 });
   }
@@ -94,7 +95,7 @@ export async function DELETE(req: NextRequest) {
   const adminClient = createAdminClient();
   const { data: post, error: fetchError } = await adminClient
     .from("posts")
-    .select("id, user_id")
+    .select("id, user_id, deleted_at")
     .eq("id", postId)
     .maybeSingle();
 
@@ -108,14 +109,61 @@ export async function DELETE(req: NextRequest) {
     }
   }
 
-  // Remove related data first, then the post
-  await adminClient.from("post_comments").delete().eq("post_id", postId);
-  await adminClient.from("post_reactions").delete().eq("post_id", postId);
+  if (mode === "restore") {
+    const admin = await isUserAdmin(adminClient, user.id);
+    if (!admin) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
-  const { error: deleteError } = await adminClient.from("posts").delete().eq("id", postId);
-  if (deleteError) {
-    return NextResponse.json({ error: deleteError.message }, { status: 500 });
+    const { error: restorePostError } = await adminClient
+      .from("posts")
+      .update({ deleted_at: null })
+      .eq("id", postId);
+
+    if (restorePostError) {
+      return NextResponse.json({ error: restorePostError.message }, { status: 500 });
+    }
+
+    await adminClient
+      .from("post_comments")
+      .update({ deleted_at: null })
+      .eq("post_id", postId);
+
+    return NextResponse.json({ success: true, mode: "restore" });
   }
 
-  return NextResponse.json({ success: true });
+  if (mode === "permanent") {
+    const admin = await isUserAdmin(adminClient, user.id);
+    if (!admin) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    await adminClient.from("post_comments").delete().eq("post_id", postId);
+    await adminClient.from("post_reactions").delete().eq("post_id", postId);
+
+    const { error: deleteError } = await adminClient.from("posts").delete().eq("id", postId);
+    if (deleteError) {
+      return NextResponse.json({ error: deleteError.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, mode: "permanent" });
+  }
+
+  const timestamp = new Date().toISOString();
+  await adminClient
+    .from("post_comments")
+    .update({ deleted_at: timestamp })
+    .eq("post_id", postId)
+    .is("deleted_at", null);
+
+  const { error: softDeleteError } = await adminClient
+    .from("posts")
+    .update({ deleted_at: timestamp, comments_count: 0, likes: 0 })
+    .eq("id", postId);
+
+  if (softDeleteError) {
+    return NextResponse.json({ error: softDeleteError.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ success: true, mode: "soft" });
 }

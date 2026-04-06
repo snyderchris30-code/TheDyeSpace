@@ -194,6 +194,7 @@ export default function ExplorePage() {
         let query = supabase
           .from("posts")
           .select("id,user_id,content,image_urls,likes,is_for_sale,created_at")
+          .is("deleted_at", null)
           .order("created_at", { ascending: false });
 
         if (tab === "following") {
