@@ -357,7 +357,7 @@ export default function MainNavbar() {
   };
 
   return (
-    <nav className="navbar mt-2 mb-4 relative sm:mb-6 flex flex-wrap items-center justify-between">
+    <nav className="navbar mt-2 mb-4 relative isolate z-[12000] sm:mb-6 flex flex-wrap items-center justify-between">
       <div className="flex items-center gap-2">
         <Link href="/" className="navbar-logo text-2xl tracking-wide select-none sm:text-4xl sm:tracking-widest">
           TheDyeSpace
@@ -376,7 +376,7 @@ export default function MainNavbar() {
               <span>{userCount}</span>
             </button>
             {usersOpen && (
-              <div data-dropdown-box="true" className="absolute left-0 top-full z-[9999] mt-2 w-[min(92vw,380px)] rounded-xl border border-cyan-400/40 bg-black/90 p-3 shadow-2xl animate-fade-in">
+              <div data-dropdown-box="true" className="absolute left-0 top-full z-[12020] mt-2 w-[min(92vw,380px)] rounded-xl border border-cyan-400/40 bg-black/90 p-3 shadow-2xl animate-fade-in">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="font-semibold text-cyan-200">User Directory</span>
                   <button
@@ -478,13 +478,13 @@ export default function MainNavbar() {
               {notifDrop && (
                 <>
                   <div
-                    className="fixed inset-0 z-[10040] bg-black/50 backdrop-blur-[1px]"
+                    className="fixed inset-0 z-[12040] bg-black/50 backdrop-blur-[1px]"
                     onClick={() => setNotifDrop(false)}
                     aria-hidden="true"
                   />
                   <div
                     data-dropdown-box="true"
-                    className="fixed left-1/2 top-[5.25rem] z-[10050] w-[min(92vw,420px)] -translate-x-1/2 rounded-2xl border border-sky-500/70 bg-black/95 p-4 shadow-2xl animate-fade-in"
+                    className="fixed left-1/2 top-[5.25rem] z-[12050] w-[min(92vw,420px)] -translate-x-1/2 rounded-2xl border border-sky-500/70 bg-black/95 p-4 shadow-2xl animate-fade-in"
                   >
                     <div className="mb-3 flex items-center justify-between">
                       <span className="font-semibold text-cyan-200">Notifications</span>
@@ -542,7 +542,7 @@ export default function MainNavbar() {
                 </span>
               </button>
               {settingsOpen && (
-                <div data-dropdown-box="true" className="absolute right-0 top-full z-[9999] mt-2 w-[min(92vw,320px)] rounded-xl border border-cyan-400/40 bg-black/95 p-2 shadow-2xl animate-fade-in">
+                <div data-dropdown-box="true" className="absolute right-0 top-full z-[12020] mt-2 w-[min(92vw,320px)] rounded-xl border border-cyan-400/40 bg-black/95 p-2 shadow-2xl animate-fade-in">
                   <div className="flex justify-end mb-1">
                     <button data-dropdown-trigger="true" aria-label="Close" title="Close" className="text-cyan-400 hover:text-white p-1" onClick={() => setSettingsOpen(false)}>
                       <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M6 6l8 8M6 14L14 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
@@ -584,7 +584,7 @@ export default function MainNavbar() {
         )}
       </div>
       {inviteModalOpen && (
-        <div className="fixed inset-0 z-[11000] grid place-items-center overflow-y-auto bg-slate-950/90 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[12100] grid place-items-center overflow-y-auto bg-slate-950/90 p-4 backdrop-blur-sm">
           <div className="my-6 w-full max-w-md rounded-[2rem] border border-cyan-300/30 bg-slate-950/95 p-6 shadow-[0_0_50px_rgba(0,0,0,0.55)]">
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
