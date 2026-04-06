@@ -5,6 +5,7 @@ import { Music2, Pause, Play, Plus, SkipBack, SkipForward, X } from "lucide-reac
 import { createClient } from "@/lib/supabase/client";
 import { buildMusicQueue, extractYoutubeVideoId, normalizeMusicPlayerUrls, type MusicQueueEntry } from "@/lib/youtube-media";
 import { DEFAULT_PUBLIC_MUSIC_TITLE, DEFAULT_PUBLIC_MUSIC_URL } from "@/lib/app-config";
+import { useRouter } from "next/navigation";
 
 declare global {
   interface Window {
@@ -46,6 +47,7 @@ function ensureYouTubeApi(onReady: () => void) {
 }
 
 export default function GlobalMusicPlayer() {
+  const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const playerMountRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<any>(null);
@@ -61,8 +63,6 @@ export default function GlobalMusicPlayer() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isManagerOpen, setIsManagerOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [songInput, setSongInput] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentTitle, setCurrentTitle] = useState(DEFAULT_PUBLIC_MUSIC_TITLE);
@@ -70,10 +70,14 @@ export default function GlobalMusicPlayer() {
 
   const defaultPublicUrls = useMemo(() => normalizeMusicPlayerUrls([DEFAULT_PUBLIC_MUSIC_URL]), []);
   const defaultPublicUrl = defaultPublicUrls[0] || "";
+  const hasCustomSongs = Boolean(session?.user && musicUrls.length > 0);
   const mergedUrls = useMemo(() => {
     const dedupedUserUrls = normalizeMusicPlayerUrls(musicUrls).filter((url) => url !== defaultPublicUrl);
+    if (hasCustomSongs) {
+      return dedupedUserUrls;
+    }
     return defaultPublicUrl ? [defaultPublicUrl, ...dedupedUserUrls] : dedupedUserUrls;
-  }, [defaultPublicUrl, musicUrls]);
+  }, [defaultPublicUrl, hasCustomSongs, musicUrls]);
 
   const queue = useMemo(() => buildMusicQueue(mergedUrls), [mergedUrls]);
   const currentEntry = queue[currentIndex] ?? null;
@@ -123,7 +127,6 @@ export default function GlobalMusicPlayer() {
   );
 
   const persistPlaylist = useCallback(async (nextUrls: string[], successMessage?: string) => {
-    setIsSaving(true);
     setStatus(null);
 
     try {
@@ -142,8 +145,6 @@ export default function GlobalMusicPlayer() {
       setStatus(successMessage || "Playlist saved.");
     } catch (error: any) {
       setStatus(typeof error?.message === "string" ? error.message : "Could not save your playlist.");
-    } finally {
-      setIsSaving(false);
     }
   }, [defaultPublicUrl]);
 
@@ -199,6 +200,7 @@ export default function GlobalMusicPlayer() {
       width: "1",
       height: "1",
       playerVars: {
+        // Respect YouTube embed behavior: no forced autoplay on load.
         autoplay: 0,
         controls: 0,
         rel: 0,
@@ -369,31 +371,13 @@ export default function GlobalMusicPlayer() {
     setIsPlaying(true);
   }, [currentEntry, queue.length]);
 
-  const addSongs = async () => {
+  const handleOpenMusicEditor = () => {
     if (!session?.user) {
-      setStatus("Sign in to build your playlist.");
+      setStatus("Sign in to add your own songs.");
       return;
     }
 
-    const rawEntries = songInput
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-
-    if (!rawEntries.length) {
-      setStatus("Paste at least one YouTube video or playlist URL.");
-      return;
-    }
-
-    const nextUrls = normalizeMusicPlayerUrls([...(musicUrls || []), ...rawEntries]);
-    if (!nextUrls.length) {
-      setStatus("Only valid YouTube video or playlist URLs can be added.");
-      return;
-    }
-
-    const userOnlyUrls = nextUrls.filter((url) => url !== defaultPublicUrl);
-    await persistPlaylist(userOnlyUrls, `${userOnlyUrls.length} saved to your playlist.`);
-    setSongInput("");
+    router.push("/music");
   };
 
   const removeSong = async (url: string) => {
@@ -494,33 +478,18 @@ export default function GlobalMusicPlayer() {
                 </div>
               </div>
 
-              {session?.user ? (
-                <div className="rounded-[1.35rem] border border-cyan-300/20 bg-black/20 p-3">
-                  <label className="mb-2 block text-[11px] uppercase tracking-[0.24em] text-cyan-300/75">Quick Add Song</label>
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <input
-                      className="flex-1 rounded-full border border-cyan-300/25 bg-slate-950/85 px-4 py-2 text-sm text-cyan-50 outline-none transition focus:border-cyan-300/45"
-                      placeholder="Paste a YouTube video or playlist URL"
-                      value={songInput}
-                      onChange={(event) => setSongInput(event.target.value)}
-                    />
-                    <button
-                      type="button"
-                      className="inline-flex items-center justify-center gap-2 rounded-full border border-cyan-300/35 bg-cyan-300/15 px-4 py-2 text-sm font-semibold text-cyan-50 hover:bg-cyan-300/25 disabled:opacity-60"
-                      onClick={() => void addSongs()}
-                      disabled={isSaving}
-                    >
-                      <Plus className="h-4 w-4" />
-                      {isSaving ? "Saving..." : "Add Song"}
-                    </button>
-                  </div>
-                  <p className="mt-2 text-[11px] text-cyan-100/65">Supports YouTube video and playlist links. Music keeps playing while you scroll, switch pages, or hide this panel.</p>
-                </div>
-              ) : (
-                <div className="rounded-[1.35rem] border border-cyan-300/20 bg-black/20 px-4 py-3 text-sm text-cyan-100/75">
-                  Sign in to add songs and save your personal playlist.
-                </div>
-              )}
+              <div className="rounded-[1.35rem] border border-cyan-300/20 bg-black/20 p-3">
+                <label className="mb-2 block text-[11px] uppercase tracking-[0.24em] text-cyan-300/75">Music Player Editor</label>
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center gap-2 rounded-full border border-cyan-300/35 bg-cyan-300/15 px-4 py-2 text-sm font-semibold text-cyan-50 hover:bg-cyan-300/25"
+                  onClick={handleOpenMusicEditor}
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Songs
+                </button>
+                <p className="mt-2 text-[11px] text-cyan-100/65">Manage your YouTube videos and playlists in the editor. This player uses the official YouTube embed API and keeps playback running while you scroll, switch pages, or hide this panel.</p>
+              </div>
 
               {status ? <p className="text-xs text-cyan-200/80">{status}</p> : null}
 
