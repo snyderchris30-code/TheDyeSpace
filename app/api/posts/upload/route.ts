@@ -75,6 +75,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "At least one image is required." }, { status: 400 });
     }
 
+    console.info("[posts/upload] Upload request received", {
+      userId: user.id,
+      fileCount: files.length,
+      names: files.map((file) => file.name),
+    });
+
     const adminClient = createAdminClient();
     await ensurePostsBucket(adminClient);
 
@@ -96,6 +102,13 @@ export async function POST(req: NextRequest) {
         .upload(filePath, fileBuffer, { upsert: true, contentType: file.type || undefined });
 
       if (uploadError) {
+        console.error("[posts/upload] Storage upload failed", {
+          userId: user.id,
+          filePath,
+          fileName: file.name,
+          contentType: file.type,
+          error: uploadError.message,
+        });
         return NextResponse.json({ error: uploadError.message }, { status: 500 });
       }
 
@@ -105,8 +118,16 @@ export async function POST(req: NextRequest) {
       imageUrls.push(publicUrl);
     }
 
+    console.info("[posts/upload] Upload succeeded", {
+      userId: user.id,
+      imageCount: imageUrls.length,
+    });
+
     return NextResponse.json({ imageUrls });
   } catch (error: any) {
+    console.error("[posts/upload] Unexpected failure", {
+      error: error?.message || error,
+    });
     return NextResponse.json(
       { error: typeof error?.message === "string" ? error.message : "Failed to upload post images." },
       { status: 500 }

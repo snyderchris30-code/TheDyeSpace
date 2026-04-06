@@ -65,7 +65,9 @@ async function createCommentNotification(
   ownerId: string | null | undefined,
   actorId: string,
   actorName: string,
-  postId: string
+  postId: string,
+  commentId: string,
+  requireRelationalVerification = true
 ) {
   if (!ownerId || ownerId === actorId) {
     console.info("[notifications] Skipping comment notification", {
@@ -75,6 +77,44 @@ async function createCommentNotification(
       postId,
     });
     return;
+  }
+
+  if (requireRelationalVerification) {
+    const baseQuery = adminClient
+      .from("post_comments")
+      .select("id, post_id")
+      .eq("id", commentId)
+      .eq("post_id", postId);
+
+    const withDeleteCheck = await baseQuery.is("deleted_at", null).maybeSingle();
+    let persistedComment = withDeleteCheck.data;
+    let persistedCommentError = withDeleteCheck.error;
+
+    const missingDeletedAt = String(withDeleteCheck.error?.message || "").includes(
+      "Could not find the 'deleted_at' column"
+    );
+
+    if (missingDeletedAt) {
+      const withoutDeleteCheck = await adminClient
+        .from("post_comments")
+        .select("id, post_id")
+        .eq("id", commentId)
+        .eq("post_id", postId)
+        .maybeSingle();
+      persistedComment = withoutDeleteCheck.data;
+      persistedCommentError = withoutDeleteCheck.error;
+    }
+
+    if (persistedCommentError || !persistedComment) {
+      console.error("[notifications] Skipping comment notification because comment could not be verified", {
+        ownerId,
+        actorId,
+        postId,
+        commentId,
+        error: persistedCommentError?.message || null,
+      });
+      return;
+    }
   }
 
   const payload = {
@@ -90,6 +130,7 @@ async function createCommentNotification(
     ownerId,
     actorId,
     postId,
+    commentId,
     actorName,
   });
 
@@ -100,12 +141,14 @@ async function createCommentNotification(
       ownerId,
       actorId,
       postId,
+      commentId,
     });
   } catch (error: any) {
     console.error("[notifications] Failed to create comment notification", {
       ownerId,
       actorId,
       postId,
+      commentId,
       error: error?.message || error,
     });
   }
@@ -124,12 +167,24 @@ async function loadLegacyInteraction(adminClient: ReturnType<typeof createAdminC
 }
 
 async function loadRelationalInteraction(adminClient: ReturnType<typeof createAdminClient>, postId: string, viewerId?: string | null, viewerIsAdmin = false) {
-  const { data: comments, error: commentsError } = await adminClient
+  let commentsResponse = await adminClient
     .from("post_comments")
     .select("id, post_id, user_id, content, created_at")
     .eq("post_id", postId)
     .is("deleted_at", null)
     .order("created_at", { ascending: true });
+
+  const missingDeletedAt = String(commentsResponse.error?.message || "").includes("Could not find the 'deleted_at' column");
+  if (missingDeletedAt) {
+    commentsResponse = await adminClient
+      .from("post_comments")
+      .select("id, post_id, user_id, content, created_at")
+      .eq("post_id", postId)
+      .order("created_at", { ascending: true });
+  }
+
+  const comments = commentsResponse.data;
+  const commentsError = commentsResponse.error;
 
   if (commentsError) {
     throw commentsError;
@@ -148,10 +203,26 @@ async function loadRelationalInteraction(adminClient: ReturnType<typeof createAd
   let profiles: Array<InteractionProfileRow & { shadow_banned?: boolean | null; shadow_banned_until?: string | null }> = [];
 
   if (userIds.length) {
-    const { data: profileRows, error: profilesError } = await adminClient
+    const primaryProfileResponse = await adminClient
       .from("profiles")
       .select("id, username, display_name, avatar_url, shadow_banned, shadow_banned_until")
       .in("id", userIds);
+
+    const missingShadowColumns = String(primaryProfileResponse.error?.message || "").includes("Could not find the")
+      && (String(primaryProfileResponse.error?.message || "").includes("shadow_banned")
+        || String(primaryProfileResponse.error?.message || "").includes("shadow_banned_until"));
+
+    let profileRows = primaryProfileResponse.data;
+    let profilesError = primaryProfileResponse.error;
+
+    if (missingShadowColumns) {
+      const fallbackProfileResponse = await adminClient
+        .from("profiles")
+        .select("id, username, display_name, avatar_url")
+        .in("id", userIds);
+      profileRows = fallbackProfileResponse.data as typeof profileRows;
+      profilesError = fallbackProfileResponse.error;
+    }
 
     if (profilesError) {
       throw profilesError;
@@ -214,6 +285,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Post not found." }, { status: 404 });
     }
 
+    console.info("[comments/create] Attempting comment insert", {
+      postId: body.postId,
+      actorId: user.id,
+      contentLength: content.length,
+    });
+
     const { data: actorProfile } = await adminClient
       .from("profiles")
       .select("username, display_name")
@@ -222,13 +299,17 @@ export async function POST(req: NextRequest) {
 
     const actorName = actorProfile?.display_name?.trim() || resolveProfileUsername(actorProfile?.username, user.user_metadata?.username, user.email, user.id);
 
-    const { error: insertError } = await adminClient.from("post_comments").insert({
-      post_id: body.postId,
-      user_id: user.id,
-      content,
-    });
+    const { data: insertedComment, error: insertError } = await adminClient
+      .from("post_comments")
+      .insert({
+        post_id: body.postId,
+        user_id: user.id,
+        content,
+      })
+      .select("id, post_id, user_id")
+      .maybeSingle();
 
-    if (!insertError) {
+    if (!insertError && insertedComment) {
       const interaction = await loadRelationalInteraction(adminClient, body.postId, user.id, viewerIsAdmin);
       const commentsCount = interaction?.comments.length ?? 0;
 
@@ -241,13 +322,37 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: updatePostError.message }, { status: 500 });
       }
 
-      await createCommentNotification(adminClient, post.user_id, user.id, actorName, body.postId);
+      await createCommentNotification(adminClient, post.user_id, user.id, actorName, body.postId, insertedComment.id);
+
+      console.info("[comments/create] Comment insert succeeded", {
+        postId: body.postId,
+        actorId: user.id,
+        commentId: insertedComment.id,
+        commentsCount,
+      });
 
       return NextResponse.json({ interaction, commentsCount, storage: "relational" });
     }
 
-    if (!isMissingInteractionTablesError(insertError)) {
-      return NextResponse.json({ error: insertError.message }, { status: 500 });
+    if (!insertError && !insertedComment) {
+      console.error("[comments/create] Insert completed without returning inserted row", {
+        postId: body.postId,
+        actorId: user.id,
+      });
+      return NextResponse.json({ error: "Comment insert could not be verified." }, { status: 500 });
+    }
+
+    const relationalInsertError = insertError;
+    if (!relationalInsertError || !isMissingInteractionTablesError(relationalInsertError)) {
+      console.error("[comments/create] Relational comment insert failed", {
+        postId: body.postId,
+        actorId: user.id,
+        error: relationalInsertError?.message || "Unknown insert failure",
+        details: relationalInsertError?.details,
+        hint: relationalInsertError?.hint,
+        code: relationalInsertError?.code,
+      });
+      return NextResponse.json({ error: relationalInsertError?.message || "Failed to save comment." }, { status: 500 });
     }
 
     const { data: existingProfile } = await adminClient
@@ -301,10 +406,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: updatePostError.message }, { status: 500 });
     }
 
-    await createCommentNotification(adminClient, post.user_id, user.id, actorName, body.postId);
+    const fallbackCommentId = nextComments[nextComments.length - 1]?.id;
+    if (fallbackCommentId) {
+      await createCommentNotification(adminClient, post.user_id, user.id, actorName, body.postId, fallbackCommentId, false);
+    }
+
+    console.info("[comments/create] Legacy comment save succeeded", {
+      postId: body.postId,
+      actorId: user.id,
+      commentId: fallbackCommentId,
+      commentsCount,
+    });
 
     return NextResponse.json({ interaction, commentsCount, storage: "legacy" });
   } catch (error: any) {
+    console.error("[comments/create] Unexpected failure", {
+      error: error?.message || error,
+      postId: body.postId,
+    });
     return NextResponse.json(
       { error: typeof error?.message === "string" ? error.message : "Failed to save comment." },
       { status: 500 }

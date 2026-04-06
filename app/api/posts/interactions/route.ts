@@ -37,12 +37,24 @@ async function loadLegacyInteractions(adminClient: ReturnType<typeof createAdmin
 }
 
 async function loadRelationalInteractions(adminClient: ReturnType<typeof createAdminClient>, postIds: string[], viewerId?: string | null, viewerIsAdmin = false) {
-  const { data: comments, error: commentsError } = await adminClient
+  let commentsResponse = await adminClient
     .from("post_comments")
     .select("id, post_id, user_id, content, created_at")
     .in("post_id", postIds)
     .is("deleted_at", null)
     .order("created_at", { ascending: true });
+
+  const missingDeletedAt = String(commentsResponse.error?.message || "").includes("Could not find the 'deleted_at' column");
+  if (missingDeletedAt) {
+    commentsResponse = await adminClient
+      .from("post_comments")
+      .select("id, post_id, user_id, content, created_at")
+      .in("post_id", postIds)
+      .order("created_at", { ascending: true });
+  }
+
+  const comments = commentsResponse.data;
+  const commentsError = commentsResponse.error;
 
   if (commentsError) {
     throw commentsError;
@@ -61,10 +73,27 @@ async function loadRelationalInteractions(adminClient: ReturnType<typeof createA
   let profiles: Array<InteractionProfileRow & { voided_until?: string | null; shadow_banned?: boolean | null; shadow_banned_until?: string | null }> = [];
 
   if (userIds.length) {
-    const { data: profileRows, error: profilesError } = await adminClient
+    const primaryProfileResponse = await adminClient
       .from("profiles")
       .select("id, username, display_name, avatar_url, theme_settings, voided_until, shadow_banned, shadow_banned_until")
       .in("id", userIds);
+
+    const missingStatusColumns = String(primaryProfileResponse.error?.message || "").includes("Could not find the")
+      && (String(primaryProfileResponse.error?.message || "").includes("voided_until")
+        || String(primaryProfileResponse.error?.message || "").includes("shadow_banned")
+        || String(primaryProfileResponse.error?.message || "").includes("shadow_banned_until"));
+
+    let profileRows = primaryProfileResponse.data;
+    let profilesError = primaryProfileResponse.error;
+
+    if (missingStatusColumns) {
+      const fallbackProfileResponse = await adminClient
+        .from("profiles")
+        .select("id, username, display_name, avatar_url, theme_settings")
+        .in("id", userIds);
+      profileRows = fallbackProfileResponse.data as typeof profileRows;
+      profilesError = fallbackProfileResponse.error;
+    }
 
     if (profilesError) {
       throw profilesError;

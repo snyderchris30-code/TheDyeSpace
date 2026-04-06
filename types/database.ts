@@ -8,6 +8,7 @@ export interface ProfileThemeSettings {
   font_style?: string | null;
   youtube_urls?: string[] | null;
   music_player_urls?: string[] | null;
+  custom_emojis?: string[] | null;
 }
 
 export interface Profile {

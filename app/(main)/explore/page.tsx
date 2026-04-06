@@ -8,6 +8,8 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { fontClass, resolveProfileAppearance, type ProfileAppearance } from "@/lib/profile-theme";
+import { normalizePostImageUrls } from "@/lib/post-media";
+import InlineEmojiText from "@/app/InlineEmojiText";
 import { Home, Users, BookOpen, PartyPopper, Tag, Ban } from "lucide-react";
 
 type ExplorePost = {
@@ -242,7 +244,13 @@ export default function ExplorePage() {
         if (fetchError) throw fetchError;
 
         if (!active) return;
-        const rows = (data || []) as ExplorePost[];
+        const rows = ((data || []) as ExplorePost[]).map((post) => {
+          const imageUrls = normalizePostImageUrls(post.image_urls);
+          return {
+            ...post,
+            image_urls: imageUrls.length ? imageUrls : null,
+          };
+        });
 
         const userIds = [...new Set(rows.map((post) => post.user_id).filter(Boolean))];
         const profilesById = new Map<string, ProfileRow>();
@@ -401,7 +409,10 @@ export default function ExplorePage() {
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent px-3 py-4 text-left text-xs text-cyan-50/85 sm:text-sm">Tap to expand</div>
                   </button>
               ) : null}
-                <p className="mb-3 whitespace-pre-wrap text-sm leading-6 text-[color:var(--post-text)]/92 sm:text-base sm:leading-7">{stripCategoryTag(post.content) || "No description provided."}</p>
+                <InlineEmojiText
+                  text={stripCategoryTag(post.content) || "No description provided."}
+                  className="mb-3 block whitespace-pre-wrap text-sm leading-6 text-[color:var(--post-text)]/92 sm:text-base sm:leading-7"
+                />
               <div className="mb-3">
                 <Link
                   href={post.author_username ? `/profile/${post.author_username}` : '#'}

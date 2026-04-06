@@ -8,7 +8,11 @@ import { useParams, useRouter } from "next/navigation";
 import { Heart, MessageCircle, Send, SquarePen, Music2, PlayCircle, Plus, X, Maximize2 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import EmojiPicker from "@/app/EmojiPicker";
+import InlineEmojiText from "@/app/InlineEmojiText";
+import { normalizePostImageUrls } from "@/lib/post-media";
 import { REACTION_EMOJIS, type AggregatedPostInteraction, type ReactionEmoji } from "@/lib/post-interactions";
+import { appendEmojiToText } from "@/lib/custom-emojis";
 import {
   DEFAULT_BACKGROUND_COLOR,
   DEFAULT_FONT_STYLE,
@@ -376,7 +380,13 @@ export default function ProfileEditor() {
           throw error;
         }
 
-        const nextPosts = (data || []) as ProfilePost[];
+        const nextPosts = ((data || []) as ProfilePost[]).map((post) => {
+          const imageUrls = normalizePostImageUrls(post.image_urls);
+          return {
+            ...post,
+            image_urls: imageUrls.length ? imageUrls : null,
+          };
+        });
         setPosts(nextPosts);
         await loadInteractions(nextPosts.map((post) => post.id));
       } catch (error: any) {
@@ -1508,7 +1518,10 @@ export default function ProfileEditor() {
                           </div>
                         ) : null}
 
-                        <p className="mt-4 whitespace-pre-wrap text-base leading-7 text-[color:var(--profile-text)]/92 sm:text-lg sm:leading-8">{stripCategoryTag(post.content) || "No description provided."}</p>
+                        <InlineEmojiText
+                          text={stripCategoryTag(post.content) || "No description provided."}
+                          className="mt-4 block whitespace-pre-wrap text-base leading-7 text-[color:var(--profile-text)]/92 sm:text-lg sm:leading-8"
+                        />
 
                         {post.image_urls && post.image_urls.length > 0 ? (
                           <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -1679,7 +1692,10 @@ export default function ProfileEditor() {
                                             </div>
                                           </details>
                                         ) : null}
-                                        <p className="mt-2 whitespace-pre-wrap text-[color:var(--profile-text)]/90">{comment.content}</p>
+                                        <InlineEmojiText
+                                          text={comment.content}
+                                          className="mt-2 block whitespace-pre-wrap text-[color:var(--profile-text)]/90"
+                                        />
                                       </div>
                                     </div>
                                   </div>
@@ -1694,6 +1710,15 @@ export default function ProfileEditor() {
                                   placeholder="Add a comment"
                                   value={commentDrafts[post.id] || ""}
                                   onChange={(e) => setCommentDrafts((prev) => ({ ...prev, [post.id]: e.target.value }))}
+                                />
+                                <EmojiPicker
+                                  className="sm:self-end"
+                                  onSelect={(emojiOrToken) =>
+                                    setCommentDrafts((prev) => ({
+                                      ...prev,
+                                      [post.id]: appendEmojiToText(prev[post.id] || "", emojiOrToken),
+                                    }))
+                                  }
                                 />
                                 <button
                                   className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-300 via-teal-300 to-emerald-300 px-5 py-3 text-sm font-semibold text-slate-950 shadow-lg transition hover:scale-[1.02] disabled:opacity-60"

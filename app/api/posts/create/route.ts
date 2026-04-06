@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createAdminClient, loadProfileStatus, isMuted } from "@/lib/admin-utils";
+import { normalizePostImageUrls } from "@/lib/post-media";
 
 type CreatePostBody = {
   content?: string;
@@ -22,9 +23,7 @@ export async function POST(req: NextRequest) {
 
     const body = (await req.json().catch(() => ({}))) as CreatePostBody;
     const content = body.content?.trim();
-    const imageUrls = Array.isArray(body.image_urls)
-      ? body.image_urls.filter((url): url is string => typeof url === "string" && url.length > 0)
-      : [];
+    const imageUrls = normalizePostImageUrls(body.image_urls);
 
     if (!content) {
       return NextResponse.json({ error: "Post content is required." }, { status: 400 });
@@ -36,6 +35,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "You are muted and cannot create posts at this time." }, { status: 403 });
     }
 
+    console.info("[posts/create] Attempting post insert", {
+      userId: user.id,
+      contentLength: content.length,
+      imageCount: imageUrls.length,
+      hasForSaleFlag: Boolean(body.is_for_sale),
+    });
+
     const { error: insertError } = await adminClient.from("posts").insert({
       user_id: user.id,
       content,
@@ -44,11 +50,27 @@ export async function POST(req: NextRequest) {
     });
 
     if (insertError) {
+      console.error("[posts/create] Failed post insert", {
+        userId: user.id,
+        imageCount: imageUrls.length,
+        error: insertError.message,
+        details: insertError.details,
+        hint: insertError.hint,
+        code: insertError.code,
+      });
       return NextResponse.json({ error: insertError.message }, { status: 500 });
     }
 
+    console.info("[posts/create] Post insert succeeded", {
+      userId: user.id,
+      imageCount: imageUrls.length,
+    });
+
     return NextResponse.json({ success: true });
   } catch (error: any) {
+    console.error("[posts/create] Unexpected failure", {
+      error: error?.message || error,
+    });
     return NextResponse.json(
       { error: typeof error?.message === "string" ? error.message : "Failed to create post." },
       { status: 500 }

@@ -10,6 +10,9 @@ import { useMemo, useEffect, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { REACTION_EMOJIS, type AggregatedPostInteraction, type ReactionEmoji } from "@/lib/post-interactions";
 import { fontClass, resolveProfileAppearance, type ProfileAppearance } from "@/lib/profile-theme";
+import EmojiPicker from "@/app/EmojiPicker";
+import InlineEmojiText from "@/app/InlineEmojiText";
+import { appendEmojiToText } from "@/lib/custom-emojis";
 
 const PAGE_SIZE = 8;
 
@@ -562,7 +565,10 @@ export default function MainFeedPage() {
                 onClick={() => setExpandedComments((prev) => ({ ...prev, [post.id]: !prev[post.id] }))}
               >
                 {editingPostId === post.id ? null : (
-                  <p className="mb-3 text-sm leading-7 text-[color:var(--post-text)]/92 sm:text-base sm:leading-8">{visibleContent || "No description provided yet."}</p>
+                  <InlineEmojiText
+                    text={visibleContent || "No description provided yet."}
+                    className="mb-3 block whitespace-pre-wrap text-sm leading-7 text-[color:var(--post-text)]/92 sm:text-base sm:leading-8"
+                  />
                 )}
               </button>
               {editingPostId === post.id && (
@@ -799,7 +805,10 @@ export default function MainFeedPage() {
                                   </div>
                                 </div>
                               ) : (
-                                <p className="mt-2 whitespace-pre-wrap text-[color:var(--post-text)]/90">{comment.content}</p>
+                                <InlineEmojiText
+                                  text={comment.content}
+                                  className="mt-2 block whitespace-pre-wrap text-[color:var(--post-text)]/90"
+                                />
                               )}
                               {(session?.user?.id === comment.author.id || isAdmin) && editingCommentId !== comment.id && (
                                 <div className="mt-2 flex gap-3">
@@ -834,6 +843,15 @@ export default function MainFeedPage() {
                       placeholder="Add a comment"
                       value={commentDrafts[post.id] || ""}
                       onChange={(e) => setCommentDrafts((prev) => ({ ...prev, [post.id]: e.target.value }))}
+                    />
+                    <EmojiPicker
+                      className="sm:self-end"
+                      onSelect={(emojiOrToken) =>
+                        setCommentDrafts((prev) => ({
+                          ...prev,
+                          [post.id]: appendEmojiToText(prev[post.id] || "", emojiOrToken),
+                        }))
+                      }
                     />
                     <button
                       className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-300 via-teal-300 to-emerald-300 px-5 py-3 text-sm font-semibold text-slate-950 shadow-lg transition hover:scale-[1.02] disabled:opacity-60"

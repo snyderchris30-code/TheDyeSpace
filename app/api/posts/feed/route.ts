@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { ProfileAppearance } from "@/lib/profile-theme";
+import { normalizePostImageUrls } from "@/lib/post-media";
 
 const PAGE_SIZE = 8;
 
@@ -119,8 +120,10 @@ export async function GET(request: NextRequest) {
 
   const result = visiblePosts.map((post) => {
     const profile = profilesById.get(post.user_id);
+    const imageUrls = normalizePostImageUrls(post.image_urls);
     return {
       ...post,
+      image_urls: imageUrls.length ? imageUrls : null,
       author_display_name: formatDisplayName(profile),
       author_at_name: formatAtName(profile),
       author_username: profile?.username ?? null,
