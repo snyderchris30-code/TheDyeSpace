@@ -2,13 +2,13 @@
 
 import { createClient } from "@/lib/supabase/client";
 import AsyncStateCard from "@/app/AsyncStateCard";
+import CustomEmojiImage from "@/app/CustomEmojiImage";
 import { useEffect, useMemo, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Lock } from "lucide-react";
 import Link from "next/link";
 import { sanitizeUsernameInput } from "@/lib/profile-identity";
 import { APP_VERSION } from "@/lib/app-config";
-import { normalizeCustomEmojiUrls } from "@/lib/custom-emojis";
 
 export default function SettingsPage() {
   return (
@@ -43,10 +43,6 @@ function SettingsContent() {
   const [error, setError] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [customEmojiUrls, setCustomEmojiUrls] = useState<string[]>([]);
-  const [emojiUrlInput, setEmojiUrlInput] = useState("");
-  const [emojiImportInput, setEmojiImportInput] = useState("");
-  const [emojiSaving, setEmojiSaving] = useState(false);
-  const [emojiMessage, setEmojiMessage] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -66,10 +62,14 @@ function SettingsContent() {
           setIsAdmin(adminRole);
 
           if (adminRole) {
-            const response = await fetch("/api/admin/custom-emojis", { cache: "no-store" });
+            const response = await fetch("/api/emojis", { cache: "no-store" });
             const body = await response.json().catch(() => ({}));
             if (response.ok) {
-              setCustomEmojiUrls(normalizeCustomEmojiUrls(body?.emojiUrls || [], 300));
+              setCustomEmojiUrls(
+                Array.isArray(body?.emojiUrls)
+                  ? body.emojiUrls.filter((value: unknown): value is string => typeof value === "string")
+                  : []
+              );
             }
           }
 
@@ -77,58 +77,6 @@ function SettingsContent() {
         });
     });
   }, [supabase, router]);
-
-  const addSingleEmojiUrl = () => {
-    setEmojiMessage(null);
-    const next = normalizeCustomEmojiUrls([emojiUrlInput], 1);
-    if (!next.length) {
-      setEmojiMessage("Please paste a valid public emoji image URL.");
-      return;
-    }
-
-    setCustomEmojiUrls((prev) => normalizeCustomEmojiUrls([...prev, ...next], 300));
-    setEmojiUrlInput("");
-    setEmojiMessage("Emoji URL added to the preview list.");
-  };
-
-  const importEmojiList = () => {
-    setEmojiMessage(null);
-    const imported = normalizeCustomEmojiUrls(emojiImportInput, 300);
-    if (!imported.length) {
-      setEmojiMessage("No valid URLs found in the import list.");
-      return;
-    }
-
-    setCustomEmojiUrls((prev) => normalizeCustomEmojiUrls([...prev, ...imported], 300));
-    setEmojiMessage(`Imported ${imported.length} emoji URL${imported.length === 1 ? "" : "s"}.`);
-    setEmojiImportInput("");
-  };
-
-  const removeEmojiUrl = (targetUrl: string) => {
-    setCustomEmojiUrls((prev) => prev.filter((url) => url !== targetUrl));
-  };
-
-  const saveCustomEmojis = async () => {
-    setEmojiSaving(true);
-    setEmojiMessage(null);
-
-    const response = await fetch("/api/admin/custom-emojis", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ emojiUrls: customEmojiUrls }),
-    });
-
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      setEmojiSaving(false);
-      setEmojiMessage(body?.error || "Failed to save custom emojis.");
-      return;
-    }
-
-    setCustomEmojiUrls(normalizeCustomEmojiUrls(body?.emojiUrls || customEmojiUrls, 300));
-    setEmojiSaving(false);
-    setEmojiMessage("Custom emoji list saved.");
-  };
 
   async function handleChangePassword(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -266,72 +214,23 @@ function SettingsContent() {
           <div className="mb-4">
             <h2 className="text-xl font-semibold text-fuchsia-100">Emoji Manager</h2>
             <p className="mt-1 text-sm text-fuchsia-200/80">
-              Add CC0/public emoji image URLs, import lists, preview, and save for global post/comment pickers.
+              Custom emojis are loaded automatically from the public/emojis folder for comment text, post reactions, and comment reactions.
             </p>
           </div>
 
-          <div className="mb-4 flex flex-col gap-2 sm:flex-row">
-            <input
-              type="url"
-              value={emojiUrlInput}
-              onChange={(event) => setEmojiUrlInput(event.target.value)}
-              placeholder="https://example.com/emoji.png"
-              className="flex-1 rounded-xl border border-white/15 bg-black/30 px-4 py-3 text-white outline-none focus:border-fuchsia-300/50"
-            />
-            <button
-              type="button"
-              onClick={addSingleEmojiUrl}
-              className="rounded-full border border-fuchsia-300/40 bg-fuchsia-500/20 px-4 py-2 text-sm font-semibold text-fuchsia-100 hover:bg-fuchsia-500/30"
-            >
-              Add URL
-            </button>
-          </div>
-
-          <label className="mb-4 block">
-            <span className="mb-2 block text-sm text-fuchsia-100">Import Emoji URLs (one per line or comma separated)</span>
-            <textarea
-              value={emojiImportInput}
-              onChange={(event) => setEmojiImportInput(event.target.value)}
-              className="min-h-24 w-full rounded-xl border border-white/15 bg-black/30 px-4 py-3 text-white outline-none focus:border-fuchsia-300/50"
-              placeholder="https://example.com/emoji1.png&#10;https://example.com/emoji2.png"
-            />
-          </label>
-
           <div className="mb-4 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={importEmojiList}
-              className="rounded-full border border-fuchsia-300/40 bg-fuchsia-500/20 px-4 py-2 text-sm font-semibold text-fuchsia-100 hover:bg-fuchsia-500/30"
-            >
-              Import List
-            </button>
-            <button
-              type="button"
-              onClick={saveCustomEmojis}
-              disabled={emojiSaving}
-              className="rounded-full bg-gradient-to-r from-fuchsia-300 via-pink-300 to-rose-300 px-6 py-2 text-sm font-semibold text-slate-950 shadow-lg transition hover:scale-[1.02] disabled:opacity-60"
-            >
-              {emojiSaving ? "Saving..." : "Save Custom Emojis"}
-            </button>
-            <p className="text-xs text-fuchsia-200/80">{customEmojiUrls.length} configured</p>
+            <p className="text-xs text-fuchsia-200/80">{customEmojiUrls.length} auto-imported</p>
+            <p className="text-xs text-fuchsia-200/60">Drop new .png or .gif files into public/emojis and reload.</p>
           </div>
-
-          {emojiMessage ? (
-            <p className="mb-3 rounded-lg border border-fuchsia-300/30 bg-fuchsia-500/10 px-3 py-2 text-sm text-fuchsia-100">{emojiMessage}</p>
-          ) : null}
 
           <div className="grid grid-cols-6 gap-2 sm:grid-cols-8 md:grid-cols-10">
             {customEmojiUrls.map((url) => (
-              <button
+              <div
                 key={url}
-                type="button"
-                title="Remove emoji"
-                onClick={() => removeEmojiUrl(url)}
-                className="group relative rounded-xl border border-fuchsia-300/20 bg-black/25 p-1 hover:border-fuchsia-300/60"
+                className="rounded-xl border border-fuchsia-300/20 bg-black/25 p-1"
               >
-                <img src={url} alt="custom emoji" className="h-10 w-10 rounded-lg object-cover" loading="lazy" referrerPolicy="no-referrer" />
-                <span className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] text-white group-hover:flex">×</span>
-              </button>
+                <CustomEmojiImage src={url} alt="custom emoji" className="h-10 w-10 rounded-lg object-contain" />
+              </div>
             ))}
           </div>
         </section>

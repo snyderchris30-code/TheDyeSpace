@@ -11,14 +11,15 @@ import Link from "next/link";
 import { fontClass, resolveProfileAppearance, type ProfileAppearance } from "@/lib/profile-theme";
 import { normalizePostImageUrls } from "@/lib/post-media";
 import AsyncStateCard from "@/app/AsyncStateCard";
+import CustomEmojiImage from "@/app/CustomEmojiImage";
 import InlineEmojiText from "@/app/InlineEmojiText";
 import UserIdentity from "@/app/UserIdentity";
 import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import { Home, Users, BookOpen, PartyPopper, Tag, Ban } from "lucide-react";
 import { Heart, MessageCircle, Send } from "lucide-react";
 import EmojiPicker from "@/app/EmojiPicker";
-import { appendEmojiToText } from "@/lib/custom-emojis";
-import { REACTION_EMOJIS, type AggregatedPostInteraction, type ReactionEmoji } from "@/lib/post-interactions";
+import { appendEmojiToText, buildCustomEmojiAsset } from "@/lib/custom-emojis";
+import { countInteractionReactions, type AggregatedPostInteraction, type ReactionEmoji } from "@/lib/post-interactions";
 
 type ExplorePost = {
   id: string;
@@ -177,7 +178,6 @@ export default function ExplorePage() {
   const [interactions, setInteractions] = useState<InteractionMap>({});
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
-  const [reactionPickerPostId, setReactionPickerPostId] = useState<string | null>(null);
   const [interactionBusyPostId, setInteractionBusyPostId] = useState<string | null>(null);
   const [interactionStatus, setInteractionStatus] = useState<string | null>(null);
 
@@ -392,7 +392,6 @@ export default function ExplorePage() {
 
         setInteractions((prev) => ({ ...prev, [postId]: body.interaction }));
         updatePostCounters(postId, { likes: body.likesCount ?? 0 });
-        setReactionPickerPostId(null);
       } catch (error: any) {
         setInteractionStatus(typeof error?.message === "string" ? error.message : "Failed to save reaction.");
       } finally {
@@ -400,6 +399,37 @@ export default function ExplorePage() {
       }
     },
     [sessionUserId, updatePostCounters]
+  );
+
+  const handleCommentReactionSelect = useCallback(
+    async (postId: string, commentId: string, emoji: ReactionEmoji) => {
+      if (!sessionUserId) {
+        setInteractionStatus("Please sign in to react to comments.");
+        return;
+      }
+
+      setInteractionBusyPostId(postId);
+      setInteractionStatus(null);
+      try {
+        const response = await fetch("/api/posts/comment-reactions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ postId, commentId, emoji }),
+        });
+
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(body?.error || "Failed to save comment reaction.");
+        }
+
+        setInteractions((prev) => ({ ...prev, [postId]: body.interaction }));
+      } catch (error: any) {
+        setInteractionStatus(typeof error?.message === "string" ? error.message : "Failed to save comment reaction.");
+      } finally {
+        setInteractionBusyPostId(null);
+      }
+    },
+    [sessionUserId]
   );
 
   const handleCommentSubmit = useCallback(
@@ -565,15 +595,13 @@ export default function ExplorePage() {
             const postInteraction = interactions[post.id] || { comments: [], reactions: [], viewerReaction: null };
             const isCommentsOpen = Boolean(expandedComments[post.id]);
             const isBusy = interactionBusyPostId === post.id;
+            const selectedPostReaction = postInteraction.viewerReaction ? buildCustomEmojiAsset(postInteraction.viewerReaction) : null;
+            const totalPostReactions = countInteractionReactions(postInteraction);
 
             return (
             <article
               key={post.id}
-              className={`rounded-3xl border-4 border-gradient-tiedye p-4 shadow-xl backdrop-blur-xl sm:p-5 ${fontClass(post.author_theme?.font_style)}`}
-              style={{
-                boxShadow: '0 0 0 4px rgba(0,0,0,0.18), 0 8px 32px 0 rgba(0,0,0,0.25)',
-                background: 'var(--post-bg, rgba(7,17,31,0.7))',
-              }}
+              className={`rounded-3xl border-4 border-gradient-tiedye bg-[var(--post-bg,rgba(7,17,31,0.7))] p-4 shadow-[0_0_0_4px_rgba(0,0,0,0.18),0_8px_32px_0_rgba(0,0,0,0.25)] backdrop-blur-xl sm:p-5 ${fontClass(post.author_theme?.font_style)}`}
               ref={(element) => applyPostThemeVars(element, post.author_theme)}
             >
               {post.image_urls?.[0] ? (
@@ -643,35 +671,28 @@ export default function ExplorePage() {
 
               <div className="flex items-center justify-between text-xs text-[color:var(--post-text)]/75 mb-2">
                 <span>{new Date(post.created_at).toLocaleString()}</span>
-                <span>{post.likes} likes • {post.comments_count} comments</span>
+                <span>{totalPostReactions} reactions • {post.comments_count} comments</span>
               </div>
               {sessionUserId ? (
                 <div className="flex flex-wrap items-center gap-3">
-                  <div className="relative">
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-black/20 px-4 py-2 text-sm text-cyan-100 transition hover:border-cyan-300/40 hover:bg-black/35"
-                      onClick={() => setReactionPickerPostId((current) => (current === post.id ? null : post.id))}
-                    >
-                      <Heart className="h-4 w-4" />
-                      <span>{postInteraction.viewerReaction ? `Reacted ${postInteraction.viewerReaction}` : "Like / React"}</span>
-                    </button>
-                    {reactionPickerPostId === post.id ? (
-                      <div className="absolute right-0 top-full z-20 mt-2 flex max-w-[calc(100vw-3rem)] flex-row flex-wrap gap-2 rounded-2xl border border-cyan-300/25 bg-slate-950/95 p-3 shadow-2xl backdrop-blur-xl sm:left-full sm:right-auto sm:top-0 sm:ml-2 sm:mt-0 sm:max-w-none">
-                        {REACTION_EMOJIS.map((emoji) => (
-                          <button
-                            key={emoji}
-                            className={`rounded-full px-3 py-2 text-lg transition hover:scale-110 ${postInteraction.viewerReaction === emoji ? "bg-cyan-400/20" : "bg-black/30"}`}
-                            type="button"
-                            disabled={isBusy}
-                            onClick={() => void handleReactionSelect(post.id, emoji)}
-                          >
-                            {emoji}
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
+                  <EmojiPicker
+                    mode="reaction"
+                    disabled={isBusy}
+                    triggerClassName="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-black/20 px-4 py-2 text-sm text-cyan-100 transition hover:border-cyan-300/40 hover:bg-black/35 disabled:cursor-not-allowed disabled:opacity-60"
+                    triggerContent={
+                      <>
+                        {selectedPostReaction ? (
+                          <CustomEmojiImage src={selectedPostReaction.url} alt={selectedPostReaction.name} className="h-4 w-4 object-contain" title={selectedPostReaction.name} />
+                        ) : (
+                          <Heart className="h-4 w-4" />
+                        )}
+                        <span>{selectedPostReaction ? "Change Reaction" : "React"}</span>
+                      </>
+                    }
+                    onSelect={(emoji) => {
+                      void handleReactionSelect(post.id, emoji);
+                    }}
+                  />
                   <button
                     type="button"
                     className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-black/20 px-4 py-2 text-sm text-cyan-100 transition hover:border-cyan-300/40 hover:bg-black/35"
@@ -701,7 +722,7 @@ export default function ExplorePage() {
                       onClick={() => sessionUserId ? void handleReactionSelect(post.id, reaction.emoji) : undefined}
                       disabled={isBusy || !sessionUserId}
                     >
-                      <span>{reaction.emoji}</span>
+                      <CustomEmojiImage src={reaction.emoji} alt="post reaction" className="h-5 w-5 object-contain" />
                       <span>{reaction.count}</span>
                     </button>
                   ))}
@@ -737,6 +758,47 @@ export default function ExplorePage() {
                                 metaClassName="text-xs text-[color:var(--post-text)]/45"
                               />
                               <InlineEmojiText text={comment.content} className="mt-2 block whitespace-pre-wrap text-[color:var(--post-text)]/90" />
+                              {(comment.reactions.length > 0 || sessionUserId) ? (
+                                <div className="mt-3 flex flex-wrap items-center gap-2">
+                                  {comment.reactions.map((reaction) => (
+                                    <button
+                                      key={`${comment.id}-${reaction.emoji}`}
+                                      type="button"
+                                      className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs transition ${
+                                        reaction.reacted
+                                          ? "border-cyan-300/50 bg-cyan-400/15 text-cyan-50"
+                                          : "border-cyan-300/20 bg-black/20 text-cyan-100/85"
+                                      }`}
+                                      onClick={() => void handleCommentReactionSelect(post.id, comment.id, reaction.emoji)}
+                                      disabled={isBusy || !sessionUserId}
+                                    >
+                                      <CustomEmojiImage src={reaction.emoji} alt="comment reaction" className="h-4 w-4 object-contain" />
+                                      <span>{reaction.count}</span>
+                                    </button>
+                                  ))}
+                                  {sessionUserId ? (
+                                    <EmojiPicker
+                                      mode="reaction"
+                                      align="left"
+                                      disabled={isBusy}
+                                      triggerClassName="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-black/20 px-3 py-1 text-xs text-cyan-100 transition hover:border-cyan-300/40 hover:bg-black/35 disabled:cursor-not-allowed disabled:opacity-60"
+                                      triggerContent={
+                                        <>
+                                          {comment.viewerReaction ? (
+                                            <CustomEmojiImage src={comment.viewerReaction} alt="your reaction" className="h-4 w-4 object-contain" />
+                                          ) : (
+                                            <Heart className="h-3.5 w-3.5" />
+                                          )}
+                                          <span>{comment.viewerReaction ? "Change Reaction" : "React"}</span>
+                                        </>
+                                      }
+                                      onSelect={(emoji) => {
+                                        void handleCommentReactionSelect(post.id, comment.id, emoji);
+                                      }}
+                                    />
+                                  ) : null}
+                                </div>
+                              ) : null}
                             </div>
                           </div>
                         </div>

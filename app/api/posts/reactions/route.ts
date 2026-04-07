@@ -2,28 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createAdminClient, loadProfileStatus, isMuted, userIsAdmin } from "@/lib/admin-utils";
 import {
-  REACTION_EMOJIS,
+  getStoredCommentReactions,
   buildInteractionsFromRows,
   countInteractionReactions,
   getStoredPostComments,
   getStoredPostReactions,
   isMissingInteractionTablesError,
   normalizeThemeSettings,
-  type InteractionProfileRow,
-  type RelationalPostCommentRow,
-  type RelationalPostReactionRow,
   type ReactionEmoji,
 } from "@/lib/post-interactions";
+import { loadLegacyInteraction, loadRelationalInteraction } from "@/lib/post-interaction-loaders";
+import { getCustomEmojiUrlSet } from "@/lib/custom-emoji-registry";
 
 import { resolveProfileUsername } from "@/lib/profile-identity";
-
-function isShadowBanned(profile?: { shadow_banned?: boolean | null; shadow_banned_until?: string | null }) {
-  if (!profile) return false;
-  if (profile.shadow_banned) return true;
-  if (!profile.shadow_banned_until) return false;
-  const until = new Date(profile.shadow_banned_until);
-  return !Number.isNaN(until.getTime()) && until > new Date();
-}
 
 type ReactionBody = {
   postId?: string;
@@ -118,80 +109,6 @@ async function createLikeNotification(
   }
 }
 
-async function loadLegacyInteraction(adminClient: ReturnType<typeof createAdminClient>, postId: string, viewerId?: string | null) {
-  const { data: profiles, error } = await adminClient
-    .from("profiles")
-    .select("id, username, display_name, avatar_url, theme_settings");
-
-  if (error) {
-    throw error;
-  }
-
-  // There is no buildInteractionsByPost, use buildInteractionsFromRows with empty comments/reactions
-  const interactions = buildInteractionsFromRows(
-    [postId],
-    [], // no comments
-    [], // no reactions
-    (profiles || []) as InteractionProfileRow[],
-    viewerId
-  );
-  return interactions[postId];
-}
-
-
-async function loadRelationalInteraction(adminClient: ReturnType<typeof createAdminClient>, postId: string, viewerId?: string | null, viewerIsAdmin = false) {
-  const { data: comments, error: commentsError } = await adminClient
-    .from("post_comments")
-    .select("id, post_id, user_id, content, created_at")
-    .eq("post_id", postId)
-    .is("deleted_at", null)
-    .order("created_at", { ascending: true });
-
-  if (commentsError) {
-    throw commentsError;
-  }
-
-  const { data: reactions, error: reactionsError } = await adminClient
-    .from("post_reactions")
-    .select("post_id, user_id, emoji, created_at")
-    .eq("post_id", postId);
-
-  if (reactionsError) {
-    throw reactionsError;
-  }
-
-  const userIds = [...new Set([...(comments || []).map((comment) => comment.user_id), ...(reactions || []).map((reaction) => reaction.user_id)])];
-  let profiles: Array<InteractionProfileRow & { shadow_banned?: boolean | null; shadow_banned_until?: string | null }> = [];
-
-  if (userIds.length) {
-    const { data: profileRows, error: profilesError } = await adminClient
-      .from("profiles")
-      .select("id, username, display_name, avatar_url, shadow_banned, shadow_banned_until")
-      .in("id", userIds);
-
-    if (profilesError) {
-      throw profilesError;
-    }
-
-    profiles = (profileRows || []) as InteractionProfileRow[];
-  }
-
-  const shadowBannedAuthors = new Set(profiles.filter((profile) => isShadowBanned(profile)).map((profile) => profile.id));
-  const visibleComments = viewerIsAdmin
-    ? (comments || [])
-    : (comments || []).filter((comment) => comment.user_id === viewerId || !shadowBannedAuthors.has(comment.user_id));
-  const visibleReactions = viewerIsAdmin
-    ? (reactions || [])
-    : (reactions || []).filter((reaction) => reaction.user_id === viewerId || !shadowBannedAuthors.has(reaction.user_id));
-
-  return buildInteractionsFromRows(
-    [postId],
-    visibleComments as RelationalPostCommentRow[],
-    visibleReactions as RelationalPostReactionRow[],
-    profiles,
-    viewerId
-  )[postId];
-}
 
 export async function POST(req: NextRequest) {
   const supabase = await createSupabaseServerClient();
@@ -205,8 +122,9 @@ export async function POST(req: NextRequest) {
   }
 
   const body = (await req.json().catch(() => ({}))) as ReactionBody;
+  const allowedEmojiSet = await getCustomEmojiUrlSet();
 
-  if (!body.postId || !body.emoji || !REACTION_EMOJIS.includes(body.emoji)) {
+  if (!body.postId || !body.emoji || !allowedEmojiSet.has(body.emoji)) {
     return NextResponse.json({ error: "Post ID and valid emoji are required." }, { status: 400 });
   }
 
@@ -337,6 +255,7 @@ export async function POST(req: NextRequest) {
           ...existingThemeSettings,
           post_comments: getStoredPostComments(existingThemeSettings),
           post_reactions: nextReactions,
+          comment_reactions: getStoredCommentReactions(existingThemeSettings),
         },
       },
       { onConflict: "id", ignoreDuplicates: false }

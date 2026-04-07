@@ -1,39 +1,55 @@
 const CUSTOM_EMOJI_TOKEN_PATTERN = /\[\[ce\|([^\]]+)\]\]/g;
+const CUSTOM_EMOJI_ASSET_PATTERN = /^\/emojis\/.+\.(png|gif)$/i;
 
-// Emoji categories for picker UI
-export const EMOJI_CATEGORIES = [
-  {
-    name: "Classic",
-    emojis: ["😀", "😂", "😍", "😎", "😭", "😇", "😜", "🤩", "😏", "😅", "😡", "😱", "😴", "🤔", "😬", "😤", "😢", "😋", "😆", "😛", "😝", "😚", "😙", "😗", "😘", "😐", "😑", "😶", "🙄", "😯", "😮", "😲", "😳", "🥺", "🥰", "🥳", "🥴", "🥵", "🥶", "🤯", "🤠", "🤡", "🤖", "👻", "💀", "👽", "👾", "🎃", "😺", "😸", "😹", "😻", "😼", "😽", "🙀", "😿", "😾"]
-  },
-  {
-    name: "Hippie",
-    emojis: ["🌿", "🍄", "🌀", "☮️", "🌈", "🔥", "🌙", "💚", "✨", "💫", "🧘", "🧿", "🦋", "🌻", "🌞", "🌜", "🌺", "🌼", "🌵", "🌴", "🌲", "🌳", "🌸", "🌷", "🌹", "🌱", "🍁", "🍃", "🍂", "🍀", "🪴"]
-  },
-  {
-    name: "Stoner",
-    emojis: ["🍁", "🌿", "💨", "😶‍🌫️", "🧠", "🫠", "😵‍💫", "😮‍💨", "😌", "😵", "😳", "😇", "😴", "🥴", "🥱", "😎", "🛸", "🚬", "🪐", "🌌", "🌠", "🌚", "🌛", "🌜", "🌞", "🌙", "🌈"]
-  },
-  {
-    name: "Space",
-    emojis: ["🪐", "🌌", "🌠", "🌟", "🌙", "🌚", "🌛", "🌜", "🌞", "🚀", "🛸", "👽", "👾", "🌎", "🌍", "🌏", "🛰️", "☄️", "🌑", "🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘"]
-  },
-  {
-    name: "Love/Peace",
-    emojis: ["❤️", "💛", "💚", "💙", "💜", "🧡", "🤍", "🤎", "🖤", "💖", "💗", "💓", "💞", "💕", "💝", "💘", "💟", "☮️", "✌️", "🤝", "🫶", "🤗", "🤲", "🙏", "🌈"]
-  },
-  {
-    name: "Fun",
-    emojis: ["🎉", "🥳", "🎊", "🎈", "🎂", "🍰", "🍭", "🍬", "🍫", "🍩", "🍪", "🍦", "🍧", "🍨", "🍟", "🍔", "🍕", "🌭", "🍿", "🥤", "🧃", "🧋", "🍺", "🍻", "🥂", "🍷", "🥃", "🍸", "🍹", "🧉", "🍾"]
-  },
-  {
-    name: "Nature",
-    emojis: ["🌲", "🌳", "🌴", "🌵", "🌿", "🍀", "🍁", "🍂", "🍃", "🌸", "🌼", "🌻", "🌺", "🌷", "🌹", "🌱", "🪴", "🍄", "🦋", "🐝", "🐞", "🦄", "🐢", "🐸", "🐬", "🐳", "🐋", "🦋", "🦜", "🦚", "🦩", "🦥", "🦦", "🦔"]
+export type CustomEmojiAsset = {
+  id: string;
+  name: string;
+  url: string;
+  fileName: string;
+};
+
+function decodeEmojiValue(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
   }
-];
+}
 
-// For legacy compatibility
-export const HIPPIE_UNICODE_EMOJIS = EMOJI_CATEGORIES[1].emojis;
+function normalizeEmojiFileName(fileName: string) {
+  const withoutExtension = fileName.replace(/\.(png|gif)$/i, "");
+  const withoutPrefix = withoutExtension.replace(/^\d+[-_]?/, "");
+  const collapsed = withoutPrefix.replace(/[-_]+/g, " ").trim();
+  return collapsed || withoutExtension || "emoji";
+}
+
+export function normalizeCustomEmojiUrl(value: unknown) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (CUSTOM_EMOJI_ASSET_PATTERN.test(trimmed)) {
+    const [pathPart] = trimmed.split(/[?#]/, 1);
+    return decodeEmojiValue(pathPart);
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return parsed.toString();
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 export function normalizeCustomEmojiUrls(value: unknown, maxItems = 200) {
   const rawValues = Array.isArray(value)
     ? value
@@ -54,29 +70,38 @@ export function normalizeCustomEmojiUrls(value: unknown, maxItems = 200) {
       continue;
     }
 
-    try {
-      const parsed = new URL(trimmed);
-      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-        continue;
-      }
+    const normalized = normalizeCustomEmojiUrl(trimmed);
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
 
-      const normalized = parsed.toString();
-      if (seen.has(normalized)) {
-        continue;
-      }
+    seen.add(normalized);
+    output.push(normalized);
 
-      seen.add(normalized);
-      output.push(normalized);
-
-      if (output.length >= maxItems) {
-        break;
-      }
-    } catch {
-      // Ignore invalid URLs in imported lists.
+    if (output.length >= maxItems) {
+      break;
     }
   }
 
   return output;
+}
+
+export function isCustomEmojiReaction(value: unknown): value is string {
+  return Boolean(normalizeCustomEmojiUrl(value)?.match(CUSTOM_EMOJI_ASSET_PATTERN));
+}
+
+export function buildCustomEmojiAsset(url: string): CustomEmojiAsset {
+  const normalizedUrl = normalizeCustomEmojiUrl(url) || url;
+  const decodedUrl = decodeEmojiValue(normalizedUrl);
+  const fileName = decodedUrl.split("/").pop() || decodedUrl;
+  const name = normalizeEmojiFileName(fileName);
+
+  return {
+    id: decodedUrl,
+    name,
+    url: decodedUrl,
+    fileName,
+  };
 }
 
 export function encodeCustomEmojiToken(url: string) {

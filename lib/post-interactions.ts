@@ -1,8 +1,7 @@
+import { isCustomEmojiReaction } from "@/lib/custom-emojis";
 import { normalizeFontStyle, type FontStyle, type ProfileAppearance } from "@/lib/profile-theme";
 
-export const REACTION_EMOJIS = ["❤️", "🔥", "😂", "😮", "😢", "🎉", "👍"] as const;
-
-export type ReactionEmoji = (typeof REACTION_EMOJIS)[number];
+export type ReactionEmoji = string;
 
 export type RelationalPostCommentRow = {
   id: string;
@@ -14,6 +13,13 @@ export type RelationalPostCommentRow = {
 
 export type RelationalPostReactionRow = {
   post_id: string;
+  user_id: string;
+  emoji: ReactionEmoji;
+  created_at: string;
+};
+
+export type RelationalCommentReactionRow = {
+  comment_id: string;
   user_id: string;
   emoji: ReactionEmoji;
   created_at: string;
@@ -32,9 +38,17 @@ export type StoredPostReaction = {
   created_at: string;
 };
 
+export type StoredCommentReaction = {
+  comment_id: string;
+  post_id: string;
+  emoji: ReactionEmoji;
+  created_at: string;
+};
+
 export type LegacyThemeSettings = ProfileAppearance & {
   post_comments?: StoredPostComment[] | null;
   post_reactions?: StoredPostReaction[] | null;
+  comment_reactions?: StoredCommentReaction[] | null;
   font_style?: FontStyle | null;
 };
 
@@ -53,6 +67,8 @@ export type AggregatedPostComment = {
   post_id: string;
   content: string;
   created_at: string;
+  reactions: AggregatedReaction[];
+  viewerReaction: ReactionEmoji | null;
   author: {
     id: string;
     username: string | null;
@@ -107,11 +123,26 @@ export function normalizeThemeSettings(themeSettings?: LegacyThemeSettings | nul
           reaction &&
           typeof reaction.post_id === "string" &&
           typeof reaction.created_at === "string" &&
-          REACTION_EMOJIS.includes(reaction.emoji as ReactionEmoji)
+          isCustomEmojiReaction(reaction.emoji)
         );
       }).map((reaction) => ({
         ...reaction,
-        emoji: reaction.emoji as ReactionEmoji,
+        emoji: reaction.emoji,
+      }))
+    : [];
+
+  const normalizedCommentReactions = Array.isArray(themeSettings?.comment_reactions)
+    ? themeSettings.comment_reactions.filter((reaction): reaction is StoredCommentReaction => {
+        return Boolean(
+          reaction &&
+          typeof reaction.comment_id === "string" &&
+          typeof reaction.post_id === "string" &&
+          typeof reaction.created_at === "string" &&
+          isCustomEmojiReaction(reaction.emoji)
+        );
+      }).map((reaction) => ({
+        ...reaction,
+        emoji: reaction.emoji,
       }))
     : [];
 
@@ -122,6 +153,7 @@ export function normalizeThemeSettings(themeSettings?: LegacyThemeSettings | nul
     font_style: normalizeFontStyle(themeSettings?.font_style),
     post_comments: normalizedComments,
     post_reactions: normalizedReactions,
+    comment_reactions: normalizedCommentReactions,
   };
 }
 
@@ -133,13 +165,33 @@ export function getStoredPostReactions(themeSettings?: LegacyThemeSettings | nul
   return normalizeThemeSettings(themeSettings).post_reactions ?? [];
 }
 
+export function getStoredCommentReactions(themeSettings?: LegacyThemeSettings | null) {
+  return normalizeThemeSettings(themeSettings).comment_reactions ?? [];
+}
+
 export function isMissingInteractionTablesError(error: any) {
   const message = `${error?.message || ""} ${error?.details || ""}`.toLowerCase();
   const code = `${error?.code || ""}`.toUpperCase();
   return code === "PGRST205" || (
     message.includes("schema cache") &&
-    (message.includes("post_comments") || message.includes("post_reactions"))
+    (message.includes("post_comments") || message.includes("post_reactions") || message.includes("post_comment_reactions"))
   );
+}
+
+function sortAggregatedReactions(reactionMap: Map<ReactionEmoji, number>, viewerReaction: ReactionEmoji | null) {
+  return Array.from(reactionMap.entries())
+    .sort(([leftEmoji, leftCount], [rightEmoji, rightCount]) => {
+      if (rightCount !== leftCount) {
+        return rightCount - leftCount;
+      }
+
+      return leftEmoji.localeCompare(rightEmoji);
+    })
+    .map(([emoji, count]) => ({
+      emoji,
+      count,
+      reacted: viewerReaction === emoji,
+    }));
 }
 
 export function buildInteractionsByPost(
@@ -149,6 +201,8 @@ export function buildInteractionsByPost(
 ): Record<string, AggregatedPostInteraction> {
   const result = createEmptyInteractions(postIds);
   const reactionCounts = new Map<string, Map<ReactionEmoji, number>>();
+  const commentReactionCounts = new Map<string, Map<ReactionEmoji, number>>();
+  const commentViewerReactions = new Map<string, ReactionEmoji>();
   const postIdSet = new Set(postIds);
 
   profiles.forEach((profile) => {
@@ -164,6 +218,8 @@ export function buildInteractionsByPost(
         post_id: comment.post_id,
         content: comment.content,
         created_at: comment.created_at,
+        reactions: [],
+        viewerReaction: null,
         author: {
           id: profile.id,
           username: profile.username ?? null,
@@ -193,16 +249,41 @@ export function buildInteractionsByPost(
         result[reaction.post_id].viewerReaction = reaction.emoji;
       }
     });
+
+    getStoredCommentReactions(themeSettings).forEach((reaction) => {
+      if (!postIdSet.has(reaction.post_id)) {
+        return;
+      }
+
+      let commentReactionMap = commentReactionCounts.get(reaction.comment_id);
+      if (!commentReactionMap) {
+        commentReactionMap = new Map<ReactionEmoji, number>();
+        commentReactionCounts.set(reaction.comment_id, commentReactionMap);
+      }
+
+      commentReactionMap.set(reaction.emoji, (commentReactionMap.get(reaction.emoji) || 0) + 1);
+
+      if (viewerId && profile.id === viewerId) {
+        commentViewerReactions.set(reaction.comment_id, reaction.emoji);
+      }
+    });
   });
 
   Object.entries(result).forEach(([postId, interaction]) => {
     interaction.comments.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-    const postReactionMap = reactionCounts.get(postId) || new Map<ReactionEmoji, number>();
-    interaction.reactions = REACTION_EMOJIS.filter((emoji) => (postReactionMap.get(emoji) || 0) > 0).map((emoji) => ({
-      emoji,
-      count: postReactionMap.get(emoji) || 0,
-      reacted: interaction.viewerReaction === emoji,
-    }));
+
+    interaction.comments.forEach((comment) => {
+      comment.viewerReaction = commentViewerReactions.get(comment.id) ?? null;
+      comment.reactions = sortAggregatedReactions(
+        commentReactionCounts.get(comment.id) || new Map<ReactionEmoji, number>(),
+        comment.viewerReaction
+      );
+    });
+
+    interaction.reactions = sortAggregatedReactions(
+      reactionCounts.get(postId) || new Map<ReactionEmoji, number>(),
+      interaction.viewerReaction
+    );
   });
 
   return result;
@@ -212,12 +293,15 @@ export function buildInteractionsFromRows(
   postIds: string[],
   comments: RelationalPostCommentRow[],
   reactions: RelationalPostReactionRow[],
+  commentReactions: RelationalCommentReactionRow[],
   profiles: InteractionProfileRow[],
   viewerId?: string | null
 ): Record<string, AggregatedPostInteraction> {
   const result = createEmptyInteractions(postIds);
   const profileById = new Map<string, InteractionProfileRow>();
   const reactionCounts = new Map<string, Map<ReactionEmoji, number>>();
+  const commentReactionCounts = new Map<string, Map<ReactionEmoji, number>>();
+  const commentViewerReactions = new Map<string, ReactionEmoji>();
 
   profiles.forEach((profile) => {
     profileById.set(profile.id, profile);
@@ -230,6 +314,8 @@ export function buildInteractionsFromRows(
       post_id: comment.post_id,
       content: comment.content,
       created_at: comment.created_at,
+      reactions: [],
+      viewerReaction: null,
       author: {
         id: comment.user_id,
         username: author?.username ?? null,
@@ -256,14 +342,35 @@ export function buildInteractionsFromRows(
     }
   });
 
+  commentReactions.forEach((reaction) => {
+    let commentReactionMap = commentReactionCounts.get(reaction.comment_id);
+    if (!commentReactionMap) {
+      commentReactionMap = new Map<ReactionEmoji, number>();
+      commentReactionCounts.set(reaction.comment_id, commentReactionMap);
+    }
+
+    commentReactionMap.set(reaction.emoji, (commentReactionMap.get(reaction.emoji) || 0) + 1);
+
+    if (viewerId && reaction.user_id === viewerId) {
+      commentViewerReactions.set(reaction.comment_id, reaction.emoji);
+    }
+  });
+
   Object.entries(result).forEach(([postId, interaction]) => {
     interaction.comments.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-    const postReactionMap = reactionCounts.get(postId) || new Map<ReactionEmoji, number>();
-    interaction.reactions = REACTION_EMOJIS.filter((emoji) => (postReactionMap.get(emoji) || 0) > 0).map((emoji) => ({
-      emoji,
-      count: postReactionMap.get(emoji) || 0,
-      reacted: interaction.viewerReaction === emoji,
-    }));
+
+    interaction.comments.forEach((comment) => {
+      comment.viewerReaction = commentViewerReactions.get(comment.id) ?? null;
+      comment.reactions = sortAggregatedReactions(
+        commentReactionCounts.get(comment.id) || new Map<ReactionEmoji, number>(),
+        comment.viewerReaction
+      );
+    });
+
+    interaction.reactions = sortAggregatedReactions(
+      reactionCounts.get(postId) || new Map<ReactionEmoji, number>(),
+      interaction.viewerReaction
+    );
   });
 
   return result;

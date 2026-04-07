@@ -4,24 +4,13 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveProfileUsername } from "@/lib/profile-identity";
 import { createAdminClient, loadProfileStatus, isMuted, userIsAdmin } from "@/lib/admin-utils";
 import {
-  buildInteractionsByPost,
-  buildInteractionsFromRows,
+  getStoredCommentReactions,
   getStoredPostComments,
   getStoredPostReactions,
   isMissingInteractionTablesError,
   normalizeThemeSettings,
-  type InteractionProfileRow,
-  type RelationalPostCommentRow,
-  type RelationalPostReactionRow,
 } from "@/lib/post-interactions";
-
-function isShadowBanned(profile?: { shadow_banned?: boolean | null; shadow_banned_until?: string | null }) {
-  if (!profile) return false;
-  if (profile.shadow_banned) return true;
-  if (!profile.shadow_banned_until) return false;
-  const until = new Date(profile.shadow_banned_until);
-  return !Number.isNaN(until.getTime()) && until > new Date();
-}
+import { loadLegacyInteraction, loadRelationalInteraction } from "@/lib/post-interaction-loaders";
 
 type CommentBody = {
   postId?: string;
@@ -152,100 +141,6 @@ async function createCommentNotification(
       error: error?.message || error,
     });
   }
-}
-
-async function loadLegacyInteraction(adminClient: ReturnType<typeof createAdminClient>, postId: string, viewerId?: string | null) {
-  const { data: profiles, error } = await adminClient
-    .from("profiles")
-    .select("id, username, display_name, avatar_url, verified_badge, member_number, theme_settings");
-
-  if (error) {
-    throw error;
-  }
-
-  return buildInteractionsByPost((profiles || []) as InteractionProfileRow[], [postId], viewerId)[postId];
-}
-
-async function loadRelationalInteraction(adminClient: ReturnType<typeof createAdminClient>, postId: string, viewerId?: string | null, viewerIsAdmin = false) {
-  let commentsResponse = await adminClient
-    .from("post_comments")
-    .select("id, post_id, user_id, content, created_at")
-    .eq("post_id", postId)
-    .is("deleted_at", null)
-    .order("created_at", { ascending: true });
-
-  const missingDeletedAt = String(commentsResponse.error?.message || "").includes("Could not find the 'deleted_at' column");
-  if (missingDeletedAt) {
-    commentsResponse = await adminClient
-      .from("post_comments")
-      .select("id, post_id, user_id, content, created_at")
-      .eq("post_id", postId)
-      .order("created_at", { ascending: true });
-  }
-
-  const comments = commentsResponse.data;
-  const commentsError = commentsResponse.error;
-
-  if (commentsError) {
-    throw commentsError;
-  }
-
-  const { data: reactions, error: reactionsError } = await adminClient
-    .from("post_reactions")
-    .select("post_id, user_id, emoji, created_at")
-    .eq("post_id", postId);
-
-  if (reactionsError) {
-    throw reactionsError;
-  }
-
-  const userIds = [...new Set([...(comments || []).map((comment) => comment.user_id), ...(reactions || []).map((reaction) => reaction.user_id)])];
-  let profiles: Array<InteractionProfileRow & { shadow_banned?: boolean | null; shadow_banned_until?: string | null }> = [];
-
-  if (userIds.length) {
-    const primaryProfileResponse = await adminClient
-      .from("profiles")
-      .select("id, username, display_name, avatar_url, verified_badge, member_number, shadow_banned, shadow_banned_until")
-      .in("id", userIds);
-
-    const missingShadowColumns = String(primaryProfileResponse.error?.message || "").includes("Could not find the")
-      && (String(primaryProfileResponse.error?.message || "").includes("shadow_banned")
-        || String(primaryProfileResponse.error?.message || "").includes("shadow_banned_until"));
-
-    let profileRows = primaryProfileResponse.data;
-    let profilesError = primaryProfileResponse.error;
-
-    if (missingShadowColumns) {
-      const fallbackProfileResponse = await adminClient
-        .from("profiles")
-        .select("id, username, display_name, avatar_url, verified_badge, member_number")
-        .in("id", userIds);
-      profileRows = fallbackProfileResponse.data as typeof profileRows;
-      profilesError = fallbackProfileResponse.error;
-    }
-
-    if (profilesError) {
-      throw profilesError;
-    }
-
-    profiles = (profileRows || []) as InteractionProfileRow[];
-  }
-
-  const shadowBannedAuthors = new Set(profiles.filter((profile) => isShadowBanned(profile)).map((profile) => profile.id));
-  const visibleComments = viewerIsAdmin
-    ? (comments || [])
-    : (comments || []).filter((comment) => comment.user_id === viewerId || !shadowBannedAuthors.has(comment.user_id));
-  const visibleReactions = viewerIsAdmin
-    ? (reactions || [])
-    : (reactions || []).filter((reaction) => reaction.user_id === viewerId || !shadowBannedAuthors.has(reaction.user_id));
-
-  return buildInteractionsFromRows(
-    [postId],
-    visibleComments as RelationalPostCommentRow[],
-    visibleReactions as RelationalPostReactionRow[],
-    profiles,
-    viewerId
-  )[postId];
 }
 
 export async function POST(req: NextRequest) {
@@ -385,6 +280,7 @@ export async function POST(req: NextRequest) {
           ...existingThemeSettings,
           post_comments: nextComments,
           post_reactions: getStoredPostReactions(existingThemeSettings),
+          comment_reactions: getStoredCommentReactions(existingThemeSettings),
         },
       },
       { onConflict: "id", ignoreDuplicates: false }
