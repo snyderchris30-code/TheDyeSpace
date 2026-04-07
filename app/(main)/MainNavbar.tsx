@@ -2,7 +2,7 @@
 
 import React, { useCallback, useState, useEffect } from "react";
 import Link from "next/link";
-import { Bell, User, Home, Compass, LogOut, HeartHandshake, Users, Settings, Trash2 } from "lucide-react";
+import { Bell, User, Home, Compass, LogOut, HeartHandshake, Users, Settings, Trash2, Share2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { usePathname } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -11,7 +11,6 @@ import UserIdentity from "@/app/UserIdentity";
 import { createClient } from "@/lib/supabase/client";
 import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import { resolveProfileUsername } from "@/lib/profile-identity";
-import { INVITE_EXPIRATION_DEFAULT_HOURS, formatInviteDurationLabel } from "@/lib/app-config";
 
 type NotificationItem = { id: string; actor_name: string; type: string; message: string; read: boolean; created_at: string };
 
@@ -32,7 +31,16 @@ type DirectoryProfile = {
   member_number?: number | null;
 };
 
+const NAV_LAYER_CLASS = "z-[2147483000]";
+const NAV_OVERLAY_LAYER_CLASS = "z-[2147483500]";
+const NAV_DROPDOWN_LAYER_CLASS = "z-[2147483600]";
+
 export default function MainNavbar() {
+  const shareLinks = [
+    { label: "www.thedyespace.com", url: "https://www.thedyespace.com" },
+    { label: "www.thedyespace.app", url: "https://www.thedyespace.app" },
+  ] as const;
+
   const router = useRouter();
   const pathname = usePathname();
   const [session, setSession] = useState<any>(null);
@@ -43,9 +51,8 @@ export default function MainNavbar() {
   const [usersList, setUsersList] = useState<DirectoryProfile[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [smokeInviteStatus, setSmokeInviteStatus] = useState<string | null>(null);
-  const [inviteModalOpen, setInviteModalOpen] = useState(false);
-  const [inviteCopied, setInviteCopied] = useState(false);
-  const [inviteLink, setInviteLink] = useState("");
+  const [shareOpen, setShareOpen] = useState(false);
+  const [copiedShareUrl, setCopiedShareUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
@@ -55,7 +62,6 @@ export default function MainNavbar() {
       if (!active) return;
       if (!user) {
         setProfileHref("/login");
-        setInviteLink("");
         setIsAdmin(false);
         return;
       }
@@ -84,9 +90,6 @@ export default function MainNavbar() {
 
       if (active) {
         setProfileHref(nextHref);
-        if (typeof window !== "undefined") {
-          setInviteLink(`${window.location.origin}/signup?invite=${encodeURIComponent(user.id)}`);
-        }
       }
     };
 
@@ -98,7 +101,6 @@ export default function MainNavbar() {
       if (event === "SIGNED_OUT") {
         setSession(null);
         setProfileHref("/login");
-        setInviteLink("");
         setIsAdmin(false);
         return;
       }
@@ -217,14 +219,13 @@ export default function MainNavbar() {
     queryClient.invalidateQueries({ queryKey: ["notifications"] });
   };
 
-  const handleCopyInviteLink = async () => {
-    if (!inviteLink) return;
+  const handleCopyShareLink = async (url: string) => {
     try {
-      await navigator.clipboard.writeText(inviteLink);
-      setInviteCopied(true);
-      window.setTimeout(() => setInviteCopied(false), 2000);
+      await navigator.clipboard.writeText(url);
+      setCopiedShareUrl(url);
+      window.setTimeout(() => setCopiedShareUrl((current) => (current === url ? null : current)), 2000);
     } catch {
-      setInviteCopied(false);
+      setCopiedShareUrl(null);
     }
   };
 
@@ -327,6 +328,7 @@ export default function MainNavbar() {
       if (!target.closest("[data-dropdown-box='true']")) {
         setUsersOpen(false);
         setNotifDrop(false);
+        setShareOpen(false);
         setSettingsOpen(false);
       }
     };
@@ -357,8 +359,8 @@ export default function MainNavbar() {
   };
 
   return (
-    <nav className="navbar mt-2 mb-4 relative isolate z-[12000] sm:mb-6 flex flex-wrap items-center justify-between">
-      <div className="flex items-center gap-2">
+    <nav className={`navbar mt-2 mb-4 relative isolate overflow-visible ${NAV_LAYER_CLASS} sm:mb-6 flex flex-wrap items-center justify-between`}>
+      <div className="flex items-center gap-2 overflow-visible">
         <Link href="/" className="navbar-logo text-2xl tracking-wide select-none sm:text-4xl sm:tracking-widest">
           TheDyeSpace
         </Link>
@@ -376,7 +378,7 @@ export default function MainNavbar() {
               <span>{userCount}</span>
             </button>
             {usersOpen && (
-              <div data-dropdown-box="true" className="absolute left-0 top-full z-[12020] mt-2 w-[min(92vw,380px)] rounded-xl border border-cyan-400/40 bg-black/90 p-3 shadow-2xl animate-fade-in">
+              <div data-dropdown-box="true" className={`absolute left-0 top-full mt-2 w-[min(92vw,380px)] rounded-xl border border-cyan-400/40 bg-black/90 p-3 shadow-2xl animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
                 <div className="mb-2 flex items-center justify-between">
                   <span className="font-semibold text-cyan-200">User Directory</span>
                   <button
@@ -478,13 +480,13 @@ export default function MainNavbar() {
               {notifDrop && (
                 <>
                   <div
-                    className="fixed inset-0 z-[12040] bg-black/50 backdrop-blur-[1px]"
+                    className={`fixed inset-0 bg-black/50 backdrop-blur-[1px] ${NAV_OVERLAY_LAYER_CLASS}`}
                     onClick={() => setNotifDrop(false)}
                     aria-hidden="true"
                   />
                   <div
                     data-dropdown-box="true"
-                    className="fixed left-1/2 top-[5.25rem] z-[12050] w-[min(92vw,420px)] -translate-x-1/2 rounded-2xl border border-sky-500/70 bg-black/95 p-4 shadow-2xl animate-fade-in"
+                    className={`fixed left-1/2 top-[5.25rem] w-[min(92vw,420px)] -translate-x-1/2 rounded-2xl border border-sky-500/70 bg-black/95 p-4 shadow-2xl animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}
                   >
                     <div className="mb-3 flex items-center justify-between">
                       <span className="font-semibold text-cyan-200">Notifications</span>
@@ -510,23 +512,42 @@ export default function MainNavbar() {
                 </>
               )}
             </div>
-            {isLoggedIn && (
+            <div className="relative">
               <button
                 type="button"
-                aria-label="Pass the J"
-                title="Pass the J"
-                onClick={() => {
-                  setInviteModalOpen(true);
-                  setInviteCopied(false);
-                }}
+                data-dropdown-trigger="true"
+                aria-label="Share TheDyeSpace"
+                title="Share TheDyeSpace"
+                onClick={() => setShareOpen((open) => !open)}
                 className="group relative flex h-11 w-11 items-center justify-center rounded-xl border border-cyan-200/20 bg-black/30 text-cyan-100/90 transition-all duration-200 hover:border-cyan-200/45 hover:bg-cyan-300/10 hover:text-cyan-50 hover:shadow-[0_0_18px_rgba(34,211,238,0.2)]"
               >
-                <Users size={18} />
+                <Share2 size={18} />
                 <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 -translate-x-1/2 translate-y-1 whitespace-nowrap rounded-md border border-cyan-200/35 bg-slate-950/95 px-2 py-1 text-[11px] font-medium text-cyan-100 opacity-0 shadow-[0_0_14px_rgba(34,211,238,0.18)] transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100">
-                  Pass the J
+                  Share
                 </span>
               </button>
-            )}
+              {shareOpen ? (
+                <div data-dropdown-box="true" className={`absolute right-0 top-full mt-2 w-[min(92vw,340px)] rounded-xl border border-cyan-400/40 bg-black/95 p-3 shadow-2xl animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
+                  <p className="mb-3 text-sm text-cyan-100">Share TheDyeSpace with your friends!</p>
+                  <div className="space-y-2">
+                    {shareLinks.map((shareLink) => (
+                      <div key={shareLink.url} className="flex items-center justify-between gap-2 rounded-lg border border-cyan-300/25 bg-slate-900/70 px-3 py-2">
+                        <a href={shareLink.url} target="_blank" rel="noreferrer" className="truncate text-sm text-cyan-100 hover:text-cyan-50 hover:underline">
+                          {shareLink.label}
+                        </a>
+                        <button
+                          type="button"
+                          className="rounded-md border border-cyan-300/35 px-2 py-1 text-xs text-cyan-100 transition hover:bg-cyan-400/20"
+                          onClick={() => void handleCopyShareLink(shareLink.url)}
+                        >
+                          {copiedShareUrl === shareLink.url ? "Copied!" : "Copy Link"}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
             {/* Settings Dropdown Trigger */}
             <div className="relative">
               <button
@@ -542,7 +563,7 @@ export default function MainNavbar() {
                 </span>
               </button>
               {settingsOpen && (
-                <div data-dropdown-box="true" className="absolute right-0 top-full z-[12020] mt-2 w-[min(92vw,320px)] rounded-xl border border-cyan-400/40 bg-black/95 p-2 shadow-2xl animate-fade-in">
+                <div data-dropdown-box="true" className={`absolute right-0 top-full mt-2 w-[min(92vw,320px)] rounded-xl border border-cyan-400/40 bg-black/95 p-2 shadow-2xl animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
                   <div className="flex justify-end mb-1">
                     <button data-dropdown-trigger="true" aria-label="Close" title="Close" className="text-cyan-400 hover:text-white p-1" onClick={() => setSettingsOpen(false)}>
                       <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M6 6l8 8M6 14L14 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
@@ -583,36 +604,6 @@ export default function MainNavbar() {
           <IconButton href="/login" label="Sign In" icon={<User size={18} />} isActive={pathname?.startsWith("/login")} />
         )}
       </div>
-      {inviteModalOpen && (
-        <div className="fixed inset-0 z-[12100] grid place-items-center overflow-y-auto bg-slate-950/90 p-4 backdrop-blur-sm">
-          <div className="my-6 w-full max-w-md rounded-[2rem] border border-cyan-300/30 bg-slate-950/95 p-6 shadow-[0_0_50px_rgba(0,0,0,0.55)]">
-            <div className="mb-5 flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-2xl font-bold text-rose-100">Pass the J</h2>
-                <p className="mt-2 text-sm text-cyan-200">Share this invite link with your friends. Good for {formatInviteDurationLabel(INVITE_EXPIRATION_DEFAULT_HOURS)} only.</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setInviteModalOpen(false)}
-                className="rounded-full border border-cyan-200/20 bg-black/30 px-3 py-2 text-sm text-cyan-100 transition hover:bg-cyan-300/10"
-              >
-                Close
-              </button>
-            </div>
-            <div className="mb-4 rounded-3xl border border-cyan-300/20 bg-slate-900/80 p-4 text-sm text-cyan-100">
-              <label className="mb-2 block text-xs uppercase tracking-[0.25em] text-cyan-300/80">Invite Link</label>
-              <div className="min-h-[3rem] break-words text-sm leading-6">{inviteLink || "Loading invite link..."}</div>
-            </div>
-            <button
-              type="button"
-              onClick={handleCopyInviteLink}
-              className="w-full rounded-full bg-cyan-400/15 px-5 py-3 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-400/25"
-            >
-              {inviteCopied ? "Copied!" : "Copy Link"}
-            </button>
-          </div>
-        </div>
-      )}
     </nav>
   );
 }

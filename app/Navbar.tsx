@@ -47,7 +47,7 @@ export default function Navbar({ user }: { user?: { avatar_url?: string } }) {
   }
 
   return (
-    <nav className="navbar mt-2 mb-6 relative">
+    <nav className="navbar mt-2 mb-6 relative isolate overflow-visible z-[2147483000]">
       <Link href="/" className="text-4xl tracking-widest select-none cosmic-headline">
         TheDyeSpace
       </Link>
