@@ -117,6 +117,20 @@ function applyPostThemeVars(element: HTMLElement | null, appearance?: ProfileApp
   const resolved = resolveProfileAppearance(appearance);
   element.style.setProperty("--post-text", resolved.text_color);
   element.style.setProperty("--post-highlight", resolved.highlight_color);
+  // Set post background color with opacity
+  const bg = resolved.background_color;
+  const opacity = typeof resolved.background_opacity === "number" ? resolved.background_opacity : 0.7;
+  // Convert hex to rgba
+  function hexToRgba(hex: string, alpha: number) {
+    let c = hex.replace('#', '');
+    if (c.length === 3) c = c.split('').map((x) => x + x).join('');
+    const num = parseInt(c, 16);
+    const r = (num >> 16) & 255;
+    const g = (num >> 8) & 255;
+    const b = num & 255;
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+  element.style.setProperty("--post-bg", hexToRgba(bg, opacity));
 }
 
 function ReportPostButton({ postId }: { postId: string }) {
@@ -555,7 +569,11 @@ export default function ExplorePage() {
             return (
             <article
               key={post.id}
-              className={`rounded-3xl border border-cyan-300/25 bg-slate-950/55 p-4 shadow-xl backdrop-blur-xl sm:p-5 ${fontClass(post.author_theme?.font_style)}`}
+              className={`rounded-3xl border-4 border-gradient-tiedye p-4 shadow-xl backdrop-blur-xl sm:p-5 ${fontClass(post.author_theme?.font_style)}`}
+              style={{
+                boxShadow: '0 0 0 4px rgba(0,0,0,0.18), 0 8px 32px 0 rgba(0,0,0,0.25)',
+                background: 'var(--post-bg, rgba(7,17,31,0.7))',
+              }}
               ref={(element) => applyPostThemeVars(element, post.author_theme)}
             >
               {post.image_urls?.[0] ? (

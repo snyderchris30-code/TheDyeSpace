@@ -664,12 +664,7 @@ export default function MainFeedPage() {
                   <span className="italic text-cyan-400">Sign in to like or comment</span>
                 )}
               </div>
-              <div className="flex gap-4 justify-center sm:justify-end">
-                <Link href="/terms" className="underline hover:text-green-300">Terms</Link>
-                <Link href="/privacy" className="underline hover:text-green-300">Privacy</Link>
-                <Link href="/guidelines" className="underline hover:text-green-300">Guidelines</Link>
-                <Link href="/suggestions" className="underline hover:text-green-300">Support</Link>
-              </div>
+              {/* Footer links removed from individual posts. Place in site footer or settings/help section only. */}
             </footer>
             {postInteraction.reactions.length > 0 && (
               <div className="mt-4 flex flex-wrap gap-2">

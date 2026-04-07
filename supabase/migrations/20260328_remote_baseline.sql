@@ -1,0 +1,6 @@
+-- Remote baseline migration placeholder.
+--
+-- This project already had a hosted Supabase migration history entry for 20260328
+-- before repo-managed migrations were added here. The schema changes from that
+-- baseline are already present in the remote database, so this file is a no-op
+-- used only to keep local migration history aligned with the linked project.

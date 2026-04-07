@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Smile } from "lucide-react";
-import { encodeCustomEmojiToken, HIPPIE_UNICODE_EMOJIS, normalizeCustomEmojiUrls } from "@/lib/custom-emojis";
+import { encodeCustomEmojiToken, EMOJI_CATEGORIES, normalizeCustomEmojiUrls } from "@/lib/custom-emojis";
 
 type EmojiPickerProps = {
   onSelect: (emojiOrToken: string) => void;
@@ -59,13 +59,27 @@ export default function EmojiPicker({ onSelect, className }: EmojiPickerProps) {
       {open ? (
         <div className="mt-2 rounded-3xl border border-cyan-300/20 bg-slate-950/95 p-3 shadow-[0_20px_60px_rgba(8,15,30,0.35)]">
           <div className="space-y-3">
+            {/* Category Tabs */}
+            <div className="mb-2 flex items-center gap-2 overflow-x-auto pb-1">
+              {EMOJI_CATEGORIES.map((cat, idx) => (
+                <button
+                  key={cat.name}
+                  type="button"
+                  className={`px-2 py-1 rounded-full text-xs font-bold transition border border-cyan-300/20 ${category === idx ? "bg-cyan-900/80 text-cyan-100 border-cyan-300/60" : "bg-black/20 text-cyan-200/60 hover:bg-cyan-900/30"}`}
+                  onClick={() => setCategory(idx)}
+                >
+                  {cat.name}
+                </button>
+              ))}
+            </div>
+            {/* Emoji Grid for Selected Category */}
             <div>
               <div className="mb-2 flex items-center justify-between gap-3">
-                <p className="text-[11px] uppercase tracking-[0.16em] text-cyan-200/80">Default emojis</p>
+                <p className="text-[11px] uppercase tracking-[0.16em] text-cyan-200/80">{EMOJI_CATEGORIES[category].name} emojis</p>
                 <span className="text-xs text-cyan-100/60">Tap to insert</span>
               </div>
               <div className="grid grid-cols-6 gap-2 sm:grid-cols-8">
-                {HIPPIE_UNICODE_EMOJIS.map((emoji) => (
+                {EMOJI_CATEGORIES[category].emojis.map((emoji) => (
                   <button
                     key={emoji}
                     type="button"

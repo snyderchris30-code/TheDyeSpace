@@ -65,6 +65,7 @@ type FormState = {
   avatar_url: string | null;
   banner_url: string | null;
   background_color: string;
+  background_opacity?: number;
   text_color: string;
   highlight_color: string;
   font_style: FontStyle;
@@ -258,6 +259,7 @@ export default function ProfileEditor() {
     avatar_url: null,
     banner_url: null,
     background_color: DEFAULT_BACKGROUND_COLOR,
+    background_opacity: 0.7,
     text_color: DEFAULT_TEXT_COLOR,
     highlight_color: DEFAULT_HIGHLIGHT_COLOR,
     font_style: DEFAULT_FONT_STYLE,
@@ -271,6 +273,7 @@ export default function ProfileEditor() {
     avatar_url: null,
     banner_url: null,
     background_color: DEFAULT_BACKGROUND_COLOR,
+    background_opacity: 0.7,
     text_color: DEFAULT_TEXT_COLOR,
     highlight_color: DEFAULT_HIGHLIGHT_COLOR,
     font_style: DEFAULT_FONT_STYLE,
@@ -315,6 +318,19 @@ export default function ProfileEditor() {
     element.style.setProperty("--profile-bg", state.background_color || DEFAULT_BACKGROUND_COLOR);
     element.style.setProperty("--profile-text", state.text_color || DEFAULT_TEXT_COLOR);
     element.style.setProperty("--profile-highlight", state.highlight_color || DEFAULT_HIGHLIGHT_COLOR);
+    // Set profile background opacity for preview
+    const bg = state.background_color || DEFAULT_BACKGROUND_COLOR;
+    const opacity = typeof state.background_opacity === "number" ? state.background_opacity : 0.7;
+    function hexToRgba(hex: string, alpha: number) {
+      let c = hex.replace('#', '');
+      if (c.length === 3) c = c.split('').map((x) => x + x).join('');
+      const num = parseInt(c, 16);
+      const r = (num >> 16) & 255;
+      const g = (num >> 8) & 255;
+      const b = num & 255;
+      return `rgba(${r},${g},${b},${alpha})`;
+    }
+    element.style.setProperty("--profile-bg-rgba", hexToRgba(bg, opacity));
   };
 
   const fetchProfileById = useCallback(
@@ -475,6 +491,33 @@ export default function ProfileEditor() {
     },
     [applyProfileToForm, fetchProfileById]
   );
+  const [form, setForm] = useState<FormState>({
+    display_name: "",
+    username: "",
+    bio: "",
+    avatar_url: null,
+    banner_url: null,
+    background_color: DEFAULT_BACKGROUND_COLOR,
+    text_color: DEFAULT_TEXT_COLOR,
+    highlight_color: DEFAULT_HIGHLIGHT_COLOR,
+    font_style: DEFAULT_FONT_STYLE,
+    youtube_urls: [],
+    show_music_player: true,
+  });
+  const [draft, setDraft] = useState<FormState>({
+    display_name: "",
+    username: "",
+    bio: "",
+    avatar_url: null,
+    banner_url: null,
+    background_color: DEFAULT_BACKGROUND_COLOR,
+    text_color: DEFAULT_TEXT_COLOR,
+    highlight_color: DEFAULT_HIGHLIGHT_COLOR,
+    font_style: DEFAULT_FONT_STYLE,
+    youtube_urls: [],
+    show_music_player: true,
+  });
+
 
   const loadProfile = useCallback(async () => {
     try {
@@ -1788,10 +1831,11 @@ export default function ProfileEditor() {
                     <p className="text-xs text-cyan-100/70">Customize your profile colors.</p>
                   </div>
 
+
                   <div className="grid gap-4 sm:grid-cols-3">
                     <label className="block">
                       <span className="mb-2 block text-sm text-cyan-100">Background Color</span>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <input
                           type="color"
                           className="h-11 w-14 cursor-pointer rounded-xl border border-white/15 bg-black/30"
@@ -1807,6 +1851,36 @@ export default function ProfileEditor() {
                           aria-label="Background color hex"
                         />
                       </div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {PROFILE_COLOR_PALETTES.map((palette) => (
+                          <button
+                            key={palette.name}
+                            type="button"
+                            className={`h-7 w-7 rounded-full border-2 ${draft.background_color === palette.background_color ? "border-cyan-300" : "border-white/20"}`}
+                            style={{ background: palette.background_color }}
+                            title={palette.name}
+                            onClick={() => setDraft((prev) => ({ ...prev, background_color: palette.background_color }))}
+                          />
+                        ))}
+                      </div>
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-2 block text-sm text-cyan-100">Background Opacity</span>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          step="1"
+                          value={typeof draft.background_opacity === "number" ? Math.round(draft.background_opacity * 100) : 70}
+                          onChange={(e) => setDraft((prev) => ({ ...prev, background_opacity: Number(e.target.value) / 100 }))}
+                          className="w-32 accent-cyan-300"
+                          aria-label="Background opacity"
+                        />
+                        <span className="text-xs text-cyan-100/80 w-10">{typeof draft.background_opacity === "number" ? Math.round(draft.background_opacity * 100) : 70}%</span>
+                      </div>
+                      <p className="mt-1 text-xs text-cyan-100/60">Adjust the transparency of your post background.</p>
                     </label>
 
                     <label className="block">

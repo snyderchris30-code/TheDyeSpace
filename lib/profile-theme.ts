@@ -22,6 +22,7 @@ export type FontStyle = (typeof ALLOWED_FONT_STYLES)[number];
 
 export type ProfileAppearance = {
   background_color?: string | null;
+  background_opacity?: number | null; // 0 (transparent) to 1 (opaque)
   text_color?: string | null;
   highlight_color?: string | null;
   font_style?: FontStyle | null;
@@ -83,6 +84,10 @@ export function fontClass(font: string | null | undefined) {
 export function resolveProfileAppearance(appearance?: ProfileAppearance | null) {
   return {
     background_color: appearance?.background_color || DEFAULT_BACKGROUND_COLOR,
+    background_opacity:
+      typeof appearance?.background_opacity === "number"
+        ? Math.max(0, Math.min(1, appearance.background_opacity))
+        : 0.7, // default opacity for posts
     text_color: appearance?.text_color || DEFAULT_TEXT_COLOR,
     highlight_color: appearance?.highlight_color || DEFAULT_HIGHLIGHT_COLOR,
     font_style: normalizeFontStyle(appearance?.font_style),
