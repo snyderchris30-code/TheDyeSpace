@@ -77,7 +77,7 @@ export default function SuggestionsPage() {
               </div>
               <div>
                 <h2 className="text-2xl font-semibold text-cyan-50">Suggestions Box</h2>
-                <p className="text-sm text-cyan-100/70">Ideas, feedback, bugs, features, or anything else on your mind.</p>
+                <p className="text-sm text-cyan-100/70">Ideas, feedback, bugs, features, or anything on your mind.</p>
               </div>
             </div>
 
@@ -139,7 +139,7 @@ export default function SuggestionsPage() {
                 </label>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-sm leading-6 text-cyan-100/65">
-                    Suggestions are now stored securely so your feedback can be reviewed.
+                    Suggestions are stored securely so your feedback can be reviewed.
                   </p>
                   <button
                     type="submit"
@@ -161,7 +161,7 @@ export default function SuggestionsPage() {
               </div>
               <div>
                 <h2 className="text-2xl font-semibold text-cyan-50">Support the Site</h2>
-                <p className="text-sm text-cyan-100/70">Every little bit helps keep the servers running and new features coming.</p>
+                <p className="text-sm text-cyan-100/70">This site is made and fully funded by Shaggy_Dyes (me) at the moment — a one-man army keeping this ship afloat with assistance from Captain Grok.<br/>Every little bit helps keep the servers running and new features coming.</p>
               </div>
             </div>
 
@@ -172,17 +172,18 @@ export default function SuggestionsPage() {
                 rel="noreferrer"
                 className="inline-flex w-full items-center justify-center rounded-[1.25rem] bg-gradient-to-r from-emerald-300 via-cyan-300 to-fuchsia-300 px-5 py-4 text-lg font-black text-slate-950 shadow-[0_16px_32px_rgba(34,211,238,0.18)] transition hover:scale-[1.02]"
               >
-                Support via Cash App {CASH_APP_CASHTAG}
+                Support via Cash App
               </a>
+              <div className="mt-2 text-lg font-bold text-cyan-200">$ShaggyDyes</div>
               <p className="mt-4 text-sm leading-7 text-cyan-100/85">
-                Every little bit helps keep the servers running and new features coming. Thank you, fellow cosmic traveler 🌀
+                Thank you, fellow dyer. More donation options coming soon.
               </p>
-              <p className="mt-3 text-sm font-medium text-fuchsia-200/90">More donation options coming soon.</p>
             </div>
 
             <div className="mt-6 rounded-[1.5rem] border border-cyan-300/15 bg-slate-950/55 p-5 text-sm leading-7 text-cyan-100/75">
               <p>
-                Want to support in other ways? Share the site with friends, invite fellow artists, and keep the feedback coming.
+                Want to support in other ways?<br/>
+                Share the site with friends, invite fellow artists, and keep the feedback coming.
               </p>
               <Link href="/explore" className="mt-4 inline-flex items-center text-cyan-200 underline decoration-cyan-400/50 underline-offset-4 transition hover:text-cyan-50">
                 Explore the community feed
@@ -192,7 +193,7 @@ export default function SuggestionsPage() {
         </div>
 
         <footer className="flex flex-col items-center justify-between gap-3 border-t border-cyan-300/15 pt-6 text-sm text-cyan-100/70 sm:flex-row">
-          <p>Built with cosmic dust, tie-dye love, and community feedback.</p>
+          <p>Built with tie-dye love, good vibes, and community feedback.</p>
           <div className="flex flex-wrap items-center justify-center gap-4">
             <Link href="/terms" className="underline decoration-cyan-400/40 underline-offset-4 hover:text-cyan-50">Terms</Link>
             <Link href="/privacy" className="underline decoration-cyan-400/40 underline-offset-4 hover:text-cyan-50">Privacy</Link>
