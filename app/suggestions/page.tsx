@@ -62,13 +62,9 @@ export default function SuggestionsPage() {
         <section className="relative overflow-hidden rounded-[2rem] border border-cyan-300/20 bg-[radial-gradient(circle_at_top,rgba(0,255,208,0.14),transparent_36%),radial-gradient(circle_at_80%_20%,rgba(162,89,255,0.22),transparent_30%),linear-gradient(180deg,rgba(8,16,30,0.88),rgba(7,12,24,0.92))] p-6 shadow-[0_20px_80px_rgba(0,0,0,0.36)] backdrop-blur-xl sm:p-10">
           <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/60 to-transparent" />
           <div className="relative max-w-3xl">
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-cyan-300/25 bg-black/25 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-cyan-200/90">
-              <Sparkles className="h-4 w-4" />
-              Cosmic Community Hub
-            </div>
             <h1 className="glow-text text-4xl font-black leading-tight sm:text-6xl">Suggestions &amp; Support</h1>
             <p className="mt-4 max-w-2xl text-base leading-7 text-cyan-100/85 sm:text-lg">
-              Help us make TheDyeSpace better and keep the cosmic journey going.
+              Help us make TheDyeSpace better.
             </p>
           </div>
         </section>
@@ -117,7 +113,7 @@ export default function SuggestionsPage() {
                       value={form.name}
                       onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
                       className="w-full rounded-2xl border border-cyan-300/20 bg-black/30 px-4 py-3 text-white outline-none transition focus:border-cyan-300/45"
-                      placeholder="Optional cosmic alias"
+                      placeholder="Your name"
                     />
                   </label>
                   <label className="block">
@@ -127,7 +123,7 @@ export default function SuggestionsPage() {
                       value={form.email}
                       onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
                       className="w-full rounded-2xl border border-cyan-300/20 bg-black/30 px-4 py-3 text-white outline-none transition focus:border-cyan-300/45"
-                      placeholder="Optional email for follow-up"
+                      placeholder="Your email"
                     />
                   </label>
                 </div>
@@ -138,12 +134,12 @@ export default function SuggestionsPage() {
                     value={form.message}
                     onChange={(event) => setForm((current) => ({ ...current, message: event.target.value }))}
                     className="min-h-40 w-full rounded-[1.5rem] border border-cyan-300/20 bg-black/30 px-4 py-4 text-white outline-none transition focus:border-cyan-300/45"
-                    placeholder="Tell me if you run into any issues and tell me what would make TheDyeSpace more useful or fun place to hangout."
+                    placeholder="Share what would make TheDyeSpace more useful or fun."
                   />
                 </label>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-sm leading-6 text-cyan-100/65">
-                    Suggestions are now stored in Supabase so your feedback is preserved and reviewable.
+                    Suggestions are now stored securely so your feedback can be reviewed.
                   </p>
                   <button
                     type="submit"
@@ -164,8 +160,8 @@ export default function SuggestionsPage() {
                 <LifeBuoy className="h-6 w-6" />
               </div>
               <div>
-                <h2 className="text-2xl font-semibold text-cyan-50">Support the Cosmic Voyage</h2>
-                <p className="text-sm text-cyan-100/70">Fuel the art, hosting, and next wave of features.</p>
+                <h2 className="text-2xl font-semibold text-cyan-50">Support the Site</h2>
+                <p className="text-sm text-cyan-100/70">Every little bit helps keep the servers running and new features coming.</p>
               </div>
             </div>
 
@@ -186,7 +182,7 @@ export default function SuggestionsPage() {
 
             <div className="mt-6 rounded-[1.5rem] border border-cyan-300/15 bg-slate-950/55 p-5 text-sm leading-7 text-cyan-100/75">
               <p>
-                Want to support in other ways? Share the site, invite a fellow artist, and keep the community feedback flowing.
+                Want to support in other ways? Share the site with friends, invite fellow artists, and keep the feedback coming.
               </p>
               <Link href="/explore" className="mt-4 inline-flex items-center text-cyan-200 underline decoration-cyan-400/50 underline-offset-4 transition hover:text-cyan-50">
                 Explore the community feed
