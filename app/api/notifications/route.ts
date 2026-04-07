@@ -1,4 +1,6 @@
+import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { createAdminClient } from "@/lib/admin-utils";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type NotificationRow = {
@@ -11,10 +13,172 @@ type NotificationRow = {
   post_id?: string | null;
 };
 
-async function readNotificationsForUser(userId: string) {
-  const supabase = await createSupabaseServerClient();
+type PatchBody = {
+  notificationId?: string;
+  markAll?: boolean;
+};
 
-  const withPostId = await supabase
+type RequestContext = {
+  requestId: string;
+  sessionClient: Awaited<ReturnType<typeof createSupabaseServerClient>>;
+  userId: string | null;
+};
+
+function getRequestId(req: NextRequest) {
+  return req.headers.get("x-vercel-id") || randomUUID();
+}
+
+function serializeError(error: unknown) {
+  if (error instanceof Error) {
+    const enrichedError = error as Error & {
+      code?: string;
+      details?: string;
+      hint?: string;
+      status?: number;
+    };
+
+    return {
+      name: enrichedError.name,
+      message: enrichedError.message,
+      code: enrichedError.code ?? null,
+      details: enrichedError.details ?? null,
+      hint: enrichedError.hint ?? null,
+      status: enrichedError.status ?? null,
+      stack: enrichedError.stack ?? null,
+    };
+  }
+
+  if (typeof error === "object" && error !== null) {
+    return error;
+  }
+
+  return { message: String(error) };
+}
+
+function isMissingSessionAuthError(error: unknown) {
+  const name = typeof error === "object" && error !== null && "name" in error ? String((error as { name?: unknown }).name || "") : "";
+  const message = typeof error === "object" && error !== null && "message" in error ? String((error as { message?: unknown }).message || "") : "";
+  return name === "AuthSessionMissingError" || /auth session missing|session.*missing/i.test(message);
+}
+
+function isMissingPostIdColumnError(error: unknown) {
+  const message = typeof error === "object" && error !== null && "message" in error ? String((error as { message?: unknown }).message || "") : "";
+  return message.includes("Could not find the 'post_id' column of 'notifications' in the schema cache");
+}
+
+function normalizeNotificationRow(row: Partial<NotificationRow> | null | undefined): NotificationRow {
+  const actorName = typeof row?.actor_name === "string" && row.actor_name.trim() ? row.actor_name : "someone";
+  const type = typeof row?.type === "string" && row.type.trim() ? row.type : "activity";
+  const createdAt = typeof row?.created_at === "string" && row.created_at ? row.created_at : new Date(0).toISOString();
+  const message = typeof row?.message === "string" && row.message.trim()
+    ? row.message
+    : `${actorName} interacted with your account.`;
+
+  return {
+    id: typeof row?.id === "string" && row.id ? row.id : `unknown-${type}-${createdAt}`,
+    actor_name: actorName,
+    type,
+    message,
+    read: row?.read === true,
+    created_at: createdAt,
+    post_id: typeof row?.post_id === "string" ? row.post_id : null,
+  };
+}
+
+function normalizeNotificationRows(rows: unknown) {
+  if (!Array.isArray(rows)) {
+    return [] as NotificationRow[];
+  }
+
+  return rows.map((row) => normalizeNotificationRow(row as Partial<NotificationRow>));
+}
+
+function getNotificationDbClient(
+  sessionClient: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  requestId: string,
+  purpose: "read" | "write"
+) {
+  try {
+    return {
+      client: createAdminClient(),
+      clientType: "service_role" as const,
+    };
+  } catch (error) {
+    console.error("[notifications] Failed to initialize service role client", {
+      requestId,
+      purpose,
+      error: serializeError(error),
+    });
+
+    return {
+      client: sessionClient,
+      clientType: "session_fallback" as const,
+    };
+  }
+}
+
+async function getRequestContext(req: NextRequest): Promise<RequestContext> {
+  const requestId = getRequestId(req);
+  const sessionClient = await createSupabaseServerClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await sessionClient.auth.getUser();
+
+  if (authError) {
+    if (isMissingSessionAuthError(authError)) {
+      console.info("[notifications] Anonymous request", {
+        requestId,
+        method: req.method,
+      });
+
+      return {
+        requestId,
+        sessionClient,
+        userId: null,
+      };
+    }
+
+    console.error("[notifications] Failed to resolve authenticated user", {
+      requestId,
+      method: req.method,
+      error: serializeError(authError),
+    });
+    throw authError;
+  }
+
+  return {
+    requestId,
+    sessionClient,
+    userId: user?.id || null,
+  };
+}
+
+async function parsePatchBody(req: NextRequest, requestId: string): Promise<PatchBody | null> {
+  try {
+    const body = await req.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return {};
+    }
+
+    return body as PatchBody;
+  } catch (error) {
+    console.warn("[notifications] Invalid PATCH body", {
+      requestId,
+      error: serializeError(error),
+    });
+    return null;
+  }
+}
+
+async function readNotificationsForUser(
+  userId: string,
+  sessionClient: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+  requestId: string
+) {
+  const { client, clientType } = getNotificationDbClient(sessionClient, requestId, "read");
+
+  const withPostId = await client
     .from("notifications")
     .select("id, actor_name, type, message, read, created_at, post_id")
     .eq("user_id", userId)
@@ -23,20 +187,26 @@ async function readNotificationsForUser(userId: string) {
 
   if (!withPostId.error) {
     return {
-      notifications: (withPostId.data || []) as NotificationRow[],
+      notifications: normalizeNotificationRows(withPostId.data),
       usedFallback: false,
+      clientType,
     };
   }
 
-  const cacheError = String(withPostId.error.message || "").includes(
-    "Could not find the 'post_id' column of 'notifications' in the schema cache"
-  );
+  const cacheError = isMissingPostIdColumnError(withPostId.error);
 
   if (!cacheError) {
     throw withPostId.error;
   }
 
-  const fallback = await supabase
+  console.warn("[notifications] Falling back to notifications query without post_id", {
+    requestId,
+    userId,
+    clientType,
+    error: serializeError(withPostId.error),
+  });
+
+  const fallback = await client
     .from("notifications")
     .select("id, actor_name, type, message, read, created_at")
     .eq("user_id", userId)
@@ -48,40 +218,43 @@ async function readNotificationsForUser(userId: string) {
   }
 
   return {
-    notifications: ((fallback.data || []) as NotificationRow[]).map((item) => ({
+    notifications: normalizeNotificationRows(fallback.data).map((item) => ({
       ...item,
       post_id: null,
     })),
     usedFallback: true,
+    clientType,
   };
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const supabase = await createSupabaseServerClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const { requestId, sessionClient, userId } = await getRequestContext(req);
 
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!userId) {
+      return NextResponse.json({ notifications: [], unreadCount: 0, authenticated: false });
     }
 
-    const { notifications, usedFallback } = await readNotificationsForUser(user.id);
+    const { notifications, usedFallback, clientType } = await readNotificationsForUser(
+      userId,
+      sessionClient,
+      requestId
+    );
     const unreadCount = notifications.reduce((count, item) => (item.read ? count : count + 1), 0);
 
     console.info("[notifications] Loaded notifications", {
-      userId: user.id,
+      requestId,
+      userId,
       count: notifications.length,
       unreadCount,
       usedFallback,
+      clientType,
     });
 
-    return NextResponse.json({ notifications, unreadCount });
+    return NextResponse.json({ notifications, unreadCount, authenticated: true });
   } catch (error: any) {
     console.error("[notifications] Failed to load notifications", {
-      error: error?.message || error,
+      error: serializeError(error),
     });
     return NextResponse.json(
       { error: typeof error?.message === "string" ? error.message : "Failed to load notifications." },
@@ -92,56 +265,70 @@ export async function GET() {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const supabase = await createSupabaseServerClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const { requestId, sessionClient, userId } = await getRequestContext(req);
 
-    if (authError || !user) {
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = (await req.json().catch(() => ({}))) as { notificationId?: string; markAll?: boolean };
+    const body = await parsePatchBody(req, requestId);
+    if (body === null) {
+      return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+    }
+
+    const { client, clientType } = getNotificationDbClient(sessionClient, requestId, "write");
 
     if (body.markAll) {
-      const { error } = await supabase
+      const { data, error } = await client
         .from("notifications")
         .update({ read: true })
-        .eq("user_id", user.id)
-        .eq("read", false);
+        .eq("user_id", userId)
+        .eq("read", false)
+        .select("id");
 
       if (error) {
         throw error;
       }
 
-      console.info("[notifications] Marked all notifications as read", { userId: user.id });
-      return NextResponse.json({ ok: true });
+      console.info("[notifications] Marked all notifications as read", {
+        requestId,
+        userId,
+        updatedCount: Array.isArray(data) ? data.length : 0,
+        clientType,
+      });
+      return NextResponse.json({ ok: true, updatedCount: Array.isArray(data) ? data.length : 0 });
     }
 
-    if (!body.notificationId) {
+    const notificationId = typeof body.notificationId === "string" ? body.notificationId.trim() : "";
+
+    if (!notificationId) {
       return NextResponse.json({ error: "notificationId is required." }, { status: 400 });
     }
 
-    const { error } = await supabase
+    const { data, error } = await client
       .from("notifications")
       .update({ read: true })
-      .eq("id", body.notificationId)
-      .eq("user_id", user.id);
+      .eq("id", notificationId)
+      .eq("user_id", userId)
+      .eq("read", false)
+      .select("id");
 
     if (error) {
       throw error;
     }
 
     console.info("[notifications] Marked notification as read", {
-      userId: user.id,
-      notificationId: body.notificationId,
+      requestId,
+      userId,
+      notificationId,
+      updated: Array.isArray(data) && data.length > 0,
+      clientType,
     });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, updated: Array.isArray(data) && data.length > 0 });
   } catch (error: any) {
     console.error("[notifications] Failed to update notifications", {
-      error: error?.message || error,
+      error: serializeError(error),
     });
     return NextResponse.json(
       { error: typeof error?.message === "string" ? error.message : "Failed to update notifications." },

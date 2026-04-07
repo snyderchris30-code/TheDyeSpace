@@ -199,19 +199,26 @@ export default function MainNavbar() {
   };
   const [notifDrop, setNotifDrop] = useState(false);
   const queryClient = useQueryClient();
+  const notificationUserId = session?.user?.id ?? null;
 
   // Theme system removed
 
   const { data: notifications = [], refetch } = useQuery({
-    queryKey: ["notifications"],
+    queryKey: ["notifications", notificationUserId ?? "anonymous"],
     queryFn: fetchNotifications,
     staleTime: 1000 * 30,
-    refetchInterval: 1000 * 30,
+    refetchInterval: notificationUserId ? 1000 * 30 : false,
+    enabled: Boolean(notificationUserId),
   });
 
   const isLoggedIn = Boolean(session?.user);
 
   const unreadCount = notifications.filter((item) => !item.read).length;
+
+  useEffect(() => {
+    seenNotificationIdsRef.current.clear();
+    hasPrimedNotificationIdsRef.current = false;
+  }, [notificationUserId]);
 
   useEffect(() => {
     if (!isLoggedIn || typeof window === "undefined") return;
@@ -267,13 +274,17 @@ export default function MainNavbar() {
   }, [isLoggedIn, notifications]);
 
   const markAllRead = async () => {
+    if (!notificationUserId) {
+      return;
+    }
+
     await fetch("/api/notifications", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ markAll: true }),
     });
     refetch();
-    queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    queryClient.invalidateQueries({ queryKey: ["notifications", notificationUserId] });
   };
 
   const handleCopyShareLink = async (url: string) => {
