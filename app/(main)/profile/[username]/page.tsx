@@ -233,6 +233,35 @@ async function fetchWithTimeout(input: RequestInfo, init: RequestInit | undefine
   }
 }
 
+function serializeClientError(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+
+  if (typeof error === "object" && error !== null) {
+    return error;
+  }
+
+  return { message: String(error) };
+}
+
+async function reportClientError(payload: Record<string, unknown>) {
+  try {
+    await fetch("/api/client-errors", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    });
+  } catch {
+    // Best-effort reporting only.
+  }
+}
+
 export default function ProfileEditor() {
   // Lightbox state for image modal
   const [lightbox, setLightbox] = useState<{ open: boolean; images: string[]; index: number }>({ open: false, images: [], index: 0 });
@@ -301,6 +330,32 @@ export default function ProfileEditor() {
   const [videoTitles, setVideoTitles] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<StatusState | null>(null);
   const [editorAutoOpened, setEditorAutoOpened] = useState(false);
+
+  const reportProfileLoadError = useCallback(
+    async (stage: string, error: unknown, details?: Record<string, unknown>) => {
+      const serializedError = serializeClientError(error);
+      await reportClientError({
+        message:
+          typeof serializedError === "object" &&
+          serializedError !== null &&
+          "message" in serializedError &&
+          typeof serializedError.message === "string"
+            ? serializedError.message
+            : "Client-side profile load failure",
+        stage,
+        routeUsername,
+        sessionUserId: session?.user?.id ?? null,
+        profileUserId: details?.profileUserId ?? profileUserId ?? null,
+        href: typeof window !== "undefined" ? window.location.href : null,
+        userAgent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+        details: {
+          ...details,
+          error: serializedError,
+        },
+      });
+    },
+    [profileUserId, routeUsername, session?.user?.id]
+  );
 
   const applyProfileToForm = useCallback((profile: ProfileRow) => {
     const appearance = profile.theme_settings ?? null;
@@ -428,6 +483,7 @@ export default function ProfileEditor() {
         setPosts(nextPosts);
         await loadInteractions(nextPosts.map((post) => post.id));
       } catch (error: any) {
+        void reportProfileLoadError("profile-posts-load", error, { profileUserId: userId });
         setStatus({
           type: "error",
           text: typeof error?.message === "string" ? error.message : "Unable to load posts for this profile.",
@@ -436,7 +492,7 @@ export default function ProfileEditor() {
         setPostsLoading(false);
       }
     },
-    [loadInteractions, supabase]
+    [loadInteractions, reportProfileLoadError, supabase]
   );
 
   const fetchOrCreateOwnProfile = useCallback(
@@ -490,6 +546,7 @@ export default function ProfileEditor() {
           });
         }
       } catch (error: any) {
+        void reportProfileLoadError("profile-init-or-load", error, { profileUserId: userId });
         const message = typeof error?.message === "string" ? error.message : "Could not load your profile right now. Please refresh and try again.";
         setStatus({
           type: "error",
@@ -498,15 +555,17 @@ export default function ProfileEditor() {
         setLoadError(message);
       }
     },
-    [applyProfileToForm, fetchProfileById]
+    [applyProfileToForm, fetchProfileById, reportProfileLoadError]
   );
 
   const loadProfile = useCallback(async () => {
+    let loadStage = "session";
     try {
       setLoading(true);
       setLoadError(null);
       setStatus(null);
 
+      loadStage = "session-check";
       const { data } = await withTimeout(
         supabase.auth.getSession(),
         PROFILE_LOAD_TIMEOUT_MS,
@@ -537,11 +596,13 @@ export default function ProfileEditor() {
       );
 
       if (isOwnRoute && sessionUser) {
+        loadStage = "own-profile";
         await fetchOrCreateOwnProfile(sessionUser);
         return;
       }
 
       setIsOwner(false);
+      loadStage = "route-profile-fetch";
       const viewedProfile = await withTimeout(
         fetchProfileByUsername(routeUsername),
         PROFILE_LOAD_TIMEOUT_MS,
@@ -565,6 +626,7 @@ export default function ProfileEditor() {
       applyProfileToForm(viewedProfile);
     } catch (error: any) {
       console.error("Failed to load profile:", error);
+      void reportProfileLoadError("profile-load", error, { loadStage });
       const message =
         error?.name === "AbortError"
           ? "Profile load timed out. Please refresh and try again."
@@ -576,7 +638,7 @@ export default function ProfileEditor() {
     } finally {
       setLoading(false);
     }
-  }, [applyProfileToForm, fetchOrCreateOwnProfile, fetchProfileByUsername, loadOwnRole, routeUsername, supabase]);
+  }, [applyProfileToForm, fetchOrCreateOwnProfile, fetchProfileByUsername, loadOwnRole, reportProfileLoadError, routeUsername, supabase]);
 
   useEffect(() => {
     void loadProfile();

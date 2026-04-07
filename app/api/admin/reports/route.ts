@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient, userIsAdmin } from "@/lib/admin-utils";
+import { createRequestLogContext, logError, logInfo, logWarn } from "@/lib/server-logging";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type ApiErrorCode =
@@ -75,7 +76,7 @@ function jsonOk(payload: Record<string, unknown>) {
   });
 }
 
-async function requireAdmin() {
+async function requireAdmin(req: NextRequest, requestContext: Record<string, unknown>) {
   try {
     const supabase = await createSupabaseServerClient();
     const {
@@ -84,17 +85,26 @@ async function requireAdmin() {
     } = await supabase.auth.getUser();
 
     if (authError || !user) {
+      logWarn("admin/reports", "Unauthorized admin reports request", {
+        ...requestContext,
+        authError: authError ? authError.message : null,
+      });
       return { error: jsonError("Unauthorized", 401, "UNAUTHORIZED") };
     }
 
     const adminClient = createAdminClient();
     const isAdmin = await userIsAdmin(adminClient, user.id);
     if (!isAdmin) {
+      logWarn("admin/reports", "Forbidden admin reports request", {
+        ...requestContext,
+        userId: user.id,
+      });
       return { error: jsonError("Forbidden", 403, "FORBIDDEN") };
     }
 
     return { adminClient, user };
   } catch (error: any) {
+    logError("admin/reports", "Failed to validate admin access", error, requestContext);
     return {
       error: jsonError(
         typeof error?.message === "string" ? error.message : "Failed to validate admin access.",
@@ -105,14 +115,20 @@ async function requireAdmin() {
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const requestContext = createRequestLogContext(req, "admin/reports");
   try {
-    const auth = await requireAdmin();
+    const auth = await requireAdmin(req, requestContext);
     if (auth.error) {
       return auth.error;
     }
 
-    const { adminClient } = auth;
+    const { adminClient, user } = auth;
+    logInfo("admin/reports", "Loading moderation queue", {
+      ...requestContext,
+      adminUserId: user.id,
+    });
+
     const { data: rawReports, error: reportsError } = await adminClient
       .from("reports")
       .select("id, reporter_id, reported_id, reason, created_at, type")
@@ -121,6 +137,10 @@ export async function GET() {
       .order("created_at", { ascending: false });
 
     if (reportsError) {
+      logError("admin/reports", "Failed to query reports table", reportsError, {
+        ...requestContext,
+        adminUserId: user.id,
+      });
       return jsonError(reportsError.message, 500, "INTERNAL_ERROR");
     }
 
@@ -143,6 +163,11 @@ export async function GET() {
     ]);
 
     if (commentsError) {
+      logError("admin/reports", "Failed to load reported comments", commentsError, {
+        ...requestContext,
+        adminUserId: user.id,
+        commentCount: commentIds.length,
+      });
       return jsonError(commentsError.message, 500, "INTERNAL_ERROR");
     }
 
@@ -159,6 +184,11 @@ export async function GET() {
     ]);
 
     if (postsError) {
+      logError("admin/reports", "Failed to load related posts", postsError, {
+        ...requestContext,
+        adminUserId: user.id,
+        postCount: relatedPostIds.length,
+      });
       return jsonError(postsError.message, 500, "INTERNAL_ERROR");
     }
 
@@ -179,6 +209,11 @@ export async function GET() {
     ]);
 
     if (profilesError) {
+      logError("admin/reports", "Failed to load report-related profiles", profilesError, {
+        ...requestContext,
+        adminUserId: user.id,
+        profileCount: authorIds.length,
+      });
       return jsonError(profilesError.message, 500, "INTERNAL_ERROR");
     }
 
@@ -221,8 +256,17 @@ export async function GET() {
       };
     });
 
+    logInfo("admin/reports", "Loaded moderation queue", {
+      ...requestContext,
+      adminUserId: user.id,
+      reportCount: queue.length,
+      commentCount: comments.length,
+      postCount: posts.length,
+      profileCount: (profilesData || []).length,
+    });
     return jsonOk({ reports: queue });
   } catch (error: any) {
+    logError("admin/reports", "Failed to load moderation queue", error, requestContext);
     return jsonError(
       typeof error?.message === "string" ? error.message : "Failed to load moderation queue.",
       500,
@@ -232,13 +276,14 @@ export async function GET() {
 }
 
 export async function PATCH(req: NextRequest) {
+  const requestContext = createRequestLogContext(req, "admin/reports");
   try {
-    const auth = await requireAdmin();
+    const auth = await requireAdmin(req, requestContext);
     if (auth.error) {
       return auth.error;
     }
 
-    const { adminClient } = auth;
+    const { adminClient, user } = auth;
     const body = (await req.json().catch(() => ({}))) as {
       action?: "dismiss" | "dismiss_target";
       reportId?: string;
@@ -249,9 +294,19 @@ export async function PATCH(req: NextRequest) {
     if (body.action === "dismiss" && body.reportId) {
       const { error } = await adminClient.from("reports").delete().eq("id", body.reportId);
       if (error) {
+        logError("admin/reports", "Failed to dismiss report", error, {
+          ...requestContext,
+          adminUserId: user.id,
+          reportId: body.reportId,
+        });
         return jsonError(error.message, 500, "INTERNAL_ERROR");
       }
 
+      logInfo("admin/reports", "Dismissed report", {
+        ...requestContext,
+        adminUserId: user.id,
+        reportId: body.reportId,
+      });
       return jsonOk({ success: true });
     }
 
@@ -263,14 +318,35 @@ export async function PATCH(req: NextRequest) {
         .eq("type", body.reportType);
 
       if (error) {
+        logError("admin/reports", "Failed to dismiss all reports for target", error, {
+          ...requestContext,
+          adminUserId: user.id,
+          targetId: body.targetId,
+          reportType: body.reportType,
+        });
         return jsonError(error.message, 500, "INTERNAL_ERROR");
       }
 
+      logInfo("admin/reports", "Dismissed reports for target", {
+        ...requestContext,
+        adminUserId: user.id,
+        targetId: body.targetId,
+        reportType: body.reportType,
+      });
       return jsonOk({ success: true });
     }
 
+    logWarn("admin/reports", "Invalid moderation action payload", {
+      ...requestContext,
+      adminUserId: user.id,
+      action: body.action ?? null,
+      reportId: body.reportId ?? null,
+      targetId: body.targetId ?? null,
+      reportType: body.reportType ?? null,
+    });
     return jsonError("Invalid moderation action.", 400, "BAD_REQUEST");
   } catch (error: any) {
+    logError("admin/reports", "Failed to update moderation queue", error, requestContext);
     return jsonError(
       typeof error?.message === "string" ? error.message : "Failed to update the moderation queue.",
       500,

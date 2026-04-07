@@ -117,8 +117,7 @@ function getNotificationDbClient(
   }
 }
 
-async function getRequestContext(req: NextRequest): Promise<RequestContext> {
-  const requestId = getRequestId(req);
+async function getRequestContext(req: NextRequest, requestId: string): Promise<RequestContext> {
   const sessionClient = await createSupabaseServerClient();
   const {
     data: { user },
@@ -228,8 +227,9 @@ async function readNotificationsForUser(
 }
 
 export async function GET(req: NextRequest) {
+  const requestId = getRequestId(req);
   try {
-    const { requestId, sessionClient, userId } = await getRequestContext(req);
+    const { sessionClient, userId } = await getRequestContext(req, requestId);
 
     if (!userId) {
       return NextResponse.json({ notifications: [], unreadCount: 0, authenticated: false });
@@ -254,6 +254,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ notifications, unreadCount, authenticated: true });
   } catch (error: any) {
     console.error("[notifications] Failed to load notifications", {
+      requestId,
+      method: req.method,
+      path: req.nextUrl.pathname,
       error: serializeError(error),
     });
     return NextResponse.json(
@@ -264,8 +267,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const requestId = getRequestId(req);
   try {
-    const { requestId, sessionClient, userId } = await getRequestContext(req);
+    const { sessionClient, userId } = await getRequestContext(req, requestId);
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -328,6 +332,9 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ ok: true, updated: Array.isArray(data) && data.length > 0 });
   } catch (error: any) {
     console.error("[notifications] Failed to update notifications", {
+      requestId,
+      method: req.method,
+      path: req.nextUrl.pathname,
       error: serializeError(error),
     });
     return NextResponse.json(

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createAdminClient, loadProfileStatus, isMuted } from "@/lib/admin-utils";
 import { normalizePostImageUrls } from "@/lib/post-media";
+import { createRequestLogContext, logError, logInfo, logWarn } from "@/lib/server-logging";
 
 type CreatePostBody = {
   content?: string;
@@ -10,6 +11,7 @@ type CreatePostBody = {
 };
 
 export async function POST(req: NextRequest) {
+  const requestContext = createRequestLogContext(req, "posts/create");
   try {
     const supabase = await createSupabaseServerClient();
     const {
@@ -18,6 +20,10 @@ export async function POST(req: NextRequest) {
     } = await supabase.auth.getUser();
 
     if (authError || !user) {
+      logWarn("posts/create", "Unauthorized post creation attempt", {
+        ...requestContext,
+        authError: authError ? authError.message : null,
+      });
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -26,16 +32,27 @@ export async function POST(req: NextRequest) {
     const imageUrls = normalizePostImageUrls(body.image_urls);
 
     if (!content) {
+      logWarn("posts/create", "Rejected post creation with empty content", {
+        ...requestContext,
+        userId: user.id,
+        imageCount: imageUrls.length,
+      });
       return NextResponse.json({ error: "Post content is required." }, { status: 400 });
     }
 
     const adminClient = createAdminClient();
     const currentUserStatus = await loadProfileStatus(adminClient, user.id);
     if (isMuted(currentUserStatus)) {
+      logWarn("posts/create", "Rejected post creation for muted user", {
+        ...requestContext,
+        userId: user.id,
+        mutedUntil: currentUserStatus?.muted_until ?? null,
+      });
       return NextResponse.json({ error: "You are muted and cannot create posts at this time." }, { status: 403 });
     }
 
-    console.info("[posts/create] Attempting post insert", {
+    logInfo("posts/create", "Attempting post insert", {
+      ...requestContext,
       userId: user.id,
       contentLength: content.length,
       imageCount: imageUrls.length,
@@ -50,27 +67,23 @@ export async function POST(req: NextRequest) {
     });
 
     if (insertError) {
-      console.error("[posts/create] Failed post insert", {
+      logError("posts/create", "Failed post insert", insertError, {
+        ...requestContext,
         userId: user.id,
         imageCount: imageUrls.length,
-        error: insertError.message,
-        details: insertError.details,
-        hint: insertError.hint,
-        code: insertError.code,
       });
       return NextResponse.json({ error: insertError.message }, { status: 500 });
     }
 
-    console.info("[posts/create] Post insert succeeded", {
+    logInfo("posts/create", "Post insert succeeded", {
+      ...requestContext,
       userId: user.id,
       imageCount: imageUrls.length,
     });
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error("[posts/create] Unexpected failure", {
-      error: error?.message || error,
-    });
+    logError("posts/create", "Unexpected failure", error, requestContext);
     return NextResponse.json(
       { error: typeof error?.message === "string" ? error.message : "Failed to create post." },
       { status: 500 }

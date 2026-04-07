@@ -10,6 +10,7 @@ import {
   type FontStyle,
 } from "@/lib/profile-theme";
 import { resolveProfileUsername } from "@/lib/profile-identity";
+import { createRequestLogContext, logError, logInfo, logWarn } from "@/lib/server-logging";
 import { normalizeMusicPlayerUrls, normalizeYoutubeVideoUrls } from "@/lib/youtube-media";
 
 const ADMIN_AUTO_FOLLOW_USER_ID = "794077c7-ad51-47cc-8c25-20171edfb017";
@@ -74,111 +75,163 @@ type SaveBody = {
 };
 
 export async function POST(req: NextRequest) {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
+  const requestContext = createRequestLogContext(req, "profile/save");
 
-  if (authError || !user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  try {
+    const supabase = await createSupabaseServerClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
 
-  const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (authError || !user) {
+      logWarn("profile/save", "Unauthorized profile save request", {
+        ...requestContext,
+        authError: authError ? authError.message : null,
+      });
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-  if (!serviceUrl || !serviceKey) {
+    const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!serviceUrl || !serviceKey) {
+      logError("profile/save", "Missing service role configuration", new Error("Service role key missing"), {
+        ...requestContext,
+        userId: user.id,
+      });
+      return NextResponse.json(
+        { error: "Server misconfiguration: service role key missing" },
+        { status: 500 }
+      );
+    }
+
+    const body = (await req.json().catch(() => ({}))) as SaveBody;
+
+    const adminClient = createServiceClient(serviceUrl, serviceKey, {
+      auth: { persistSession: false },
+    });
+
+    const { data: existingProfile, error: existingProfileError } = await adminClient
+      .from("profiles")
+      .select("username, display_name, bio, avatar_url, banner_url, theme_settings")
+      .eq("id", user.id)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingProfileError) {
+      logError("profile/save", "Failed to load existing profile before save", existingProfileError, {
+        ...requestContext,
+        userId: user.id,
+      });
+      return NextResponse.json({ error: existingProfileError.message }, { status: 500 });
+    }
+
+    const existingThemeSettings = (existingProfile?.theme_settings ?? {}) as {
+      background_color?: string | null;
+      text_color?: string | null;
+      highlight_color?: string | null;
+      font_style?: FontStyle | null;
+      youtube_urls?: string[] | null;
+      music_player_urls?: string[] | null;
+      show_music_player?: boolean | null;
+    };
+
+    const safeUsername = resolveProfileUsername(
+      body.username,
+      existingProfile?.username,
+      typeof user.user_metadata?.username === "string" ? user.user_metadata.username : null,
+      user.email,
+      user.id
+    );
+
+    const nextYoutubeUrls = body.youtube_urls
+      ? normalizeYoutubeVideoUrls(body.youtube_urls)
+      : Array.isArray(existingThemeSettings.youtube_urls)
+        ? normalizeYoutubeVideoUrls(existingThemeSettings.youtube_urls)
+        : [];
+    const nextMusicPlayerUrls = body.music_player_urls
+      ? normalizeMusicPlayerUrls(body.music_player_urls)
+      : Array.isArray(existingThemeSettings.music_player_urls)
+        ? normalizeMusicPlayerUrls(existingThemeSettings.music_player_urls)
+        : [];
+    const nextFontStyle = body.font_style
+      ? normalizeFontStyle(body.font_style)
+      : existingThemeSettings.font_style
+        ? normalizeFontStyle(existingThemeSettings.font_style)
+        : DEFAULT_FONT_STYLE;
+
+    logInfo("profile/save", "Saving profile", {
+      ...requestContext,
+      userId: user.id,
+      hasAvatar: body.avatar_url !== undefined,
+      hasBanner: body.banner_url !== undefined,
+      bioLength: typeof body.bio === "string" ? body.bio.length : null,
+      youtubeUrlCount: nextYoutubeUrls.length,
+      musicPlayerUrlCount: nextMusicPlayerUrls.length,
+      fontStyle: nextFontStyle,
+    });
+
+    const { data: profile, error: upsertError } = await adminClient
+      .from("profiles")
+      .upsert(
+        {
+          id: user.id,
+          username: safeUsername,
+          display_name: body.display_name ?? existingProfile?.display_name ?? "",
+          bio: body.bio ?? existingProfile?.bio ?? "",
+          avatar_url: body.avatar_url !== undefined ? body.avatar_url : (existingProfile?.avatar_url ?? null),
+          banner_url: body.banner_url !== undefined ? body.banner_url : (existingProfile?.banner_url ?? null),
+          theme_settings: {
+            ...existingThemeSettings,
+            background_color: body.background_color ?? existingThemeSettings.background_color ?? DEFAULT_BACKGROUND_COLOR,
+            text_color: body.text_color ?? existingThemeSettings.text_color ?? DEFAULT_TEXT_COLOR,
+            highlight_color: body.highlight_color ?? existingThemeSettings.highlight_color ?? DEFAULT_HIGHLIGHT_COLOR,
+            font_style: nextFontStyle,
+            youtube_urls: nextYoutubeUrls,
+            music_player_urls: nextMusicPlayerUrls,
+            show_music_player: body.show_music_player ?? existingThemeSettings.show_music_player ?? true,
+          },
+        },
+        { onConflict: "id", ignoreDuplicates: false }
+      )
+      .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings, verified_badge, member_number, created_at")
+      .limit(1)
+      .maybeSingle();
+
+    if (upsertError) {
+      logError("profile/save", "Failed to save profile", upsertError, {
+        ...requestContext,
+        userId: user.id,
+        resolvedUsername: safeUsername,
+      });
+      return NextResponse.json({ error: upsertError.message }, { status: 500 });
+    }
+
+    if (!existingProfile) {
+      try {
+        await ensureAdminAutoFollow(adminClient, user.id);
+      } catch (error: any) {
+        logWarn("profile/save", "Admin auto-follow skipped", {
+          ...requestContext,
+          userId: user.id,
+          error: error?.message || error,
+        });
+      }
+    }
+
+    logInfo("profile/save", "Profile saved", {
+      ...requestContext,
+      userId: user.id,
+      resolvedUsername: safeUsername,
+    });
+
+    return NextResponse.json({ profile });
+  } catch (error: any) {
+    logError("profile/save", "Unexpected profile save failure", error, requestContext);
     return NextResponse.json(
-      { error: "Server misconfiguration: service role key missing" },
+      { error: typeof error?.message === "string" ? error.message : "Failed to save profile." },
       { status: 500 }
     );
   }
-
-  const body = (await req.json().catch(() => ({}))) as SaveBody;
-
-  const adminClient = createServiceClient(serviceUrl, serviceKey, {
-    auth: { persistSession: false },
-  });
-
-  const { data: existingProfile } = await adminClient
-    .from("profiles")
-    .select("username, display_name, bio, avatar_url, banner_url, theme_settings")
-    .eq("id", user.id)
-    .limit(1)
-    .maybeSingle();
-
-  const existingThemeSettings = (existingProfile?.theme_settings ?? {}) as {
-    background_color?: string | null;
-    text_color?: string | null;
-    highlight_color?: string | null;
-    font_style?: FontStyle | null;
-    youtube_urls?: string[] | null;
-    music_player_urls?: string[] | null;
-    show_music_player?: boolean | null;
-  };
-
-  const safeUsername = resolveProfileUsername(
-    body.username,
-    existingProfile?.username,
-    typeof user.user_metadata?.username === "string" ? user.user_metadata.username : null,
-    user.email,
-    user.id
-  );
-
-  const nextYoutubeUrls = body.youtube_urls
-    ? normalizeYoutubeVideoUrls(body.youtube_urls)
-    : Array.isArray(existingThemeSettings.youtube_urls)
-      ? normalizeYoutubeVideoUrls(existingThemeSettings.youtube_urls)
-      : [];
-  const nextMusicPlayerUrls = body.music_player_urls
-    ? normalizeMusicPlayerUrls(body.music_player_urls)
-    : Array.isArray(existingThemeSettings.music_player_urls)
-      ? normalizeMusicPlayerUrls(existingThemeSettings.music_player_urls)
-      : [];
-  const nextFontStyle = body.font_style
-    ? normalizeFontStyle(body.font_style)
-    : existingThemeSettings.font_style
-      ? normalizeFontStyle(existingThemeSettings.font_style)
-      : DEFAULT_FONT_STYLE;
-
-  const { data: profile, error: upsertError } = await adminClient
-    .from("profiles")
-    .upsert(
-      {
-        id: user.id,
-        username: safeUsername,
-        display_name: body.display_name ?? existingProfile?.display_name ?? "",
-        bio: body.bio ?? existingProfile?.bio ?? "",
-        avatar_url: body.avatar_url !== undefined ? body.avatar_url : (existingProfile?.avatar_url ?? null),
-        banner_url: body.banner_url !== undefined ? body.banner_url : (existingProfile?.banner_url ?? null),
-        theme_settings: {
-          ...existingThemeSettings,
-          background_color: body.background_color ?? existingThemeSettings.background_color ?? DEFAULT_BACKGROUND_COLOR,
-          text_color: body.text_color ?? existingThemeSettings.text_color ?? DEFAULT_TEXT_COLOR,
-          highlight_color: body.highlight_color ?? existingThemeSettings.highlight_color ?? DEFAULT_HIGHLIGHT_COLOR,
-          font_style: nextFontStyle,
-          youtube_urls: nextYoutubeUrls,
-          music_player_urls: nextMusicPlayerUrls,
-          show_music_player: body.show_music_player ?? existingThemeSettings.show_music_player ?? true,
-        },
-      },
-      { onConflict: "id", ignoreDuplicates: false }
-    )
-    .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings, verified_badge, member_number, created_at")
-    .limit(1)
-    .maybeSingle();
-
-  if (upsertError) {
-    return NextResponse.json({ error: upsertError.message }, { status: 500 });
-  }
-
-  if (!existingProfile) {
-    try {
-      await ensureAdminAutoFollow(adminClient, user.id);
-    } catch (error: any) {
-      console.warn("[profile-save] admin auto-follow skipped", error?.message || error);
-    }
-  }
-
-  return NextResponse.json({ profile });
 }
