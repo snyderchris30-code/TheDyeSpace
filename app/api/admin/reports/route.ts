@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient, userIsAdmin } from "@/lib/admin-utils";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+type ApiErrorCode =
+  | "UNAUTHORIZED"
+  | "FORBIDDEN"
+  | "BAD_REQUEST"
+  | "INTERNAL_ERROR";
+
 type ModerationReportType = "post" | "comment";
 
 type RawReportRecord = {
@@ -43,24 +49,60 @@ function truncateText(value: string | null | undefined, maxLength = 240) {
   return `${text.slice(0, maxLength).trimEnd()}...`;
 }
 
+function jsonError(message: string, status: number, code: ApiErrorCode) {
+  return NextResponse.json(
+    {
+      error: message,
+      code,
+    },
+    {
+      status,
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+      },
+    }
+  );
+}
+
+function jsonOk(payload: Record<string, unknown>) {
+  return NextResponse.json(payload, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
 async function requireAdmin() {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
+  try {
+    const supabase = await createSupabaseServerClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
 
-  if (authError || !user) {
-    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+    if (authError || !user) {
+      return { error: jsonError("Unauthorized", 401, "UNAUTHORIZED") };
+    }
+
+    const adminClient = createAdminClient();
+    const isAdmin = await userIsAdmin(adminClient, user.id);
+    if (!isAdmin) {
+      return { error: jsonError("Forbidden", 403, "FORBIDDEN") };
+    }
+
+    return { adminClient, user };
+  } catch (error: any) {
+    return {
+      error: jsonError(
+        typeof error?.message === "string" ? error.message : "Failed to validate admin access.",
+        500,
+        "INTERNAL_ERROR"
+      ),
+    };
   }
-
-  const adminClient = createAdminClient();
-  const isAdmin = await userIsAdmin(adminClient, user.id);
-  if (!isAdmin) {
-    return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
-  }
-
-  return { adminClient, user };
 }
 
 export async function GET() {
@@ -79,7 +121,7 @@ export async function GET() {
       .order("created_at", { ascending: false });
 
     if (reportsError) {
-      return NextResponse.json({ error: reportsError.message }, { status: 500 });
+      return jsonError(reportsError.message, 500, "INTERNAL_ERROR");
     }
 
     const reports = ((rawReports || []) as RawReportRecord[]).filter(
@@ -101,7 +143,7 @@ export async function GET() {
     ]);
 
     if (commentsError) {
-      return NextResponse.json({ error: commentsError.message }, { status: 500 });
+      return jsonError(commentsError.message, 500, "INTERNAL_ERROR");
     }
 
     const comments = (commentsData || []) as CommentSummary[];
@@ -117,7 +159,7 @@ export async function GET() {
     ]);
 
     if (postsError) {
-      return NextResponse.json({ error: postsError.message }, { status: 500 });
+      return jsonError(postsError.message, 500, "INTERNAL_ERROR");
     }
 
     const posts = (postsData || []) as PostSummary[];
@@ -137,7 +179,7 @@ export async function GET() {
     ]);
 
     if (profilesError) {
-      return NextResponse.json({ error: profilesError.message }, { status: 500 });
+      return jsonError(profilesError.message, 500, "INTERNAL_ERROR");
     }
 
     const postsById = new Map<string, PostSummary>(posts.map((post) => [post.id, post]));
@@ -179,11 +221,12 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json({ reports: queue });
+    return jsonOk({ reports: queue });
   } catch (error: any) {
-    return NextResponse.json(
-      { error: typeof error?.message === "string" ? error.message : "Failed to load moderation queue." },
-      { status: 500 }
+    return jsonError(
+      typeof error?.message === "string" ? error.message : "Failed to load moderation queue.",
+      500,
+      "INTERNAL_ERROR"
     );
   }
 }
@@ -206,10 +249,10 @@ export async function PATCH(req: NextRequest) {
     if (body.action === "dismiss" && body.reportId) {
       const { error } = await adminClient.from("reports").delete().eq("id", body.reportId);
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return jsonError(error.message, 500, "INTERNAL_ERROR");
       }
 
-      return NextResponse.json({ success: true });
+      return jsonOk({ success: true });
     }
 
     if (body.action === "dismiss_target" && body.targetId && (body.reportType === "post" || body.reportType === "comment")) {
@@ -220,17 +263,18 @@ export async function PATCH(req: NextRequest) {
         .eq("type", body.reportType);
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return jsonError(error.message, 500, "INTERNAL_ERROR");
       }
 
-      return NextResponse.json({ success: true });
+      return jsonOk({ success: true });
     }
 
-    return NextResponse.json({ error: "Invalid moderation action." }, { status: 400 });
+    return jsonError("Invalid moderation action.", 400, "BAD_REQUEST");
   } catch (error: any) {
-    return NextResponse.json(
-      { error: typeof error?.message === "string" ? error.message : "Failed to update the moderation queue." },
-      { status: 500 }
+    return jsonError(
+      typeof error?.message === "string" ? error.message : "Failed to update the moderation queue.",
+      500,
+      "INTERNAL_ERROR"
     );
   }
 }

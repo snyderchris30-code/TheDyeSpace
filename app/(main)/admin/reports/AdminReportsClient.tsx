@@ -33,6 +33,19 @@ type StatusState = {
   text: string;
 };
 
+async function parseApiResponse(response: Response) {
+  const contentType = response.headers.get("content-type") || "";
+
+  if (contentType.toLowerCase().includes("application/json")) {
+    return response.json().catch(() => ({}));
+  }
+
+  const text = await response.text().catch(() => "");
+  return {
+    error: text?.trim() ? "Unexpected non-JSON response from server." : null,
+  };
+}
+
 function formatIdentity(displayName: string, username: string | null) {
   if (username) {
     return `${displayName} (@${username.replace(/^@+/, "")})`;
@@ -85,7 +98,7 @@ export default function AdminReportsClient() {
       }
 
       const response = await fetch("/api/admin/reports", { cache: "no-store" });
-      const body = await response.json().catch(() => ({}));
+      const body = await parseApiResponse(response);
 
       if (!response.ok) {
         throw new Error(body?.error || "Failed to load moderation reports.");
@@ -114,7 +127,7 @@ export default function AdminReportsClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "dismiss", reportId }),
       });
-      const body = await response.json().catch(() => ({}));
+      const body = await parseApiResponse(response);
       if (!response.ok) {
         throw new Error(body?.error || "Failed to dismiss report.");
       }
@@ -147,7 +160,7 @@ export default function AdminReportsClient() {
       }
 
       const deleteResponse = await fetch(deleteUrl, { method: "DELETE" });
-      const deleteBody = await deleteResponse.json().catch(() => ({}));
+      const deleteBody = await parseApiResponse(deleteResponse);
       if (!deleteResponse.ok && deleteResponse.status !== 404) {
         throw new Error(deleteBody?.error || "Failed to delete the reported content.");
       }
@@ -157,7 +170,7 @@ export default function AdminReportsClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "dismiss_target", targetId: report.targetId, reportType: report.type }),
       });
-      const dismissBody = await dismissResponse.json().catch(() => ({}));
+      const dismissBody = await parseApiResponse(dismissResponse);
       if (!dismissResponse.ok) {
         throw new Error(dismissBody?.error || "Content was removed, but the report queue could not be cleared.");
       }
