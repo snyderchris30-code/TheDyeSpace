@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function TermsOfService() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-teal-900 to-green-900 text-cyan-100 flex flex-col items-center justify-center p-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-teal-900 to-green-900 text-cyan-100 flex flex-col items-center justify-start pt-24 pb-8 px-8">
       <div className="max-w-4xl w-full bg-white/10 rounded-3xl shadow-xl p-8 border border-cyan-400">
         <h1 className="text-4xl font-bold mb-3 text-cyan-200">Terms of Service</h1>
         <p className="text-sm text-cyan-200/80 mb-8">Effective date: April 3, 2026</p>
