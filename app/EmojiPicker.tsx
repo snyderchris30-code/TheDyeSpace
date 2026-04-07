@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Smile } from "lucide-react";
+
 import { encodeCustomEmojiToken, EMOJI_CATEGORIES, normalizeCustomEmojiUrls } from "@/lib/custom-emojis";
 
 type EmojiPickerProps = {
@@ -16,6 +17,7 @@ type EmojiResponse = {
 export default function EmojiPicker({ onSelect, className }: EmojiPickerProps) {
   const [open, setOpen] = useState(false);
   const [customEmojiUrls, setCustomEmojiUrls] = useState<string[]>([]);
+  const [category, setCategory] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -35,11 +37,13 @@ export default function EmojiPicker({ onSelect, className }: EmojiPickerProps) {
     };
 
     void loadCustomEmojis();
+
     return () => {
       active = false;
     };
   }, []);
 
+  const activeCategory = EMOJI_CATEGORIES[category] ?? EMOJI_CATEGORIES[0];
   const customEmojiLabel = useMemo(
     () => `${customEmojiUrls.length} custom emoji${customEmojiUrls.length === 1 ? "" : "s"}`,
     [customEmojiUrls.length]
@@ -59,27 +63,30 @@ export default function EmojiPicker({ onSelect, className }: EmojiPickerProps) {
       {open ? (
         <div className="mt-2 rounded-3xl border border-cyan-300/20 bg-slate-950/95 p-3 shadow-[0_20px_60px_rgba(8,15,30,0.35)]">
           <div className="space-y-3">
-            {/* Category Tabs */}
             <div className="mb-2 flex items-center gap-2 overflow-x-auto pb-1">
-              {EMOJI_CATEGORIES.map((cat, idx) => (
+              {EMOJI_CATEGORIES.map((item, index) => (
                 <button
-                  key={cat.name}
+                  key={item.name}
                   type="button"
-                  className={`px-2 py-1 rounded-full text-xs font-bold transition border border-cyan-300/20 ${category === idx ? "bg-cyan-900/80 text-cyan-100 border-cyan-300/60" : "bg-black/20 text-cyan-200/60 hover:bg-cyan-900/30"}`}
-                  onClick={() => setCategory(idx)}
+                  className={`rounded-full border border-cyan-300/20 px-2 py-1 text-xs font-bold transition ${
+                    category === index
+                      ? "border-cyan-300/60 bg-cyan-900/80 text-cyan-100"
+                      : "bg-black/20 text-cyan-200/60 hover:bg-cyan-900/30"
+                  }`}
+                  onClick={() => setCategory(index)}
                 >
-                  {cat.name}
+                  {item.name}
                 </button>
               ))}
             </div>
-            {/* Emoji Grid for Selected Category */}
+
             <div>
               <div className="mb-2 flex items-center justify-between gap-3">
-                <p className="text-[11px] uppercase tracking-[0.16em] text-cyan-200/80">{EMOJI_CATEGORIES[category].name} emojis</p>
+                <p className="text-[11px] uppercase tracking-[0.16em] text-cyan-200/80">{activeCategory.name} emojis</p>
                 <span className="text-xs text-cyan-100/60">Tap to insert</span>
               </div>
               <div className="grid grid-cols-6 gap-2 sm:grid-cols-8">
-                {EMOJI_CATEGORIES[category].emojis.map((emoji) => (
+                {activeCategory.emojis.map((emoji) => (
                   <button
                     key={emoji}
                     type="button"
@@ -108,7 +115,13 @@ export default function EmojiPicker({ onSelect, className }: EmojiPickerProps) {
                       onClick={() => onSelect(encodeCustomEmojiToken(url))}
                       title="Insert custom emoji"
                     >
-                      <img src={url} alt="custom emoji" className="h-8 w-8 rounded-xl object-cover" loading="lazy" referrerPolicy="no-referrer" />
+                      <img
+                        src={url}
+                        alt="custom emoji"
+                        className="h-8 w-8 rounded-xl object-cover"
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                      />
                     </button>
                   ))}
                 </div>

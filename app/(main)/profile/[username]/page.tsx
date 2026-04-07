@@ -303,6 +303,7 @@ export default function ProfileEditor() {
       avatar_url: profile.avatar_url || null,
       banner_url: profile.banner_url || null,
       background_color: appearance?.background_color || DEFAULT_BACKGROUND_COLOR,
+      background_opacity: typeof appearance?.background_opacity === "number" ? appearance.background_opacity : 0.7,
       text_color: appearance?.text_color || DEFAULT_TEXT_COLOR,
       highlight_color: appearance?.highlight_color || DEFAULT_HIGHLIGHT_COLOR,
       font_style: normalizeFontStyle(appearance?.font_style),
@@ -491,33 +492,6 @@ export default function ProfileEditor() {
     },
     [applyProfileToForm, fetchProfileById]
   );
-  const [form, setForm] = useState<FormState>({
-    display_name: "",
-    username: "",
-    bio: "",
-    avatar_url: null,
-    banner_url: null,
-    background_color: DEFAULT_BACKGROUND_COLOR,
-    text_color: DEFAULT_TEXT_COLOR,
-    highlight_color: DEFAULT_HIGHLIGHT_COLOR,
-    font_style: DEFAULT_FONT_STYLE,
-    youtube_urls: [],
-    show_music_player: true,
-  });
-  const [draft, setDraft] = useState<FormState>({
-    display_name: "",
-    username: "",
-    bio: "",
-    avatar_url: null,
-    banner_url: null,
-    background_color: DEFAULT_BACKGROUND_COLOR,
-    text_color: DEFAULT_TEXT_COLOR,
-    highlight_color: DEFAULT_HIGHLIGHT_COLOR,
-    font_style: DEFAULT_FONT_STYLE,
-    youtube_urls: [],
-    show_music_player: true,
-  });
-
 
   const loadProfile = useCallback(async () => {
     try {
@@ -686,6 +660,7 @@ export default function ProfileEditor() {
         avatar_url: payloadState.avatar_url,
         banner_url: payloadState.banner_url,
         background_color: payloadState.background_color,
+        background_opacity: typeof payloadState.background_opacity === "number" ? payloadState.background_opacity : 0.7,
         text_color: payloadState.text_color,
         highlight_color: payloadState.highlight_color,
         font_style: payloadState.font_style,
