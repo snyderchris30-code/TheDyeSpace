@@ -677,6 +677,7 @@ export default function ExplorePage() {
                 <div className="flex flex-wrap items-center gap-3">
                   <EmojiPicker
                     mode="reaction"
+                    align="left"
                     disabled={isBusy}
                     triggerClassName="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-black/20 px-4 py-2 text-sm text-cyan-100 transition hover:border-cyan-300/40 hover:bg-black/35 disabled:cursor-not-allowed disabled:opacity-60"
                     triggerContent={

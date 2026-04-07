@@ -444,8 +444,8 @@ export default function MainNavbar() {
               <span>{userCount}</span>
             </button>
             {usersOpen && (
-              <div data-dropdown-box="true" className={`absolute left-0 top-full mt-2 w-[min(92vw,380px)] rounded-xl border border-cyan-400/40 bg-black/90 p-3 shadow-2xl animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
-                <div className="mb-2 flex items-center justify-between">
+              <div data-dropdown-box="true" className={`w-full rounded-3xl border border-cyan-400/40 bg-black/90 p-3 shadow-2xl animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
                   <span className="font-semibold text-cyan-200">User Directory</span>
                   <button
                     type="button"
@@ -455,7 +455,7 @@ export default function MainNavbar() {
                     Close
                   </button>
                 </div>
-                <div className="max-h-[70vh] space-y-1 overflow-auto">
+                <div className="max-h-[60vh] space-y-1 overflow-auto">
                   {smokeInviteStatus ? (
                     <p className="mb-2 rounded-lg border border-cyan-300/25 bg-cyan-900/25 px-2 py-1 text-xs text-cyan-100">{smokeInviteStatus}</p>
                   ) : null}
@@ -544,38 +544,28 @@ export default function MainNavbar() {
                 </span>
               </button>
               {notifDrop && (
-                <>
-                  <div
-                    className={`fixed inset-0 bg-black/50 backdrop-blur-[1px] ${NAV_OVERLAY_LAYER_CLASS}`}
-                    onClick={() => setNotifDrop(false)}
-                    aria-hidden="true"
-                  />
-                  <div
-                    data-dropdown-box="true"
-                    className={`fixed left-1/2 top-[5.25rem] w-[min(92vw,420px)] -translate-x-1/2 rounded-2xl border border-sky-500/70 bg-black/95 p-4 shadow-2xl animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}
-                  >
-                    <div className="mb-3 flex items-center justify-between">
-                      <span className="font-semibold text-cyan-200">Notifications</span>
-                      <button onClick={markAllRead} className="text-xs text-green-200 hover:text-white">Mark all read</button>
-                    </div>
-                    <div className="max-h-[65vh] space-y-2 overflow-auto pr-1">
-                      {notifications.length === 0 ? (
-                        <p className="text-sm text-slate-300">No new notifications yet.</p>
-                      ) : (
-                        notifications.map((note) => (
-                          <button key={note.id} className={`w-full text-left p-2 rounded-lg transition ${note.read ? "bg-slate-900/40 text-slate-200" : "bg-sky-900/75 text-white"}`} onClick={() => setNotifDrop(false)}>
-                            <div className="flex items-center justify-between text-xs text-slate-300">
-                              <span>{note.type.toUpperCase()}</span>
-                              <span>{new Date(note.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                            </div>
-                            <div className="text-sm font-semibold">{note.actor_name}</div>
-                            <div className="text-xs leading-snug text-sky-100">{note.message}</div>
-                          </button>
-                        ))
-                      )}
-                    </div>
+                <div data-dropdown-box="true" className={`w-full rounded-3xl border border-sky-500/70 bg-black/95 p-4 shadow-2xl animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
+                  <div className="mb-3 flex items-center justify-between">
+                    <span className="font-semibold text-cyan-200">Notifications</span>
+                    <button onClick={markAllRead} className="text-xs text-green-200 hover:text-white">Mark all read</button>
                   </div>
-                </>
+                  <div className="max-h-[65vh] space-y-2 overflow-auto pr-1">
+                    {notifications.length === 0 ? (
+                      <p className="text-sm text-slate-300">No new notifications yet.</p>
+                    ) : (
+                      notifications.map((note) => (
+                        <button key={note.id} className={`w-full text-left p-2 rounded-lg transition ${note.read ? "bg-slate-900/40 text-slate-200" : "bg-sky-900/75 text-white"}`} onClick={() => setNotifDrop(false)}>
+                          <div className="flex items-center justify-between text-xs text-slate-300">
+                            <span>{note.type.toUpperCase()}</span>
+                            <span>{new Date(note.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                          </div>
+                          <div className="text-sm font-semibold">{note.actor_name}</div>
+                          <div className="text-xs leading-snug text-sky-100">{note.message}</div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
               )}
             </div>
             <div className="relative">
@@ -593,7 +583,7 @@ export default function MainNavbar() {
                 </span>
               </button>
               {shareOpen ? (
-                <div data-dropdown-box="true" className={`fixed left-1/2 top-[5.25rem] mt-2 w-[min(92vw,340px)] -translate-x-1/2 rounded-xl border border-cyan-400/40 bg-black/95 p-3 shadow-2xl animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
+                <div data-dropdown-box="true" className={`w-full rounded-3xl border border-cyan-400/40 bg-black/95 p-3 shadow-2xl animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
                   <p className="mb-3 text-sm text-cyan-100">Share TheDyeSpace with your friends!</p>
                   <div className="space-y-2">
                     {shareLinks.map((shareLink) => (
@@ -629,7 +619,7 @@ export default function MainNavbar() {
                 </span>
               </button>
               {settingsOpen && (
-                <div data-dropdown-box="true" className={`absolute right-0 top-full mt-2 w-[min(92vw,320px)] rounded-xl border border-cyan-400/40 bg-black/95 p-2 shadow-2xl animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
+                <div data-dropdown-box="true" className={`w-full rounded-3xl border border-cyan-400/40 bg-black/95 p-2 shadow-2xl animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
                   <div className="flex justify-end mb-1">
                     <button data-dropdown-trigger="true" aria-label="Close" title="Close" className="text-cyan-400 hover:text-white p-1" onClick={() => setSettingsOpen(false)}>
                       <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M6 6l8 8M6 14L14 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
