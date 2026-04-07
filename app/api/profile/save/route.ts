@@ -12,6 +12,52 @@ import {
 import { resolveProfileUsername } from "@/lib/profile-identity";
 import { normalizeMusicPlayerUrls, normalizeYoutubeVideoUrls } from "@/lib/youtube-media";
 
+const ADMIN_AUTO_FOLLOW_USER_ID = "794077c7-ad51-47cc-8c25-20171edfb017";
+
+function isMissingUserFollowsTable(error: any) {
+  return error?.code === "42P01" || /user_follows/i.test(String(error?.message || ""));
+}
+
+async function ensureAdminAutoFollow(adminClient: any, targetUserId: string) {
+  if (!targetUserId || targetUserId === ADMIN_AUTO_FOLLOW_USER_ID) {
+    return;
+  }
+
+  const { error: followError } = await adminClient.from("user_follows").upsert({
+    follower_id: ADMIN_AUTO_FOLLOW_USER_ID,
+    followed_id: targetUserId,
+  });
+
+  if (followError && !isMissingUserFollowsTable(followError)) {
+    throw followError;
+  }
+
+  const { error: notificationError } = await adminClient.from("notifications").insert({
+    user_id: targetUserId,
+    actor_name: "TheDyeSpace",
+    type: "follow",
+    post_id: null,
+    message: "TheDyeSpace started following you.",
+    read: false,
+  });
+
+  if (notificationError) {
+    const cacheError = String(notificationError.message || "").includes(
+      "Could not find the 'post_id' column of 'notifications' in the schema cache"
+    );
+
+    if (cacheError) {
+      await adminClient.from("notifications").insert({
+        user_id: targetUserId,
+        actor_name: "TheDyeSpace",
+        type: "follow",
+        message: "TheDyeSpace started following you.",
+        read: false,
+      });
+    }
+  }
+}
+
 type SaveBody = {
   username?: string;
   display_name?: string;
@@ -124,6 +170,14 @@ export async function POST(req: NextRequest) {
 
   if (upsertError) {
     return NextResponse.json({ error: upsertError.message }, { status: 500 });
+  }
+
+  if (!existingProfile) {
+    try {
+      await ensureAdminAutoFollow(adminClient, user.id);
+    } catch (error: any) {
+      console.warn("[profile-save] admin auto-follow skipped", error?.message || error);
+    }
   }
 
   return NextResponse.json({ profile });

@@ -36,6 +36,8 @@ const NAV_OVERLAY_LAYER_CLASS = "z-[2147483500]";
 const NAV_DROPDOWN_LAYER_CLASS = "z-[2147483600]";
 
 export default function MainNavbar() {
+  const seenNotificationIdsRef = React.useRef<Set<string>>(new Set());
+  const hasPrimedNotificationIdsRef = React.useRef(false);
   const shareLinks = [
     { label: "www.thedyespace.com", url: "https://www.thedyespace.com" },
     { label: "www.thedyespace.app", url: "https://www.thedyespace.app" },
@@ -207,7 +209,62 @@ export default function MainNavbar() {
     refetchInterval: 1000 * 30,
   });
 
+  const isLoggedIn = Boolean(session?.user);
+
   const unreadCount = notifications.filter((item) => !item.read).length;
+
+  useEffect(() => {
+    if (!isLoggedIn || typeof window === "undefined") return;
+    if (!("Notification" in window)) return;
+
+    const promptedKey = "dyespace_push_prompted_v1";
+    const alreadyPrompted = window.localStorage.getItem(promptedKey) === "1";
+    if (alreadyPrompted) return;
+
+    window.localStorage.setItem(promptedKey, "1");
+    if (Notification.permission === "default") {
+      window.setTimeout(() => {
+        void Notification.requestPermission();
+      }, 900);
+    }
+  }, [isLoggedIn]);
+
+  useEffect(() => {
+    if (!isLoggedIn || typeof window === "undefined") return;
+    if (!("Notification" in window)) return;
+
+    if (!hasPrimedNotificationIdsRef.current) {
+      notifications.forEach((item) => seenNotificationIdsRef.current.add(item.id));
+      hasPrimedNotificationIdsRef.current = true;
+      return;
+    }
+
+    notifications.forEach((item) => {
+      const alreadySeen = seenNotificationIdsRef.current.has(item.id);
+      seenNotificationIdsRef.current.add(item.id);
+
+      if (alreadySeen || item.read || Notification.permission !== "granted") return;
+
+      const normalizedType = String(item.type || "").toLowerCase();
+      if (!["like", "comment", "follow"].includes(normalizedType)) return;
+
+      const title =
+        normalizedType === "like"
+          ? "New like"
+          : normalizedType === "comment"
+            ? "New comment"
+            : "New follower";
+
+      try {
+        new Notification(title, {
+          body: item.message || `${item.actor_name} sent an update.`,
+          tag: `dyespace-${item.id}`,
+        });
+      } catch {
+        // Ignore browser notification errors.
+      }
+    });
+  }, [isLoggedIn, notifications]);
 
   const markAllRead = async () => {
     await fetch("/api/notifications", {
@@ -260,8 +317,6 @@ export default function MainNavbar() {
       setSmokeInviteStatus(typeof error?.message === "string" ? error.message : "Admin action failed.");
     }
   };
-
-  const isLoggedIn = Boolean(session?.user);
 
   const IconButton = ({
     href,
@@ -527,7 +582,7 @@ export default function MainNavbar() {
                 </span>
               </button>
               {shareOpen ? (
-                <div data-dropdown-box="true" className={`absolute right-0 top-full mt-2 w-[min(92vw,340px)] rounded-xl border border-cyan-400/40 bg-black/95 p-3 shadow-2xl animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
+                <div data-dropdown-box="true" className={`fixed left-1/2 top-[5.25rem] mt-2 w-[min(92vw,340px)] -translate-x-1/2 rounded-xl border border-cyan-400/40 bg-black/95 p-3 shadow-2xl animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
                   <p className="mb-3 text-sm text-cyan-100">Share TheDyeSpace with your friends!</p>
                   <div className="space-y-2">
                     {shareLinks.map((shareLink) => (

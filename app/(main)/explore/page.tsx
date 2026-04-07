@@ -14,6 +14,10 @@ import InlineEmojiText from "@/app/InlineEmojiText";
 import UserIdentity from "@/app/UserIdentity";
 import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import { Home, Users, BookOpen, PartyPopper, Tag, Ban } from "lucide-react";
+import { Heart, MessageCircle, Send } from "lucide-react";
+import EmojiPicker from "@/app/EmojiPicker";
+import { appendEmojiToText } from "@/lib/custom-emojis";
+import { REACTION_EMOJIS, type AggregatedPostInteraction, type ReactionEmoji } from "@/lib/post-interactions";
 
 type ExplorePost = {
   id: string;
@@ -21,6 +25,7 @@ type ExplorePost = {
   content: string | null;
   image_urls: string[] | null;
   likes: number;
+  comments_count: number;
   is_for_sale: boolean;
   created_at: string;
   author_display_name?: string;
@@ -30,6 +35,8 @@ type ExplorePost = {
   author_verified_badge?: boolean;
   author_member_number?: number | null;
 };
+
+type InteractionMap = Record<string, AggregatedPostInteraction>;
 
 type ProfileRow = {
   id: string;
@@ -152,6 +159,12 @@ export default function ExplorePage() {
   const [marketplaceOnly, setMarketplaceOnly] = useState(false);
   const [adminActionStatus, setAdminActionStatus] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [interactions, setInteractions] = useState<InteractionMap>({});
+  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [reactionPickerPostId, setReactionPickerPostId] = useState<string | null>(null);
+  const [interactionBusyPostId, setInteractionBusyPostId] = useState<string | null>(null);
+  const [interactionStatus, setInteractionStatus] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -237,7 +250,7 @@ export default function ExplorePage() {
 
         let query = supabase
           .from("posts")
-          .select("id,user_id,content,image_urls,likes,is_for_sale,created_at")
+          .select("id,user_id,content,image_urls,likes,comments_count,is_for_sale,created_at")
           .is("deleted_at", null)
           .order("created_at", { ascending: false });
 
@@ -316,6 +329,100 @@ export default function ExplorePage() {
       active = false;
     };
   }, [marketplaceOnly, reloadKey, search, sessionUserId, tab, viewerIsAdmin]);
+
+  const loadInteractions = useCallback(async (postIds: string[]) => {
+    if (!postIds.length) {
+      setInteractions({});
+      return;
+    }
+
+    const response = await fetch(`/api/posts/interactions?postIds=${encodeURIComponent(postIds.join(","))}`);
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body?.error || "Failed to load post interactions.");
+    }
+
+    const body = await response.json();
+    setInteractions(body.interactionsByPostId || {});
+  }, []);
+
+  useEffect(() => {
+    void loadInteractions(posts.map((post) => post.id));
+  }, [loadInteractions, posts]);
+
+  const updatePostCounters = useCallback((postId: string, updates: Partial<Pick<ExplorePost, "likes" | "comments_count">>) => {
+    setPosts((prev) => prev.map((post) => (post.id === postId ? { ...post, ...updates } : post)));
+  }, []);
+
+  const handleReactionSelect = useCallback(
+    async (postId: string, emoji: ReactionEmoji) => {
+      if (!sessionUserId) {
+        setInteractionStatus("Please sign in to react to posts.");
+        return;
+      }
+
+      setInteractionBusyPostId(postId);
+      setInteractionStatus(null);
+      try {
+        const response = await fetch("/api/posts/reactions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ postId, emoji }),
+        });
+
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(body?.error || "Failed to save reaction.");
+        }
+
+        setInteractions((prev) => ({ ...prev, [postId]: body.interaction }));
+        updatePostCounters(postId, { likes: body.likesCount ?? 0 });
+        setReactionPickerPostId(null);
+      } catch (error: any) {
+        setInteractionStatus(typeof error?.message === "string" ? error.message : "Failed to save reaction.");
+      } finally {
+        setInteractionBusyPostId(null);
+      }
+    },
+    [sessionUserId, updatePostCounters]
+  );
+
+  const handleCommentSubmit = useCallback(
+    async (postId: string) => {
+      if (!sessionUserId) {
+        setInteractionStatus("Please sign in to comment on posts.");
+        return;
+      }
+
+      const content = commentDrafts[postId]?.trim();
+      if (!content) return;
+
+      setInteractionBusyPostId(postId);
+      setInteractionStatus(null);
+      try {
+        const response = await fetch("/api/posts/comments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ postId, content }),
+        });
+
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(body?.error || "Failed to save comment.");
+        }
+
+        setInteractions((prev) => ({ ...prev, [postId]: body.interaction }));
+        updatePostCounters(postId, { comments_count: body.commentsCount ?? 0 });
+        setCommentDrafts((prev) => ({ ...prev, [postId]: "" }));
+        setExpandedComments((prev) => ({ ...prev, [postId]: true }));
+      } catch (error: any) {
+        setInteractionStatus(typeof error?.message === "string" ? error.message : "Failed to save comment.");
+      } finally {
+        setInteractionBusyPostId(null);
+      }
+    },
+    [commentDrafts, sessionUserId, updatePostCounters]
+  );
 
   const handleAdminAction = useCallback(async (targetUserId: string, action: AdminActionName, durationHours?: number) => {
     setAdminActionStatus(null);
@@ -409,6 +516,7 @@ export default function ExplorePage() {
 
         {loading && <p className="text-cyan-200">Loading posts...</p>}
         {error && <p className="text-rose-300">{error}</p>}
+        {interactionStatus ? <p className="mb-4 text-sm text-rose-200">{interactionStatus}</p> : null}
         {adminActionStatus ? <p className="mb-4 text-sm text-cyan-100">{adminActionStatus}</p> : null}
 
         {!loading && !error && posts.length === 0 && (
@@ -420,7 +528,12 @@ export default function ExplorePage() {
         )}
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {posts.map((post) => (
+          {posts.map((post) => {
+            const postInteraction = interactions[post.id] || { comments: [], reactions: [], viewerReaction: null };
+            const isCommentsOpen = Boolean(expandedComments[post.id]);
+            const isBusy = interactionBusyPostId === post.id;
+
+            return (
             <article
               key={post.id}
               className={`rounded-3xl border border-cyan-300/25 bg-slate-950/55 p-4 shadow-xl backdrop-blur-xl sm:p-5 ${fontClass(post.author_theme?.font_style)}`}
@@ -488,14 +601,139 @@ export default function ExplorePage() {
 
               <div className="flex items-center justify-between text-xs text-[color:var(--post-text)]/75 mb-2">
                 <span>{new Date(post.created_at).toLocaleString()}</span>
-                <span>{post.likes} likes</span>
+                <span>{post.likes} likes • {post.comments_count} comments</span>
               </div>
-              <div className="flex items-center justify-between gap-3">
-                <ReportPostButton postId={post.id} />
-                {viewerIsAdmin && sessionUserId !== post.user_id ? <AdminActionMenu targetUserId={post.user_id} onAction={handleAdminAction} /> : null}
-              </div>
+              {sessionUserId ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="relative">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-black/20 px-4 py-2 text-sm text-cyan-100 transition hover:border-cyan-300/40 hover:bg-black/35"
+                      onClick={() => setReactionPickerPostId((current) => (current === post.id ? null : post.id))}
+                    >
+                      <Heart className="h-4 w-4" />
+                      <span>{postInteraction.viewerReaction ? `Reacted ${postInteraction.viewerReaction}` : "Like / React"}</span>
+                    </button>
+                    {reactionPickerPostId === post.id ? (
+                      <div className="absolute right-0 top-full z-20 mt-2 flex max-w-[calc(100vw-3rem)] flex-row flex-wrap gap-2 rounded-2xl border border-cyan-300/25 bg-slate-950/95 p-3 shadow-2xl backdrop-blur-xl sm:left-full sm:right-auto sm:top-0 sm:ml-2 sm:mt-0 sm:max-w-none">
+                        {REACTION_EMOJIS.map((emoji) => (
+                          <button
+                            key={emoji}
+                            className={`rounded-full px-3 py-2 text-lg transition hover:scale-110 ${postInteraction.viewerReaction === emoji ? "bg-cyan-400/20" : "bg-black/30"}`}
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => void handleReactionSelect(post.id, emoji)}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-black/20 px-4 py-2 text-sm text-cyan-100 transition hover:border-cyan-300/40 hover:bg-black/35"
+                    onClick={() => setExpandedComments((prev) => ({ ...prev, [post.id]: !prev[post.id] }))}
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    <span>{isCommentsOpen ? "Hide Comments" : "Comments"}</span>
+                  </button>
+                  <ReportPostButton postId={post.id} />
+                  {viewerIsAdmin && sessionUserId !== post.user_id ? <AdminActionMenu targetUserId={post.user_id} onAction={handleAdminAction} /> : null}
+                </div>
+              ) : (
+                <p className="text-sm italic text-cyan-300/80">Sign in to interact with posts.</p>
+              )}
+
+              {postInteraction.reactions.length > 0 ? (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {postInteraction.reactions.map((reaction) => (
+                    <button
+                      key={`${post.id}-${reaction.emoji}`}
+                      type="button"
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm transition ${
+                        reaction.reacted
+                          ? "border-cyan-300/50 bg-cyan-400/15 text-cyan-50"
+                          : "border-cyan-300/20 bg-black/20 text-cyan-100/85"
+                      } ${!sessionUserId ? "cursor-default opacity-80" : "hover:border-cyan-300/40"}`}
+                      onClick={() => sessionUserId ? void handleReactionSelect(post.id, reaction.emoji) : undefined}
+                      disabled={isBusy || !sessionUserId}
+                    >
+                      <span>{reaction.emoji}</span>
+                      <span>{reaction.count}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              {isCommentsOpen ? (
+                <div className="mt-5 rounded-[1.5rem] border border-cyan-300/15 bg-black/20 p-4 backdrop-blur-xl sm:p-5">
+                  <div className="space-y-4">
+                    {postInteraction.comments.length === 0 ? (
+                      <p className="text-sm text-cyan-100/65">No comments yet. Start the conversation.</p>
+                    ) : (
+                      postInteraction.comments.map((comment) => (
+                        <div key={comment.id} className="rounded-2xl border border-cyan-300/10 bg-slate-950/55 p-4">
+                          <div className="flex items-start gap-3">
+                            <div className="h-10 w-10 overflow-hidden rounded-full border border-cyan-300/25 bg-slate-900">
+                              {comment.author.avatar_url ? (
+                                <Image src={comment.author.avatar_url} alt="Comment author" className="h-full w-full object-cover" loading="lazy" width={40} height={40} unoptimized />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center text-xs font-bold text-cyan-100">TD</div>
+                              )}
+                            </div>
+                            <div className={`min-w-0 flex-1 ${fontClass(comment.author.theme_settings?.font_style)}`} ref={(element) => applyPostThemeVars(element, comment.author.theme_settings)}>
+                              <UserIdentity
+                                displayName={comment.author.display_name || "DyeSpace User"}
+                                username={comment.author.username}
+                                verifiedBadge={comment.author.verified_badge}
+                                memberNumber={comment.author.member_number}
+                                timestampText={new Date(comment.created_at).toLocaleString()}
+                                className="min-w-0"
+                                nameClassName="font-semibold text-[color:var(--post-text)] hover:text-[color:var(--post-highlight)] hover:underline"
+                                usernameClassName="text-xs text-[color:var(--post-highlight)]/80 hover:text-[color:var(--post-highlight)] hover:underline"
+                                metaClassName="text-xs text-[color:var(--post-text)]/45"
+                              />
+                              <InlineEmojiText text={comment.content} className="mt-2 block whitespace-pre-wrap text-[color:var(--post-text)]/90" />
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  {sessionUserId ? (
+                    <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
+                      <textarea
+                        className="min-h-24 flex-1 rounded-2xl border border-cyan-300/20 bg-slate-950/75 px-4 py-3 text-white outline-none transition focus:border-cyan-300/50"
+                        placeholder="Add a comment"
+                        value={commentDrafts[post.id] || ""}
+                        onChange={(e) => setCommentDrafts((prev) => ({ ...prev, [post.id]: e.target.value }))}
+                      />
+                      <EmojiPicker
+                        className="sm:self-end"
+                        onSelect={(emojiOrToken) =>
+                          setCommentDrafts((prev) => ({
+                            ...prev,
+                            [post.id]: appendEmojiToText(prev[post.id] || "", emojiOrToken),
+                          }))
+                        }
+                      />
+                      <button
+                        className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-300 via-teal-300 to-emerald-300 px-5 py-3 text-sm font-semibold text-slate-950 shadow-lg transition hover:scale-[1.02] disabled:opacity-60"
+                        type="button"
+                        onClick={() => void handleCommentSubmit(post.id)}
+                        disabled={isBusy || !(commentDrafts[post.id] || "").trim()}
+                      >
+                        <Send className="h-4 w-4" />
+                        <span>{isBusy ? "Posting..." : "Post Comment"}</span>
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </article>
-          ))}
+            );
+          })}
         </div>
         {lightbox.open && lightbox.url ? <LightboxModal imageUrl={lightbox.url} onClose={() => setLightbox({ open: false, url: null })} /> : null}
       </div>

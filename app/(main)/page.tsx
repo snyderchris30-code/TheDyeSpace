@@ -388,6 +388,33 @@ export default function MainFeedPage() {
     }
   }, [editCommentContent]);
 
+  const handleReportPost = useCallback(async (postId: string) => {
+    if (!session?.user?.id) {
+      setInteractionStatus("Please sign in to report posts.");
+      return;
+    }
+
+    const reason = prompt("Reason for reporting this post?");
+    if (!reason?.trim()) return;
+
+    const supabase = createClient();
+    const { error: reportError } = await supabase.from("reports").insert({
+      type: "post",
+      reported_id: postId,
+      reporter_id: session.user.id,
+      reported_by: session.user.id,
+      reason: reason.trim(),
+      created_at: new Date().toISOString(),
+    });
+
+    if (reportError) {
+      setInteractionStatus("Could not submit report. Please try again.");
+      return;
+    }
+
+    setInteractionStatus("Post reported. Thank you.");
+  }, [session?.user?.id]);
+
   return (
     <div className="mx-auto max-w-6xl px-3 py-5 sm:px-6 sm:py-8 lg:px-8">
       <div className="mb-4">
@@ -605,6 +632,13 @@ export default function MainFeedPage() {
                     >
                       <MessageCircle className="h-4 w-4" />
                       <span>{isCommentsOpen ? "Hide Comments" : `Comments (${post.comments_count})`}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-2 rounded-full border border-pink-400/45 bg-pink-900/30 px-4 py-2 text-sm text-pink-200 transition hover:bg-pink-900/50"
+                      onClick={() => void handleReportPost(post.id)}
+                    >
+                      <span>Report</span>
                     </button>
                     <span>❤️ {post.likes} reactions</span>
                   </div>

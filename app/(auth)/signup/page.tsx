@@ -35,9 +35,22 @@ export default function SignupPage() {
     if (error) {
       setMessage(error.message);
     } else {
-      setMessage("Check your email for a magic link. Verify to continue.");
-      if (data?.user) {
-        setTimeout(() => router.push(`/login?redirect=${encodeURIComponent(redirect)}&verify=true`), 1200);
+      if (data?.session && data?.user) {
+        const initRes = await fetch("/api/profile/init", { method: "POST" });
+        const initBody = await initRes.json().catch(() => ({}));
+        const initializedUsername = typeof initBody?.profile?.username === "string" ? initBody.profile.username : null;
+        setMessage("Welcome to TheDyeSpace!");
+        if (initializedUsername) {
+          setTimeout(() => router.push(`/profile/${encodeURIComponent(initializedUsername)}?edit=1&welcome=1`), 800);
+        } else {
+          setTimeout(() => router.push("/profile?edit=1&welcome=1"), 800);
+        }
+      } else {
+        setMessage("Check your email for a magic link. Verify to continue.");
+        if (data?.user) {
+          const signupRedirect = "/profile?edit=1&welcome=1";
+          setTimeout(() => router.push(`/login?redirect=${encodeURIComponent(signupRedirect)}&verify=true`), 1200);
+        }
       }
     }
     setLoading(false);

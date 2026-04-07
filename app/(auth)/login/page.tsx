@@ -49,6 +49,7 @@ export default function LoginPage() {
       setMessage(error.message);
       setLoading(false);
     } else {
+      await fetch("/api/profile/init", { method: "POST" }).catch(() => null);
       setMessage("Welcome back, cosmic soul!");
       router.push(redirect);
       router.refresh();

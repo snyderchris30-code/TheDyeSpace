@@ -4,7 +4,7 @@ import Image from "next/image";
 import dynamic from "next/dynamic";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Dialog } from "@headlessui/react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Heart, MessageCircle, Send, SquarePen, Music2, PlayCircle, Plus, X, Maximize2 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -231,6 +231,9 @@ export default function ProfileEditor() {
   const [reportStatus, setReportStatus] = useState<string | null>(null);
   const params = useParams<{ username: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const shouldAutoOpenEditor = searchParams.get("edit") === "1";
+  const showWelcomeMessage = searchParams.get("welcome") === "1";
   const routeUsername = normalizeUsername(params?.username || "");
   const supabase = useMemo(() => createClient(), []);
   const viewRef = useRef<HTMLDivElement | null>(null);
@@ -285,6 +288,7 @@ export default function ProfileEditor() {
   const [isPlayerExpanded, setIsPlayerExpanded] = useState(false);
   const [videoTitles, setVideoTitles] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<StatusState | null>(null);
+  const [editorAutoOpened, setEditorAutoOpened] = useState(false);
 
   const applyProfileToForm = useCallback((profile: ProfileRow) => {
     const appearance = profile.theme_settings ?? null;
@@ -992,6 +996,32 @@ export default function ProfileEditor() {
     [loadInteractions, loadProfile, posts, session?.user]
   );
 
+  const handleReportPost = useCallback(async (postId: string) => {
+    if (!session?.user?.id) {
+      setStatus({ type: "error", text: "Please sign in to report posts." });
+      return;
+    }
+
+    const reason = prompt("Reason for reporting this post?");
+    if (!reason?.trim()) return;
+
+    const { error: reportError } = await supabase.from("reports").insert({
+      type: "post",
+      reported_id: postId,
+      reporter_id: session.user.id,
+      reported_by: session.user.id,
+      reason: reason.trim(),
+      created_at: new Date().toISOString(),
+    });
+
+    if (reportError) {
+      setStatus({ type: "error", text: "Failed to submit report. Please try again." });
+      return;
+    }
+
+    setStatus({ type: "success", text: "Post reported. Thank you for helping keep TheDyeSpace safe." });
+  }, [session?.user?.id, supabase]);
+
   const profileDisplay = editing ? draft : form;
   const profileMutedUntil = profileStatus?.muted_until ? new Date(profileStatus.muted_until) : null;
   const profileIsMuted = Boolean(profileMutedUntil && profileMutedUntil > new Date());
@@ -1037,6 +1067,18 @@ export default function ProfileEditor() {
       active = false;
     };
   }, [playlistSongs, videoTitles]);
+
+  useEffect(() => {
+    if (!isOwner || loading || editing || editorAutoOpened || !shouldAutoOpenEditor) {
+      return;
+    }
+
+    setDraft(form);
+    setSongInput("");
+    setIsSaving(false);
+    setEditing(true);
+    setEditorAutoOpened(true);
+  }, [editing, editorAutoOpened, form, isOwner, loading, shouldAutoOpenEditor]);
 
   return (
     <div className="min-h-screen px-4 pb-16 pt-8 text-white sm:px-8 sm:pt-10" aria-label="Profile Customization Hub">
@@ -1500,6 +1542,15 @@ export default function ProfileEditor() {
                             <MessageCircle className="h-4 w-4" />
                             <span>{isCommentsOpen ? "Hide Comments" : "Comments"}</span>
                           </button>
+                          {session?.user ? (
+                            <button
+                              className="inline-flex items-center gap-2 rounded-full border border-pink-400/45 bg-pink-900/30 px-4 py-2 text-sm text-pink-200 transition hover:bg-pink-900/50"
+                              type="button"
+                              onClick={() => void handleReportPost(post.id)}
+                            >
+                              <span>Report</span>
+                            </button>
+                          ) : null}
                         </div>
 
                         {postInteraction.reactions.length > 0 ? (
@@ -1626,6 +1677,12 @@ export default function ProfileEditor() {
                   Close
                 </button>
               </div>
+
+              {showWelcomeMessage ? (
+                <div className="mb-5 rounded-2xl border border-cyan-300/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
+                  Welcome! its time to make your profile your own space.
+                </div>
+              ) : null}
 
 
 

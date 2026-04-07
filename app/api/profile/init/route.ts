@@ -9,6 +9,52 @@ import {
 } from "@/lib/profile-theme";
 import { resolveProfileUsername } from "@/lib/profile-identity";
 
+const ADMIN_AUTO_FOLLOW_USER_ID = "794077c7-ad51-47cc-8c25-20171edfb017";
+
+function isMissingUserFollowsTable(error: any) {
+  return error?.code === "42P01" || /user_follows/i.test(String(error?.message || ""));
+}
+
+async function ensureAdminAutoFollow(adminClient: any, targetUserId: string) {
+  if (!targetUserId || targetUserId === ADMIN_AUTO_FOLLOW_USER_ID) {
+    return;
+  }
+
+  const { error: followError } = await adminClient.from("user_follows").upsert({
+    follower_id: ADMIN_AUTO_FOLLOW_USER_ID,
+    followed_id: targetUserId,
+  });
+
+  if (followError && !isMissingUserFollowsTable(followError)) {
+    throw followError;
+  }
+
+  const { error: notificationError } = await adminClient.from("notifications").insert({
+    user_id: targetUserId,
+    actor_name: "TheDyeSpace",
+    type: "follow",
+    post_id: null,
+    message: "TheDyeSpace started following you.",
+    read: false,
+  });
+
+  if (notificationError) {
+    const cacheError = String(notificationError.message || "").includes(
+      "Could not find the 'post_id' column of 'notifications' in the schema cache"
+    );
+
+    if (cacheError) {
+      await adminClient.from("notifications").insert({
+        user_id: targetUserId,
+        actor_name: "TheDyeSpace",
+        type: "follow",
+        message: "TheDyeSpace started following you.",
+        read: false,
+      });
+    }
+  }
+}
+
 export async function POST() {
   // Verify the caller is authenticated via the server client (reads the session cookie)
   const supabase = await createSupabaseServerClient();
@@ -37,6 +83,13 @@ export async function POST() {
   });
 
   const username = resolveProfileUsername(user.user_metadata?.username, user.email, user.id);
+
+  const { data: existingProfile } = await adminClient
+    .from("profiles")
+    .select("id")
+    .eq("id", user.id)
+    .limit(1)
+    .maybeSingle();
 
   const { data: profile, error: upsertError } = await adminClient
     .from("profiles")
@@ -74,6 +127,14 @@ export async function POST() {
 
   if (upsertError) {
     return NextResponse.json({ error: upsertError.message }, { status: 500 });
+  }
+
+  if (!existingProfile) {
+    try {
+      await ensureAdminAutoFollow(adminClient, user.id);
+    } catch (error: any) {
+      console.warn("[profile-init] admin auto-follow skipped", error?.message || error);
+    }
   }
 
   return NextResponse.json({ profile });

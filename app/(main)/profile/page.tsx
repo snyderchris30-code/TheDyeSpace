@@ -12,6 +12,10 @@ export default function ProfilePage() {
   useEffect(() => {
     const redirectToProfile = async () => {
       try {
+        const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+        const edit = params?.get("edit") === "1";
+        const welcome = params?.get("welcome") === "1";
+        const suffix = `${edit ? "?edit=1" : ""}${edit && welcome ? "&" : !edit && welcome ? "?" : ""}${welcome ? "welcome=1" : ""}`;
         const supabase = createClient();
         const { data: sessionData } = await supabase.auth.getSession();
         const user = sessionData?.session?.user;
@@ -43,7 +47,7 @@ export default function ProfilePage() {
         }
 
         if (username.length >= 3) {
-          router.replace(`/profile/${encodeURIComponent(username)}`);
+          router.replace(`/profile/${encodeURIComponent(username)}${suffix}`);
         } else {
           router.replace("/");
         }
