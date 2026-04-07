@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import AsyncStateCard from "@/app/AsyncStateCard";
 import { createClient } from "@/lib/supabase/client";
 import { Bell } from "lucide-react";
 import Link from "next/link";
@@ -126,14 +127,28 @@ export default function NotificationsPage() {
           <p className="text-cyan-100/70">Stay updated with the latest activity in TheDyeSpace.</p>
         </div>
 
-        {error ? (
-          <div className="mb-4 rounded-2xl border border-rose-400/40 bg-rose-900/30 p-4 text-sm text-rose-100">
-            {error}
-          </div>
-        ) : null}
-
         {loading ? (
-          <div className="text-center text-cyan-300">Loading notifications...</div>
+          <AsyncStateCard
+            loading
+            title="Loading notifications"
+            message="Checking for likes, comments, and follows on your account."
+          />
+        ) : error ? (
+          <AsyncStateCard
+            tone="error"
+            title="Couldn\'t load notifications"
+            message={error}
+            actionLabel="Retry notifications"
+            onAction={() => {
+              setLoading(true);
+              setError(null);
+              if (userId) {
+                void fetchNotifications(userId).finally(() => setLoading(false));
+              } else {
+                window.location.reload();
+              }
+            }}
+          />
         ) : notifications.length === 0 ? (
           <div className="rounded-2xl border border-cyan-300/20 bg-slate-950/55 p-8 text-center">
             <p className="text-cyan-100/70">No notifications yet. Explore the community to start connecting!</p>

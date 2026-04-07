@@ -631,7 +631,10 @@ export default function MainNavbar() {
                   <Link href="/guidelines" className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Community Guidelines</Link>
                   <Link href="/suggestions" className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Suggestions & Support</Link>
                   {isAdmin ? (
-                    <Link href="/deleted-items" className="block px-4 py-2 text-amber-200 hover:bg-cyan-900/40 rounded">Deleted Items</Link>
+                    <>
+                      <Link href="/admin/reports" className="block px-4 py-2 text-cyan-100 hover:bg-cyan-900/40 rounded">Moderation Queue</Link>
+                      <Link href="/deleted-items" className="block px-4 py-2 text-amber-200 hover:bg-cyan-900/40 rounded">Deleted Items</Link>
+                    </>
                   ) : null}
                   {isLoggedIn ? (
                     <button onClick={handleSignOut} className="w-full text-left px-4 py-2 text-pink-300 hover:bg-cyan-900/40 rounded flex items-center gap-2">

@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import AsyncStateCard from "@/app/AsyncStateCard";
 import { useEffect, useMemo, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Lock } from "lucide-react";
@@ -13,8 +14,14 @@ export default function SettingsPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-[70vh] items-center justify-center">
-          <Loader2 className="animate-spin text-pink-300" size={28} />
+        <div className="flex min-h-[70vh] items-center justify-center px-4">
+          <div className="w-full max-w-2xl">
+            <AsyncStateCard
+              loading
+              title="Loading settings"
+              message="Preparing your account settings and recovery tools."
+            />
+          </div>
         </div>
       }
     >
@@ -168,8 +175,14 @@ function SettingsContent() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[70vh] items-center justify-center">
-        <Loader2 className="animate-spin text-pink-300" size={28} />
+      <div className="flex min-h-[70vh] items-center justify-center px-4">
+        <div className="w-full max-w-2xl">
+          <AsyncStateCard
+            loading
+            title="Loading settings"
+            message="Fetching your account details and admin tools now."
+          />
+        </div>
       </div>
     );
   }

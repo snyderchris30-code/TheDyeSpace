@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
+import AsyncStateCard from "@/app/AsyncStateCard";
 import AdminActionMenu from "@/app/AdminActionMenu";
 import UserIdentity from "@/app/UserIdentity";
 import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
@@ -42,6 +43,7 @@ export default function GlobalChat() {
   const [input, setInput] = useState("");
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
@@ -77,6 +79,7 @@ export default function GlobalChat() {
 
   const fetchMessages = useCallback(async () => {
     const supabase = createClient();
+    setError(null);
     const { data, error } = await supabase
       .from("chat_messages")
       .select("*")
@@ -84,6 +87,8 @@ export default function GlobalChat() {
       .order("created_at", { ascending: true });
 
     if (error || !data) {
+      setMessages([]);
+      setError("Couldn\'t load Dye Chat right now. Please try again.");
       setLoading(false);
       return;
     }
@@ -257,7 +262,28 @@ export default function GlobalChat() {
       ) : null}
       <div className="flex-1 overflow-y-auto mb-2 space-y-2 pr-2">
         {loading ? (
-          <div className="text-cyan-200">Loading...</div>
+          <AsyncStateCard
+            compact
+            loading
+            title="Loading Dye Chat"
+            message="Pulling in the latest messages from the global room."
+          />
+        ) : error ? (
+          <AsyncStateCard
+            compact
+            tone="error"
+            title="Couldn\'t load Dye Chat"
+            message={error}
+            actionLabel="Retry chat"
+            onAction={() => {
+              setLoading(true);
+              void fetchMessages();
+            }}
+          />
+        ) : messages.length === 0 ? (
+          <div className="rounded-2xl border border-cyan-300/20 bg-black/25 p-4 text-sm text-cyan-100/75">
+            No messages yet. Start the conversation.
+          </div>
         ) : (
           messages.map((msg) => (
             <div key={msg.id} className="flex items-start gap-2 group bg-black/30 rounded-xl p-2 hover:bg-cyan-900/20 transition">

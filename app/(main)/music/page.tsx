@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import AsyncStateCard from "@/app/AsyncStateCard";
 import { createClient } from "@/lib/supabase/client";
 import { normalizeMusicPlayerUrls } from "@/lib/youtube-media";
 import { DEFAULT_PUBLIC_MUSIC_TITLE } from "@/lib/app-config";
@@ -124,7 +125,11 @@ export default function MusicPage() {
       </div>
 
       {loading ? (
-        <div className="rounded-2xl border border-cyan-300/20 bg-slate-950/55 p-6 text-cyan-100">Loading...</div>
+        <AsyncStateCard
+          loading
+          title="Loading your music settings"
+          message="Pulling in your saved songs and playlist links now."
+        />
       ) : !userId ? (
         <div className="rounded-2xl border border-cyan-300/20 bg-slate-950/55 p-6 text-cyan-100">
           Sign in to add your own songs.

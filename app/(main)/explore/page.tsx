@@ -10,6 +10,7 @@ import AdminActionMenu from "@/app/AdminActionMenu";
 import Link from "next/link";
 import { fontClass, resolveProfileAppearance, type ProfileAppearance } from "@/lib/profile-theme";
 import { normalizePostImageUrls } from "@/lib/post-media";
+import AsyncStateCard from "@/app/AsyncStateCard";
 import InlineEmojiText from "@/app/InlineEmojiText";
 import UserIdentity from "@/app/UserIdentity";
 import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
@@ -148,7 +149,7 @@ function ReportPostButton({ postId }: { postId: string }) {
 
 export default function ExplorePage() {
   const LightboxModal = dynamic(() => import("../../LightboxModal"), { ssr: false });
-  const [lightbox, setLightbox] = useState<{ open: boolean; url: string | null }>({ open: false, url: null });
+  const [lightbox, setLightbox] = useState<{ open: boolean; images: string[]; index: number }>({ open: false, images: [], index: 0 });
   const [tab, setTab] = useState<FeedCategory>("all");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
@@ -514,8 +515,26 @@ export default function ExplorePage() {
 
         <h2 className="mb-4 text-2xl font-semibold text-cyan-50">{title}</h2>
 
-        {loading && <p className="text-cyan-200">Loading posts...</p>}
-        {error && <p className="text-rose-300">{error}</p>}
+        {loading ? (
+          <AsyncStateCard
+            compact
+            loading
+            title="Loading explore posts"
+            message={tab === "following" ? "Pulling together posts from the people you follow." : "Collecting fresh posts for explore."}
+            className="mb-4"
+          />
+        ) : null}
+        {error ? (
+          <AsyncStateCard
+            compact
+            tone="error"
+            title="Couldn\'t load explore"
+            message={error}
+            actionLabel="Retry explore"
+            onAction={() => setReloadKey((current) => current + 1)}
+            className="mb-4"
+          />
+        ) : null}
         {interactionStatus ? <p className="mb-4 text-sm text-rose-200">{interactionStatus}</p> : null}
         {adminActionStatus ? <p className="mb-4 text-sm text-cyan-100">{adminActionStatus}</p> : null}
 
@@ -540,8 +559,13 @@ export default function ExplorePage() {
               ref={(element) => applyPostThemeVars(element, post.author_theme)}
             >
               {post.image_urls?.[0] ? (
-                  <button type="button" className="group relative mb-4 block aspect-[4/5] w-full overflow-hidden rounded-2xl sm:aspect-[4/3]" onClick={() => setLightbox({ open: true, url: post.image_urls![0] })}>
+                  <button type="button" className="group relative mb-4 block aspect-[4/5] w-full overflow-hidden rounded-2xl sm:aspect-[4/3]" onClick={() => setLightbox({ open: true, images: post.image_urls || [], index: 0 })}>
                     <Image src={post.image_urls[0]} alt="Post" className="h-full w-full rounded-2xl object-cover transition duration-200 group-hover:scale-105" loading="lazy" fill unoptimized />
+                    {post.image_urls.length > 1 ? (
+                      <span className="absolute right-3 top-3 rounded-full border border-black/15 bg-black/55 px-2 py-1 text-[11px] font-semibold text-cyan-50 shadow-lg backdrop-blur-sm">
+                        {post.image_urls.length} photos
+                      </span>
+                    ) : null}
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent px-3 py-4 text-left text-xs text-cyan-50/85 sm:text-sm">Tap to expand</div>
                   </button>
               ) : null}
@@ -735,7 +759,13 @@ export default function ExplorePage() {
             );
           })}
         </div>
-        {lightbox.open && lightbox.url ? <LightboxModal imageUrl={lightbox.url} onClose={() => setLightbox({ open: false, url: null })} /> : null}
+        {lightbox.open && lightbox.images.length > 0 ? (
+          <LightboxModal
+            images={lightbox.images}
+            initialIndex={lightbox.index}
+            onClose={() => setLightbox({ open: false, images: [], index: 0 })}
+          />
+        ) : null}
       </div>
     </div>
   );

@@ -2,6 +2,7 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import AsyncStateCard from "@/app/AsyncStateCard";
 import { createClient } from "@/lib/supabase/client";
 
 const SmokeRoom2Client = dynamic(() => import("../SmokeRoom2Client"), { ssr: false });
@@ -9,29 +10,72 @@ const SmokeRoom2Client = dynamic(() => import("../SmokeRoom2Client"), { ssr: fal
 export default function SmokeRoom2Page() {
   const [allowed, setAllowed] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getSession().then(async ({ data }) => {
-      const user = data.session?.user;
-      if (!user) {
+    const checkAccess = async () => {
+      try {
+        const supabase = createClient();
+        setError(null);
+        const { data } = await supabase.auth.getSession();
+        const user = data.session?.user;
+        if (!user) {
+          setAllowed(false);
+          setLoading(false);
+          return;
+        }
+
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("role,smoke_room_2_invited")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (profileError) {
+          throw new Error(profileError.message || "Could not verify access to Smoke Room 2.0.");
+        }
+
+        setAllowed(profile?.role === "admin" || profile?.smoke_room_2_invited === true);
+      } catch (loadError: any) {
         setAllowed(false);
+        setError(typeof loadError?.message === "string" ? loadError.message : "Could not verify access to Smoke Room 2.0.");
+      } finally {
         setLoading(false);
-        return;
       }
+    };
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role,smoke_room_2_invited")
-        .eq("id", user.id)
-        .maybeSingle();
+    void checkAccess();
+  }, [retryKey]);
 
-      setAllowed(profile?.role === "admin" || profile?.smoke_room_2_invited === true);
-      setLoading(false);
-    });
-  }, []);
+  if (loading) {
+    return (
+      <div className="mx-auto mt-10 max-w-2xl px-4">
+        <AsyncStateCard
+          loading
+          title="Loading Smoke Room 2.0"
+          message="Checking your invite status before opening the private room."
+        />
+      </div>
+    );
+  }
 
-  if (loading) return <div className="text-center text-cyan-200 mt-10">Loading...</div>;
+  if (error) {
+    return (
+      <div className="mx-auto mt-10 max-w-2xl px-4">
+        <AsyncStateCard
+          tone="error"
+          title="Couldn\'t open Smoke Room 2.0"
+          message={error}
+          actionLabel="Try again"
+          onAction={() => {
+            setLoading(true);
+            setRetryKey((current) => current + 1);
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-4xl px-4">

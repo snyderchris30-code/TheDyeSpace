@@ -12,6 +12,7 @@ import AdminActionMenu from "@/app/AdminActionMenu";
 import EmojiPicker from "@/app/EmojiPicker";
 import InlineEmojiText from "@/app/InlineEmojiText";
 import UserIdentity from "@/app/UserIdentity";
+import AsyncStateCard from "@/app/AsyncStateCard";
 import { normalizePostImageUrls } from "@/lib/post-media";
 import { REACTION_EMOJIS, type AggregatedPostInteraction, type ReactionEmoji } from "@/lib/post-interactions";
 import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
@@ -224,7 +225,7 @@ async function fetchWithTimeout(input: RequestInfo, init: RequestInit | undefine
 
 export default function ProfileEditor() {
   // Lightbox state for image modal
-  const [lightbox, setLightbox] = useState<{ open: boolean; url: string | null }>({ open: false, url: null });
+  const [lightbox, setLightbox] = useState<{ open: boolean; images: string[]; index: number }>({ open: false, images: [], index: 0 });
   // Report modal state
   const [reportOpen, setReportOpen] = useState(false);
   const [reportReason, setReportReason] = useState("");
@@ -1096,26 +1097,24 @@ export default function ProfileEditor() {
         ) : null}
 
         {loading ? (
-          <div className="rounded-[2rem] border border-cyan-300/20 bg-slate-950/45 p-8 text-cyan-100 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl">
-            Loading profile...
-          </div>
+          <AsyncStateCard
+            loading
+            title="Loading profile"
+            message="Pulling in profile details, theme settings, and recent posts."
+          />
         ) : loadError ? (
-          <div className="rounded-[2rem] border border-rose-300/20 bg-rose-950/55 p-8 text-rose-100 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl">
-            <h2 className="mb-3 text-2xl font-bold text-rose-100">Profile could not be loaded</h2>
-            <p className="mb-4 text-sm text-rose-200">{loadError}</p>
-            <button
-              type="button"
-              className="inline-flex items-center rounded-full border border-rose-300/40 bg-rose-500/15 px-4 py-2 text-sm font-semibold text-rose-100 hover:bg-rose-500/25 transition"
-              onClick={() => {
-                setLoading(true);
-                setLoadError(null);
-                setStatus(null);
-                void loadProfile();
-              }}
-            >
-              Retry loading
-            </button>
-          </div>
+          <AsyncStateCard
+            tone="error"
+            title="Couldn\'t load profile"
+            message={loadError}
+            actionLabel="Retry loading"
+            onAction={() => {
+              setLoading(true);
+              setLoadError(null);
+              setStatus(null);
+              void loadProfile();
+            }}
+          />
         ) : (
           <>
             {playlistSongs.length > 0 ? (
@@ -1393,9 +1392,12 @@ export default function ProfileEditor() {
               </div>
 
               {postsLoading ? (
-                <div className="rounded-[1.75rem] border border-cyan-300/20 bg-slate-950/45 p-8 text-cyan-100 shadow-xl backdrop-blur-xl">
-                  Loading posts...
-                </div>
+                <AsyncStateCard
+                  compact
+                  loading
+                  title="Loading posts"
+                  message="Gathering this user\'s latest posts and comment activity."
+                />
               ) : (profileIsVoided || profileIsShadowBanned) && !isAdmin && !isOwner ? (
                 <div className="rounded-[1.75rem] border border-violet-300/20 bg-violet-950/45 p-8 text-violet-100 shadow-xl backdrop-blur-xl">
                   This user is currently hidden from public discovery. Their posts are not visible right now.
@@ -1475,7 +1477,7 @@ export default function ProfileEditor() {
                             {post.image_urls.map((imageUrl, imageIndex) => (
                               <button key={`${post.id}-${imageIndex}`} type="button" className="group relative aspect-[4/5] w-full overflow-hidden rounded-[1.5rem] cursor-zoom-in sm:aspect-square" onClick={(e) => {
                                 e.stopPropagation();
-                                setLightbox({ open: true, url: imageUrl });
+                                setLightbox({ open: true, images: post.image_urls || [], index: imageIndex });
                               }}>
                                 <Image
                                   src={imageUrl}
@@ -1491,9 +1493,6 @@ export default function ProfileEditor() {
                             ))}
                           </div>
                         ) : null}
-  {lightbox.open && lightbox.url && (
-    <LightboxModal imageUrl={lightbox.url} onClose={() => setLightbox({ open: false, url: null })} />
-  )}
 
                         <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-cyan-300/10 pt-4">
                           <div className="relative">
@@ -1657,6 +1656,13 @@ export default function ProfileEditor() {
                 </div>
               )}
             </section>
+            {lightbox.open && lightbox.images.length > 0 ? (
+              <LightboxModal
+                images={lightbox.images}
+                initialIndex={lightbox.index}
+                onClose={() => setLightbox({ open: false, images: [], index: 0 })}
+              />
+            ) : null}
           </>
         )}
 

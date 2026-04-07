@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import AsyncStateCard from "@/app/AsyncStateCard";
 import { createClient } from "@/lib/supabase/client";
 import { sanitizeUsernameInput } from "@/lib/profile-identity";
 
 export default function ProfilePage() {
   const router = useRouter();
   const [redirectError, setRedirectError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     const redirectToProfile = async () => {
@@ -62,28 +64,28 @@ export default function ProfilePage() {
     };
 
     void redirectToProfile();
-  }, [router]);
+  }, [retryKey, router]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[70vh] px-4 text-center">
-      <div>
+      <div className="w-full max-w-2xl">
         {redirectError ? (
-          <>
-            <h1 className="text-2xl font-semibold text-rose-100">Unable to load profile</h1>
-            <p className="mt-3 text-sm text-rose-200">{redirectError}</p>
-            <button
-              type="button"
-              className="mt-4 rounded-full border border-cyan-300/40 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-500/15"
-              onClick={() => {
-                setRedirectError(null);
-                void router.refresh();
-              }}
-            >
-              Retry
-            </button>
-          </>
+          <AsyncStateCard
+            tone="error"
+            title="Couldn\'t load profile"
+            message={redirectError}
+            actionLabel="Retry"
+            onAction={() => {
+              setRedirectError(null);
+              setRetryKey((current) => current + 1);
+            }}
+          />
         ) : (
-          <p className="text-slate-300 text-lg">Loading your profile...</p>
+          <AsyncStateCard
+            loading
+            title="Loading your profile"
+            message="Checking your account and redirecting you to the right profile page now."
+          />
         )}
       </div>
     </div>

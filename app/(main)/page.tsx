@@ -10,6 +10,7 @@ import { useMemo, useEffect, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { REACTION_EMOJIS, type AggregatedPostInteraction, type ReactionEmoji } from "@/lib/post-interactions";
 import { fontClass, resolveProfileAppearance, type ProfileAppearance } from "@/lib/profile-theme";
+import AsyncStateCard from "@/app/AsyncStateCard";
 import EmojiPicker from "@/app/EmojiPicker";
 import InlineEmojiText from "@/app/InlineEmojiText";
 import AdminActionMenu from "@/app/AdminActionMenu";
@@ -123,7 +124,7 @@ function applyPostThemeVars(element: HTMLElement | null, appearance?: ProfileApp
 export default function MainFeedPage() {
   const LightboxModal = dynamic(() => import("../LightboxModal"), { ssr: false });
   // Lightbox state
-  const [lightbox, setLightbox] = useState<{ open: boolean; url: string | null }>({ open: false, url: null });
+  const [lightbox, setLightbox] = useState<{ open: boolean; images: string[]; index: number }>({ open: false, images: [], index: 0 });
   const { data, isLoading, isFetchingNextPage, fetchNextPage, hasNextPage, error, refetch } = useInfiniteQuery({
     queryKey: ["posts"],
     queryFn: fetchPosts,
@@ -456,8 +457,28 @@ export default function MainFeedPage() {
         </div>
       ) : null}
 
-      {isLoading && <div className="text-teal-200">Loading cosmic posts...</div>}
-      {error && <div className="text-red-300">Error loading posts: {(error as Error).message}</div>}
+      {isLoading ? (
+        <AsyncStateCard
+          compact
+          loading
+          title="Loading cosmic posts"
+          message="Refreshing the main feed with the latest posts and interactions."
+          className="mb-4"
+        />
+      ) : null}
+      {error ? (
+        <AsyncStateCard
+          compact
+          tone="error"
+          title="Couldn\'t load the feed"
+          message={(error as Error).message || "Please try loading the feed again."}
+          actionLabel="Retry feed"
+          onAction={() => {
+            void refetch();
+          }}
+          className="mb-4"
+        />
+      ) : null}
 
       <div className="grid grid-cols-1 gap-6">
         {visiblePosts.filter((post) => !deletedPostIds.has(post.id)).map((post) => {
@@ -569,7 +590,7 @@ export default function MainFeedPage() {
                 <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
                   {post.image_urls.map((imgUrl, idx) => (
                     <button key={idx} type="button" className="group relative w-full overflow-hidden rounded-2xl cursor-zoom-in" onClick={() => {
-                      setLightbox({ open: true, url: imgUrl });
+                      setLightbox({ open: true, images: post.image_urls || [], index: idx });
                     }}>
                       <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-slate-900 sm:aspect-[16/9]">
                         <Image
@@ -590,9 +611,6 @@ export default function MainFeedPage() {
                 </div>
               )}
             </div>
-            {lightbox.open && lightbox.url && (
-              <LightboxModal imageUrl={lightbox.url} onClose={() => setLightbox({ open: false, url: null })} />
-            )}
             <footer className="mt-6 flex flex-col gap-3 border-t border-cyan-800 pt-4 text-sm text-cyan-200 sm:mt-8 sm:flex-row sm:justify-between">
               <div>
                 {session && session.user ? (

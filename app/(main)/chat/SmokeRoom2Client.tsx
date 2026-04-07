@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
+import AsyncStateCard from "@/app/AsyncStateCard";
 import AdminActionMenu from "@/app/AdminActionMenu";
 import UserIdentity from "@/app/UserIdentity";
 import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
@@ -39,6 +40,7 @@ export default function SmokeRoom2Client({ allowed }: { allowed: boolean }) {
   const [input, setInput] = useState("");
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminActionStatus, setAdminActionStatus] = useState<string | null>(null);
   const [viewerProfile, setViewerProfile] = useState<ProfileFlags | null>(null);
@@ -68,6 +70,7 @@ export default function SmokeRoom2Client({ allowed }: { allowed: boolean }) {
   const fetchMessages = useCallback(async () => {
     if (!allowed) return;
     const supabase = createClient();
+    setError(null);
     const { data, error } = await supabase
       .from("chat_messages")
       .select("*")
@@ -75,6 +78,8 @@ export default function SmokeRoom2Client({ allowed }: { allowed: boolean }) {
       .order("created_at", { ascending: true });
 
     if (error || !data) {
+      setMessages([]);
+      setError("Couldn\'t load Smoke Room 2.0 right now. Please try again.");
       setLoading(false);
       return;
     }
@@ -194,7 +199,28 @@ export default function SmokeRoom2Client({ allowed }: { allowed: boolean }) {
       ) : null}
       <div className="flex-1 overflow-y-auto mb-2 space-y-2 pr-2">
         {loading ? (
-          <div className="text-red-200">Loading...</div>
+          <AsyncStateCard
+            compact
+            loading
+            title="Loading Smoke Room 2.0"
+            message="Pulling in private-room messages and moderation controls."
+          />
+        ) : error ? (
+          <AsyncStateCard
+            compact
+            tone="error"
+            title="Couldn\'t load Smoke Room 2.0"
+            message={error}
+            actionLabel="Retry room"
+            onAction={() => {
+              setLoading(true);
+              void fetchMessages();
+            }}
+          />
+        ) : messages.length === 0 ? (
+          <div className="rounded-2xl border border-red-300/20 bg-black/25 p-4 text-sm text-red-100/75">
+            No messages yet. Start the private thread.
+          </div>
         ) : (
           messages.map((msg) => (
             <div key={msg.id} className="flex items-start gap-2 group bg-black/30 rounded-xl p-2 hover:bg-red-900/20 transition">
