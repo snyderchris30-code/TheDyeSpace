@@ -70,7 +70,6 @@ export default function SmokeRoom2Client({ allowed }: { allowed: boolean }) {
   const fetchMessages = useCallback(async () => {
     if (!allowed) return;
     const supabase = createClient();
-    setError(null);
     const { data, error } = await supabase
       .from("chat_messages")
       .select("*")
@@ -83,6 +82,8 @@ export default function SmokeRoom2Client({ allowed }: { allowed: boolean }) {
       setLoading(false);
       return;
     }
+
+    setError(null);
 
     const rows = data as ChatMessage[];
 
@@ -113,6 +114,8 @@ export default function SmokeRoom2Client({ allowed }: { allowed: boolean }) {
     if (!allowed) return;
     const supabase = createClient();
     let subscription: any;
+    // Initial realtime hydration belongs in this effect; the fetch itself resolves asynchronously.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchMessages();
     subscription = supabase
       .channel("public:chat_messages_2")

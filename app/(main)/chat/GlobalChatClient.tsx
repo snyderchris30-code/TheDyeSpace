@@ -79,7 +79,6 @@ export default function GlobalChat() {
 
   const fetchMessages = useCallback(async () => {
     const supabase = createClient();
-    setError(null);
     const { data, error } = await supabase
       .from("chat_messages")
       .select("*")
@@ -92,6 +91,8 @@ export default function GlobalChat() {
       setLoading(false);
       return;
     }
+
+    setError(null);
 
     const rows = data as ChatMessage[];
 
@@ -123,6 +124,8 @@ export default function GlobalChat() {
   useEffect(() => {
     let subscription: any;
     const supabase = createClient();
+    // Initial realtime hydration belongs in this effect; the fetch itself resolves asynchronously.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchMessages();
     subscription = supabase
       .channel("public:chat_messages")

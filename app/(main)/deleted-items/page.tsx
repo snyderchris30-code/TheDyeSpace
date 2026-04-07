@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
@@ -29,7 +29,7 @@ export default function DeletedItemsPage() {
   const [posts, setPosts] = useState<DeletedPost[]>([]);
   const [comments, setComments] = useState<DeletedComment[]>([]);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
 
@@ -71,11 +71,11 @@ export default function DeletedItemsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase]);
 
   useEffect(() => {
     void loadData();
-  }, []);
+  }, [loadData]);
 
   const mutateItem = async (itemType: "post" | "comment", id: string, action: "restore" | "permanent_delete") => {
     const method = action === "restore" ? "PATCH" : "DELETE";

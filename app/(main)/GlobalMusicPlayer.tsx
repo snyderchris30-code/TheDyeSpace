@@ -165,7 +165,7 @@ export default function GlobalMusicPlayer() {
       if (!queue.length) return 0;
       return Math.min(prev, queue.length - 1);
     });
-  }, [queue.length]);
+  }, [queue.length, setCurrentIndex]);
 
   useEffect(() => {
     ensureYouTubeApi(() => setIsApiReady(true));
@@ -259,7 +259,7 @@ export default function GlobalMusicPlayer() {
       readyRef.current = false;
       loadedEntryKeyRef.current = null;
     };
-  }, [isApiReady]);
+  }, [isApiReady, setCurrentIndex, setIsPlaying]);
 
   useEffect(() => {
     if (!currentEntry || !isPlayerReady || !playerRef.current) {
@@ -352,7 +352,7 @@ export default function GlobalMusicPlayer() {
 
     playerRef.current.playVideo?.();
     setIsPlaying(true);
-  }, [currentEntry, isPlaying]);
+  }, [currentEntry, isPlaying, setIsPlaying]);
 
   const handlePrevious = useCallback(() => {
     if (!queue.length || !currentEntry) {
@@ -367,7 +367,7 @@ export default function GlobalMusicPlayer() {
 
     setCurrentIndex((prev) => (prev - 1 + queue.length) % queue.length);
     setIsPlaying(true);
-  }, [currentEntry, queue.length]);
+  }, [currentEntry, queue.length, setCurrentIndex, setIsPlaying]);
 
   const handleNext = useCallback(() => {
     if (!queue.length || !currentEntry) {
@@ -382,7 +382,7 @@ export default function GlobalMusicPlayer() {
 
     setCurrentIndex((prev) => (prev + 1) % queue.length);
     setIsPlaying(true);
-  }, [currentEntry, queue.length]);
+  }, [currentEntry, queue.length, setCurrentIndex, setIsPlaying]);
 
   const handleOpenMusicEditor = () => {
     if (!session?.user) {

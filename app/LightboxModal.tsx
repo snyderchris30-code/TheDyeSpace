@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { ChevronLeft, ChevronRight, Minus, Plus, X } from "lucide-react";
 
@@ -35,15 +35,11 @@ export default function LightboxModal({ images, initialIndex = 0, onClose }: Lig
   const offsetRef = useRef({ x: 0, y: 0 });
   const swipeOffsetRef = useRef(0);
 
-  if (!galleryImages.length) {
-    return null;
-  }
-
   const imageUrl = galleryImages[currentIndex];
   const canGoPrevious = currentIndex > 0;
   const canGoNext = currentIndex < galleryImages.length - 1;
 
-  const resetView = () => {
+  const resetView = useCallback(() => {
     setScale(1);
     setOffset({ x: 0, y: 0 });
     setSwipeOffset(0);
@@ -51,21 +47,36 @@ export default function LightboxModal({ images, initialIndex = 0, onClose }: Lig
     offsetRef.current = { x: 0, y: 0 };
     swipeOffsetRef.current = 0;
     gestureRef.current = null;
-  };
+  }, []);
 
-  const goToIndex = (nextIndex: number) => {
+  const goToIndex = useCallback((nextIndex: number) => {
+    resetView();
     setCurrentIndex(clampIndex(nextIndex, galleryImages.length));
-  };
+  }, [galleryImages.length, resetView]);
 
-  const goToPrevious = () => {
+  const goToPrevious = useCallback(() => {
     if (!canGoPrevious) return;
     goToIndex(currentIndex - 1);
-  };
+  }, [canGoPrevious, currentIndex, goToIndex]);
 
-  const goToNext = () => {
+  const goToNext = useCallback(() => {
     if (!canGoNext) return;
     goToIndex(currentIndex + 1);
-  };
+  }, [canGoNext, currentIndex, goToIndex]);
+
+  const clampScale = useCallback((value: number) => Math.min(4, Math.max(1, value)), []);
+
+  const adjustScale = useCallback((delta: number) => {
+    setScale((current) => {
+      const next = clampScale(current + delta);
+      if (next === 1) {
+        setOffset({ x: 0, y: 0 });
+        offsetRef.current = { x: 0, y: 0 };
+      }
+      scaleRef.current = next;
+      return next;
+    });
+  }, [clampScale]);
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -81,7 +92,7 @@ export default function LightboxModal({ images, initialIndex = 0, onClose }: Lig
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [canGoNext, canGoPrevious, currentIndex, onClose]);
+  }, [adjustScale, goToNext, goToPrevious, onClose]);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -113,16 +124,6 @@ export default function LightboxModal({ images, initialIndex = 0, onClose }: Lig
     imageRef.current.style.transform = `translate3d(${translateX}px, ${translateY}px, 0) scale(${scale})`;
     imageRef.current.style.transition = pointersRef.current.size ? "none" : "transform 180ms ease-out";
   }, [imageUrl, offset, scale, swipeOffset]);
-
-  useEffect(() => {
-    setCurrentIndex(clampIndex(initialIndex, galleryImages.length));
-  }, [galleryImages.length, initialIndex]);
-
-  useEffect(() => {
-    resetView();
-  }, [currentIndex]);
-
-  const clampScale = (value: number) => Math.min(4, Math.max(1, value));
 
   const getDistance = (points: { x: number; y: number }[]) => {
     const [first, second] = points;
@@ -251,17 +252,9 @@ export default function LightboxModal({ images, initialIndex = 0, onClose }: Lig
     }
   };
 
-  const adjustScale = (delta: number) => {
-    setScale((current) => {
-      const next = clampScale(current + delta);
-      if (next === 1) {
-        setOffset({ x: 0, y: 0 });
-        offsetRef.current = { x: 0, y: 0 };
-      }
-      scaleRef.current = next;
-      return next;
-    });
-  };
+  if (!galleryImages.length) {
+    return null;
+  }
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/92 backdrop-blur-md cosmic-glow p-3 sm:p-6" onClick={onClose}>

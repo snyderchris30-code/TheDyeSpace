@@ -18,20 +18,17 @@ const MUSIC_PLAYER_MINIMIZED_KEY = "dyespace.music_player_minimized";
 const MusicPlayerContext = createContext<MusicPlayerContextValue | null>(null);
 
 export function MusicPlayerProvider({ children }: { children: React.ReactNode }) {
-  const [isMinimized, setIsMinimized] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem(MUSIC_PLAYER_MINIMIZED_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isVisible, setIsVisible] = useState(true);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const stored = window.localStorage.getItem(MUSIC_PLAYER_MINIMIZED_KEY);
-      setIsMinimized(stored === "true");
-    } catch {
-      setIsMinimized(false);
-    }
-  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
