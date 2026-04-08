@@ -18,15 +18,19 @@ const MUSIC_PLAYER_MINIMIZED_KEY = "dyespace.music_player_minimized";
 const MusicPlayerContext = createContext<MusicPlayerContextValue | null>(null);
 
 export function MusicPlayerProvider({ children }: { children: React.ReactNode }) {
-  const [isMinimized, setIsMinimized] = useState(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      return window.localStorage.getItem(MUSIC_PLAYER_MINIMIZED_KEY) === "true";
-    } catch {
-      return false;
-    }
-  });
+  const [isMinimized, setIsMinimized] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+
+  useEffect(() => {
+    try {
+      const storedValue = window.localStorage.getItem(MUSIC_PLAYER_MINIMIZED_KEY);
+      if (storedValue === "true") {
+        setIsMinimized(true);
+      }
+    } catch {
+      // Ignore localStorage failures on hydration.
+    }
+  }, []);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isVisible, setIsVisible] = useState(true);
 

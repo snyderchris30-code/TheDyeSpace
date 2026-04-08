@@ -220,6 +220,8 @@ export default function GlobalMusicPlayer() {
       return;
     }
 
+    const playerOrigin = `${window.location.protocol}//${window.location.host}`;
+
     playerRef.current = new window.YT.Player(playerMountRef.current, {
       width: "1",
       height: "1",
@@ -230,7 +232,8 @@ export default function GlobalMusicPlayer() {
         rel: 0,
         modestbranding: 1,
         playsinline: 1,
-        origin: window.location.origin,
+        origin: playerOrigin,
+        host: "https://www.youtube.com",
       },
       events: {
         onReady: () => {

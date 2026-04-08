@@ -616,11 +616,28 @@ export default function ProfileEditor() {
 
       setIsOwner(false);
       loadStage = "route-profile-fetch";
-      const viewedProfile = await withTimeout(
-        fetchProfileByUsername(routeUsername),
-        PROFILE_LOAD_TIMEOUT_MS,
-        "Unable to load this profile. Please refresh and try again."
-      );
+      let viewedProfile = null;
+      try {
+        viewedProfile = await withTimeout(
+          fetchProfileByUsername(routeUsername),
+          PROFILE_LOAD_TIMEOUT_MS,
+          "Unable to load this profile. Please refresh and try again."
+        );
+      } catch (err) {
+        // Try to auto-create if this is the logged-in user
+        if (sessionUser && isOwnRoute) {
+          try {
+            await fetchOrCreateOwnProfile(sessionUser);
+            return;
+          } catch (autoCreateErr) {
+            console.error("Auto-create profile failed:", autoCreateErr);
+            void reportProfileLoadError("profile-auto-create", autoCreateErr, { routeUsername });
+            throw autoCreateErr;
+          }
+        } else {
+          throw err;
+        }
+      }
       if (!viewedProfile) {
         throw new Error("Profile not found.");
       }
@@ -637,7 +654,7 @@ export default function ProfileEditor() {
         shadow_banned_until: viewedProfile.shadow_banned_until ?? null,
       });
       applyProfileToForm(viewedProfile);
-    } catch (error: any) {
+    } catch (error) {
       console.error("Failed to load profile:", error);
       void reportProfileLoadError("profile-load", error, { loadStage });
       const message =
@@ -1656,7 +1673,9 @@ export default function ProfileEditor() {
                             >
                               Delete
                             </button>
-                            {isAdmin && !isOwner ? <AdminActionMenu targetUserId={post.user_id} onAction={handleAdminAction} /> : null}
+                            {isAdmin && session?.user?.id !== post.user_id ? (
+                              <AdminActionMenu targetUserId={post.user_id} onAction={handleAdminAction} />
+                            ) : null}
                           </div>
                         ) : null}
 

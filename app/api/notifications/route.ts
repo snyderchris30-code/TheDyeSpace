@@ -259,10 +259,7 @@ export async function GET(req: NextRequest) {
       path: req.nextUrl.pathname,
       error: serializeError(error),
     });
-    return NextResponse.json(
-      { error: typeof error?.message === "string" ? error.message : "Failed to load notifications." },
-      { status: 500 }
-    );
+    return NextResponse.json({ notifications: [], unreadCount: 0, authenticated: false });
   }
 }
 

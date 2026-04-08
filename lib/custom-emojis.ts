@@ -35,7 +35,8 @@ export function normalizeCustomEmojiUrl(value: unknown) {
 
   if (CUSTOM_EMOJI_ASSET_PATTERN.test(trimmed)) {
     const [pathPart] = trimmed.split(/[?#]/, 1);
-    return decodeEmojiValue(pathPart);
+    const decoded = decodeEmojiValue(pathPart);
+    return encodeURI(decoded);
   }
 
   try {
