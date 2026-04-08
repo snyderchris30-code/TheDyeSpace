@@ -1,7 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 
-import { buildCustomEmojiAsset, type CustomEmojiAsset } from "@/lib/custom-emojis";
+import { buildCustomEmojiAsset, normalizeCustomEmojiUrl, type CustomEmojiAsset } from "@/lib/custom-emojis";
 
 const PUBLIC_EMOJI_DIRECTORY = path.join(process.cwd(), "public", "emojis");
 const EMOJI_FILE_PATTERN = /\.(png|gif)$/i;

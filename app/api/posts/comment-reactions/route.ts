@@ -11,6 +11,7 @@ import {
   normalizeThemeSettings,
   type ReactionEmoji,
 } from "@/lib/post-interactions";
+import { normalizeCustomEmojiUrl } from "@/lib/custom-emojis";
 import { resolveProfileUsername } from "@/lib/profile-identity";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -58,11 +59,21 @@ export async function POST(req: NextRequest) {
   }
 
   const body = (await req.json().catch(() => ({}))) as CommentReactionBody;
+  const normalizedEmoji = normalizeCustomEmojiUrl(body.emoji);
   const allowedEmojiSet = await getCustomEmojiUrlSet();
 
-  if (!body.postId || !body.commentId || !body.emoji || !allowedEmojiSet.has(body.emoji)) {
+  if (!body.postId || !body.commentId || !normalizedEmoji || !allowedEmojiSet.has(normalizedEmoji)) {
+    console.error("[posts/comment-reactions] Invalid comment reaction emoji", {
+      postId: body.postId,
+      commentId: body.commentId,
+      emoji: body.emoji,
+      normalizedEmoji,
+      validEmojiCount: allowedEmojiSet.size,
+    });
     return NextResponse.json({ error: "Post ID, comment ID, and a valid emoji are required." }, { status: 400 });
   }
+
+  const emoji = normalizedEmoji;
 
   try {
     const adminClient = createAdminClient();
@@ -96,7 +107,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (!currentReactionError) {
-      if (currentReaction?.emoji === body.emoji) {
+      if (currentReaction?.emoji === emoji) {
         const { error: deleteError } = await adminClient
           .from("post_comment_reactions")
           .delete()
@@ -109,7 +120,7 @@ export async function POST(req: NextRequest) {
       } else if (currentReaction) {
         const { error: updateError } = await adminClient
           .from("post_comment_reactions")
-          .update({ emoji: body.emoji, created_at: new Date().toISOString() })
+          .update({ emoji, created_at: new Date().toISOString() })
           .eq("comment_id", body.commentId)
           .eq("user_id", user.id);
 
@@ -120,7 +131,7 @@ export async function POST(req: NextRequest) {
         const { error: insertError } = await adminClient.from("post_comment_reactions").insert({
           comment_id: body.commentId,
           user_id: user.id,
-          emoji: body.emoji,
+          emoji,
         });
 
         if (insertError) {
@@ -148,11 +159,11 @@ export async function POST(req: NextRequest) {
     const legacyCurrentReaction = existingCommentReactions.find((reaction) => reaction.comment_id === body.commentId);
     const nextCommentReactions = existingCommentReactions.filter((reaction) => reaction.comment_id !== body.commentId);
 
-    if (!legacyCurrentReaction || legacyCurrentReaction.emoji !== body.emoji) {
+    if (!legacyCurrentReaction || legacyCurrentReaction.emoji !== emoji) {
       nextCommentReactions.push({
         comment_id: body.commentId,
         post_id: body.postId,
-        emoji: body.emoji,
+        emoji,
         created_at: new Date().toISOString(),
       });
     }

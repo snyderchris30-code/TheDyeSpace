@@ -11,6 +11,7 @@ import {
   normalizeThemeSettings,
   type ReactionEmoji,
 } from "@/lib/post-interactions";
+import { normalizeCustomEmojiUrl } from "@/lib/custom-emojis";
 import { loadLegacyInteraction, loadRelationalInteraction } from "@/lib/post-interaction-loaders";
 import { getCustomEmojiUrlSet } from "@/lib/custom-emoji-registry";
 
@@ -122,11 +123,20 @@ export async function POST(req: NextRequest) {
   }
 
   const body = (await req.json().catch(() => ({}))) as ReactionBody;
+  const normalizedEmoji = normalizeCustomEmojiUrl(body.emoji);
   const allowedEmojiSet = await getCustomEmojiUrlSet();
 
-  if (!body.postId || !body.emoji || !allowedEmojiSet.has(body.emoji)) {
+  if (!body.postId || !normalizedEmoji || !allowedEmojiSet.has(normalizedEmoji)) {
+    console.error("[posts/reactions] Invalid reaction emoji", {
+      postId: body.postId,
+      emoji: body.emoji,
+      normalizedEmoji,
+      validEmojiCount: allowedEmojiSet.size,
+    });
     return NextResponse.json({ error: "Post ID and valid emoji are required." }, { status: 400 });
   }
+
+  const emoji = normalizedEmoji;
 
   try {
     const adminClient = createAdminClient();
@@ -165,7 +175,7 @@ export async function POST(req: NextRequest) {
     if (!currentReactionError) {
       let shouldNotify = false;
 
-      if (currentReaction?.emoji === body.emoji) {
+      if (currentReaction?.emoji === emoji) {
         const { error: deleteError } = await adminClient
           .from("post_reactions")
           .delete()
@@ -178,7 +188,7 @@ export async function POST(req: NextRequest) {
       } else if (currentReaction) {
         const { error: updateError } = await adminClient
           .from("post_reactions")
-          .update({ emoji: body.emoji, created_at: new Date().toISOString() })
+          .update({ emoji, created_at: new Date().toISOString() })
           .eq("post_id", body.postId)
           .eq("user_id", user.id);
 
@@ -190,7 +200,7 @@ export async function POST(req: NextRequest) {
         const { error: insertError } = await adminClient.from("post_reactions").insert({
           post_id: body.postId,
           user_id: user.id,
-          emoji: body.emoji,
+          emoji,
         });
 
         if (insertError) {
@@ -212,7 +222,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (shouldNotify) {
-        await createLikeNotification(adminClient, post.user_id, user.id, actorName, body.postId, body.emoji);
+        await createLikeNotification(adminClient, post.user_id, user.id, actorName, body.postId, emoji);
       }
 
       return NextResponse.json({ interaction, likesCount, storage: "relational" });
@@ -233,12 +243,12 @@ export async function POST(req: NextRequest) {
     const existingReactions = getStoredPostReactions(existingThemeSettings);
     const legacyCurrentReaction = existingReactions.find((reaction) => reaction.post_id === body.postId);
     const nextReactions = existingReactions.filter((reaction) => reaction.post_id !== body.postId);
-    const shouldNotify = !legacyCurrentReaction || legacyCurrentReaction.emoji !== body.emoji;
+    const shouldNotify = !legacyCurrentReaction || legacyCurrentReaction.emoji !== emoji;
 
-    if (!legacyCurrentReaction || legacyCurrentReaction.emoji !== body.emoji) {
+    if (!legacyCurrentReaction || legacyCurrentReaction.emoji !== emoji) {
       nextReactions.push({
         post_id: body.postId,
-        emoji: body.emoji,
+        emoji,
         created_at: new Date().toISOString(),
       });
     }
@@ -278,7 +288,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (shouldNotify) {
-      await createLikeNotification(adminClient, post.user_id, user.id, actorName, body.postId, body.emoji);
+      await createLikeNotification(adminClient, post.user_id, user.id, actorName, body.postId, emoji);
     }
 
     return NextResponse.json({ interaction, likesCount, storage: "legacy" });
