@@ -620,10 +620,12 @@ export default function MainFeedPage() {
                     onChange={(e) => setEditPostContent(e.target.value)}
                     maxLength={2000}
                   />
-                  <AffiliateProductPicker
-                    selectedProductIds={editPostAffiliateProductIds}
-                    onChange={setEditPostAffiliateProductIds}
-                  />
+                  {(displayContent?.startsWith("[for_sale]") || displayContent?.startsWith("[tutorial]")) && (
+                    <AffiliateProductPicker
+                      selectedProductIds={editPostAffiliateProductIds}
+                      onChange={setEditPostAffiliateProductIds}
+                    />
+                  )}
                   <div className="flex gap-2">
                     <button
                       type="button"

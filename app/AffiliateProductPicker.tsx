@@ -83,7 +83,7 @@ export default function AffiliateProductPicker({ selectedProductIds, onChange, c
   return (
     <div className={className}>
       <label className="block">
-        <span className="text-cyan-300">Add Product Links (optional)</span>
+        <span className="text-cyan-300">Add Products Used (optional)</span>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="block">
             <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-cyan-300/70">Shirt Type</span>
