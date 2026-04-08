@@ -85,6 +85,8 @@ export async function fetchClientProfile<T>(
   columns: string,
   options: { ensureProfile?: boolean } = {}
 ): Promise<T | null> {
+  let lastError: unknown = null;
+
   const loadProfile = async () => {
     const { data, error } = await supabase.from("profiles").select(columns).eq("id", userId).limit(1).maybeSingle();
 
@@ -95,12 +97,54 @@ export async function fetchClientProfile<T>(
     return (data as T | null) ?? null;
   };
 
-  let profile = await loadProfile();
-  if (!profile && options.ensureProfile) {
-    const response = await fetch("/api/profile/init", { method: "POST" });
-    if (response.ok) {
-      profile = await loadProfile();
+  let profile: T | null = null;
+
+  try {
+    profile = await loadProfile();
+    if (profile) {
+      return profile;
     }
+  } catch (error) {
+    lastError = error;
+  }
+
+  if (!options.ensureProfile) {
+    if (lastError) {
+      throw lastError;
+    }
+
+    return profile;
+  }
+
+  const response = await fetch("/api/profile/init", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    const initMessage = typeof body?.error === "string" ? body.error : "Failed to initialize profile.";
+
+    if (lastError instanceof Error) {
+      throw lastError;
+    }
+
+    throw new Error(initMessage);
+  }
+
+  const body = await response.json().catch(() => ({}));
+  if (body?.profile) {
+    return body.profile as T;
+  }
+
+  try {
+    profile = await loadProfile();
+  } catch (error) {
+    lastError = error;
+  }
+
+  if (!profile && lastError) {
+    throw lastError;
   }
 
   return profile;

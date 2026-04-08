@@ -66,6 +66,7 @@ type SaveBody = {
   avatar_url?: string | null;
   banner_url?: string | null;
   background_color?: string;
+  background_opacity?: number;
   text_color?: string;
   highlight_color?: string;
   font_style?: FontStyle;
@@ -129,6 +130,7 @@ export async function POST(req: NextRequest) {
 
     const existingThemeSettings = (existingProfile?.theme_settings ?? {}) as {
       background_color?: string | null;
+      background_opacity?: number | null;
       text_color?: string | null;
       highlight_color?: string | null;
       font_style?: FontStyle | null;
@@ -185,6 +187,12 @@ export async function POST(req: NextRequest) {
           theme_settings: {
             ...existingThemeSettings,
             background_color: body.background_color ?? existingThemeSettings.background_color ?? DEFAULT_BACKGROUND_COLOR,
+            background_opacity:
+              typeof body.background_opacity === "number"
+                ? Math.max(0, Math.min(1, body.background_opacity))
+                : typeof existingThemeSettings.background_opacity === "number"
+                  ? Math.max(0, Math.min(1, existingThemeSettings.background_opacity))
+                  : 0.7,
             text_color: body.text_color ?? existingThemeSettings.text_color ?? DEFAULT_TEXT_COLOR,
             highlight_color: body.highlight_color ?? existingThemeSettings.highlight_color ?? DEFAULT_HIGHLIGHT_COLOR,
             font_style: nextFontStyle,

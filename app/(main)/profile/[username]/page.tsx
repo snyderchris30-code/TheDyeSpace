@@ -14,7 +14,7 @@ import EmojiPicker from "@/app/EmojiPicker";
 import InlineEmojiText from "@/app/InlineEmojiText";
 import UserIdentity from "@/app/UserIdentity";
 import AsyncStateCard from "@/app/AsyncStateCard";
-import { resolveClientAuth } from "@/lib/client-auth";
+import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
 import { normalizePostImageUrls } from "@/lib/post-media";
 import { countInteractionReactions, type AggregatedPostInteraction, type ReactionEmoji } from "@/lib/post-interactions";
 import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
@@ -212,8 +212,6 @@ function buildPlaylist(urls: string[]): PlaylistSong[] {
 }
 
 const PROFILE_LOAD_TIMEOUT_MS = 15000;
-const PROFILE_INIT_TIMEOUT_MS = 10000;
-
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = window.setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
@@ -227,16 +225,6 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: 
         reject(error);
       });
   });
-}
-
-async function fetchWithTimeout(input: RequestInfo, init: RequestInit | undefined, timeoutMs: number) {
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(input, { ...init, signal: controller.signal });
-  } finally {
-    window.clearTimeout(timeoutId);
-  }
 }
 
 function serializeClientError(error: unknown) {
@@ -384,6 +372,22 @@ export default function ProfileEditor() {
     setDraft(nextForm);
   }, []);
 
+  const applyLoadedProfile = useCallback(
+    (profile: ProfileRow) => {
+      setProfileUserId(profile.id);
+      setProfileStatus({
+        muted_until: profile.muted_until ?? null,
+        voided_until: profile.voided_until ?? null,
+        verified_badge: profile.verified_badge ?? null,
+        member_number: profile.member_number ?? null,
+        shadow_banned: profile.shadow_banned ?? null,
+        shadow_banned_until: profile.shadow_banned_until ?? null,
+      });
+      applyProfileToForm(profile);
+    },
+    [applyProfileToForm]
+  );
+
   const applyThemeStyles = (element: HTMLDivElement | null, state: FormState) => {
     if (!element) return;
     element.style.setProperty("--profile-bg", state.background_color || DEFAULT_BACKGROUND_COLOR);
@@ -440,13 +444,16 @@ export default function ProfileEditor() {
   const loadOwnRole = useCallback(
     async (userId: string) => {
       try {
-        const profile = await fetchProfileById(userId);
+        const profile = await fetchClientProfile<Pick<ProfileRow, "role">>(supabase, userId, "id, role", {
+          ensureProfile: true,
+        });
         setIsAdmin(profile?.role === "admin");
-      } catch {
+      } catch (error) {
+        console.error("Failed to resolve current user admin role:", error);
         setIsAdmin(false);
       }
     },
-    [fetchProfileById]
+    [supabase]
   );
 
   const loadInteractions = useCallback(async (postIds: string[]) => {
@@ -509,49 +516,27 @@ export default function ProfileEditor() {
         return;
       }
 
-      setProfileUserId(userId);
       setIsOwner(true);
 
       try {
         const existingProfile = await withTimeout(
-          fetchProfileById(userId),
+          fetchClientProfile<ProfileRow>(
+            supabase,
+            userId,
+            "id, username, display_name, bio, avatar_url, banner_url, theme_settings, created_at, role, muted_until, voided_until, verified_badge, member_number, shadow_banned, shadow_banned_until",
+            { ensureProfile: true }
+          ),
           PROFILE_LOAD_TIMEOUT_MS,
           "Profile lookup timed out. Please refresh and try again."
         );
 
         if (existingProfile) {
-          applyProfileToForm(existingProfile);
+          applyLoadedProfile(existingProfile);
           setIsAdmin(existingProfile.role === "admin");
-          setProfileStatus({
-            muted_until: existingProfile.muted_until ?? null,
-            voided_until: existingProfile.voided_until ?? null,
-            verified_badge: existingProfile.verified_badge ?? null,
-            member_number: existingProfile.member_number ?? null,
-            shadow_banned: existingProfile.shadow_banned ?? null,
-            shadow_banned_until: existingProfile.shadow_banned_until ?? null,
-          });
           return;
         }
 
-        const res = await fetchWithTimeout("/api/profile/init", { method: "POST" }, PROFILE_INIT_TIMEOUT_MS);
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          throw new Error(body?.error || "We could not initialize your profile yet. Please try again in a moment.");
-        }
-
-        const { profile: createdProfile } = await res.json();
-        if (createdProfile) {
-          applyProfileToForm(createdProfile as ProfileRow);
-          setIsAdmin((createdProfile as ProfileRow)?.role === "admin");
-          setProfileStatus({
-            muted_until: (createdProfile as ProfileRow)?.muted_until ?? null,
-            voided_until: (createdProfile as ProfileRow)?.voided_until ?? null,
-            verified_badge: (createdProfile as ProfileRow)?.verified_badge ?? null,
-            member_number: (createdProfile as ProfileRow)?.member_number ?? null,
-            shadow_banned: (createdProfile as ProfileRow)?.shadow_banned ?? null,
-            shadow_banned_until: (createdProfile as ProfileRow)?.shadow_banned_until ?? null,
-          });
-        }
+        throw new Error("We could not initialize your profile yet. Please try again in a moment.");
       } catch (error: any) {
         void reportProfileLoadError("profile-init-or-load", error, { profileUserId: userId });
         const message = typeof error?.message === "string" ? error.message : "Could not load your profile right now. Please refresh and try again.";
@@ -562,7 +547,7 @@ export default function ProfileEditor() {
         setLoadError(message);
       }
     },
-    [applyProfileToForm, fetchProfileById, reportProfileLoadError]
+    [applyLoadedProfile, reportProfileLoadError, supabase]
   );
 
   const loadProfile = useCallback(async () => {
@@ -641,19 +626,11 @@ export default function ProfileEditor() {
       if (!viewedProfile) {
         throw new Error("Profile not found.");
       }
-      setProfileUserId(viewedProfile.id);
+      applyLoadedProfile(viewedProfile);
       if (sessionUser?.id && viewedProfile.id === sessionUser.id) {
         setIsOwner(true);
+        setIsAdmin(viewedProfile.role === "admin");
       }
-      setProfileStatus({
-        muted_until: viewedProfile.muted_until ?? null,
-        voided_until: viewedProfile.voided_until ?? null,
-        verified_badge: viewedProfile.verified_badge ?? null,
-        member_number: viewedProfile.member_number ?? null,
-        shadow_banned: viewedProfile.shadow_banned ?? null,
-        shadow_banned_until: viewedProfile.shadow_banned_until ?? null,
-      });
-      applyProfileToForm(viewedProfile);
     } catch (error) {
       console.error("Failed to load profile:", error);
       void reportProfileLoadError("profile-load", error, { loadStage });
@@ -669,7 +646,7 @@ export default function ProfileEditor() {
     } finally {
       setLoading(false);
     }
-  }, [applyProfileToForm, fetchOrCreateOwnProfile, fetchProfileByUsername, loadOwnRole, reportProfileLoadError, routeUsername, supabase]);
+  }, [applyLoadedProfile, fetchOrCreateOwnProfile, fetchProfileByUsername, loadOwnRole, reportProfileLoadError, routeUsername, supabase]);
 
   useEffect(() => {
     void loadProfile();
@@ -1579,7 +1556,7 @@ export default function ProfileEditor() {
                         </span>
                       ) : null}
                     </div>
-                    {isAdmin && !isOwner && profileUserId ? (
+                    {isAdmin && profileUserId ? (
                       <div className="mt-4">
                         <AdminActionMenu targetUserId={profileUserId} onAction={handleAdminAction} label="Admin Tools" />
                       </div>
@@ -1855,6 +1832,17 @@ export default function ProfileEditor() {
                                                 }}
                                               />
                                             ) : null}
+                                          </div>
+                                        ) : null}
+                                        {(session?.user?.id === comment.author.id || isAdmin) ? (
+                                          <div className="mt-2 flex gap-3">
+                                            <button
+                                              type="button"
+                                              className="text-xs text-rose-400 hover:underline transition"
+                                              onClick={() => void handleDeleteComment(comment.id, post.id)}
+                                            >
+                                              Delete
+                                            </button>
                                           </div>
                                         ) : null}
                                       </div>

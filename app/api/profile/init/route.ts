@@ -12,6 +12,16 @@ import { createRequestLogContext, logError, logInfo, logWarn } from "@/lib/serve
 
 const ADMIN_AUTO_FOLLOW_USER_ID = "794077c7-ad51-47cc-8c25-20171edfb017";
 
+function firstNonEmptyString(...values: Array<string | null | undefined>) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+
+  return null;
+}
+
 function isMissingUserFollowsTable(error: any) {
   return error?.code === "42P01" || /user_follows/i.test(String(error?.message || ""));
 }
@@ -93,6 +103,16 @@ export async function POST(req: Request) {
     });
 
     const username = resolveProfileUsername(user.user_metadata?.username, user.email, user.id);
+    const metadataDisplayName = firstNonEmptyString(
+      typeof user.user_metadata?.display_name === "string" ? user.user_metadata.display_name : null,
+      typeof user.user_metadata?.full_name === "string" ? user.user_metadata.full_name : null,
+      typeof user.user_metadata?.name === "string" ? user.user_metadata.name : null
+    );
+    const metadataAvatarUrl = firstNonEmptyString(
+      typeof user.user_metadata?.avatar_url === "string" ? user.user_metadata.avatar_url : null,
+      typeof user.user_metadata?.picture === "string" ? user.user_metadata.picture : null,
+      typeof user.user_metadata?.avatar === "string" ? user.user_metadata.avatar : null
+    );
 
     logInfo("profile/init", "Initializing profile", {
       ...requestContext,
@@ -117,6 +137,7 @@ export async function POST(req: Request) {
 
     const existingThemeSettings = (existingProfile?.theme_settings ?? {}) as {
       background_color?: string | null;
+      background_opacity?: number | null;
       text_color?: string | null;
       highlight_color?: string | null;
       font_style?: string | null;
@@ -131,9 +152,9 @@ export async function POST(req: Request) {
         {
           id: user.id,
           username: existingProfile?.username || username,
-          display_name: existingProfile?.display_name ?? "",
+          display_name: firstNonEmptyString(existingProfile?.display_name, metadataDisplayName) ?? "",
           bio: existingProfile?.bio ?? "",
-          avatar_url: existingProfile?.avatar_url ?? null,
+          avatar_url: firstNonEmptyString(existingProfile?.avatar_url, metadataAvatarUrl),
           banner_url: existingProfile?.banner_url ?? null,
           role: existingProfile?.role ?? null,
           muted_until: existingProfile?.muted_until ?? null,
@@ -144,6 +165,10 @@ export async function POST(req: Request) {
           smoke_room_2_invited: existingProfile?.smoke_room_2_invited ?? false,
           theme_settings: {
             background_color: existingThemeSettings.background_color ?? DEFAULT_BACKGROUND_COLOR,
+            background_opacity:
+              typeof existingThemeSettings.background_opacity === "number"
+                ? existingThemeSettings.background_opacity
+                : 0.7,
             text_color: existingThemeSettings.text_color ?? DEFAULT_TEXT_COLOR,
             highlight_color: existingThemeSettings.highlight_color ?? DEFAULT_HIGHLIGHT_COLOR,
             font_style: existingThemeSettings.font_style ?? DEFAULT_FONT_STYLE,
