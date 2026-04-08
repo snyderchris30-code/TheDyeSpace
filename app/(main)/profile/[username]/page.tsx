@@ -14,6 +14,7 @@ import EmojiPicker from "@/app/EmojiPicker";
 import InlineEmojiText from "@/app/InlineEmojiText";
 import UserIdentity from "@/app/UserIdentity";
 import AsyncStateCard from "@/app/AsyncStateCard";
+import { resolveClientAuth } from "@/lib/client-auth";
 import { normalizePostImageUrls } from "@/lib/post-media";
 import { countInteractionReactions, type AggregatedPostInteraction, type ReactionEmoji } from "@/lib/post-interactions";
 import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
@@ -112,13 +113,18 @@ function normalizeUsername(value: string) {
   return decoded.toLowerCase().replace(/^@+/, "");
 }
 
+function getUserRouteIdentityValues(user: any) {
+  return [user?.id, user?.user_metadata?.username, user?.email].filter(
+    (value): value is string => typeof value === "string" && value.trim().length > 0
+  );
+}
+
 function isOwnRouteUsername(routeUsername: string, user: any) {
   return Boolean(
     user &&
-      [user.id, user.user_metadata?.username, user.email]
-        .filter(Boolean)
+      getUserRouteIdentityValues(user)
         .some(
-          (value: string) =>
+          (value) =>
             normalizeUsername(value) === routeUsername ||
             sanitizeUsernameInput(value) === routeUsername
         )
@@ -568,33 +574,24 @@ export default function ProfileEditor() {
       setSessionValidationError(null);
 
       loadStage = "session-check";
-      let sessionUser = null;
-      try {
-        const { data } = await withTimeout(
-          supabase.auth.getSession(),
-          PROFILE_LOAD_TIMEOUT_MS,
-          "Unable to validate session. Please refresh and try again."
-        );
-        setSession(data.session);
-        sessionUser = data.session?.user;
+      const authState = await withTimeout(
+        resolveClientAuth(supabase),
+        PROFILE_LOAD_TIMEOUT_MS,
+        "Unable to validate session. Please refresh and try again."
+      );
+      const sessionUser = authState.user;
+      setSession(authState.session);
 
-        if (sessionUser?.id) {
-          void loadOwnRole(sessionUser.id);
-        } else {
-          setIsAdmin(false);
-        }
-      } catch (error: any) {
-        console.error("Profile session validation failed:", error);
-        void reportProfileLoadError("session-check", error, { routeUsername });
-        setSession(null);
+      if (sessionUser?.id) {
+        void loadOwnRole(sessionUser.id);
+      } else {
         setIsAdmin(false);
-        setSessionValidationError(
-          error?.name === "AbortError"
-            ? "Session validation timed out. Please log in again."
-            : typeof error?.message === "string"
-            ? error.message
-            : "Unable to validate session. Please log in."
-        );
+      }
+
+      if (!sessionUser && authState.errorMessage) {
+        console.error("Profile session validation failed:", authState.errorMessage);
+        void reportProfileLoadError("session-check", authState.errorMessage, { routeUsername });
+        setSessionValidationError(authState.errorMessage);
       }
 
       if (!routeUsername) {
@@ -603,10 +600,9 @@ export default function ProfileEditor() {
 
       const isOwnRoute = Boolean(
         sessionUser &&
-          [sessionUser.id, sessionUser.user_metadata?.username, sessionUser.email]
-            .filter(Boolean)
+          getUserRouteIdentityValues(sessionUser)
             .some(
-              (value: string) =>
+              (value) =>
                 normalizeUsername(value) === routeUsername ||
                 sanitizeUsernameInput(value) === routeUsername
             )
@@ -1544,6 +1540,7 @@ export default function ProfileEditor() {
                         </div>
                       ) : null}
                       <div className="rounded-3xl border border-cyan-300/20 bg-black/30 px-3 py-2 text-xs text-cyan-100">
+                        <span className="mr-2 inline-block h-2.5 w-2.5 rounded-full align-middle bg-[color:var(--profile-highlight)]" />
                         Theme: {profileThemeTag}
                       </div>
                     </div>

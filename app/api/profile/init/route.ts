@@ -102,7 +102,7 @@ export async function POST(req: Request) {
 
     const { data: existingProfile, error: existingProfileError } = await adminClient
       .from("profiles")
-      .select("id")
+      .select("id, username, display_name, bio, avatar_url, banner_url, role, muted_until, voided_until, verified_badge, member_number, shadow_banned, shadow_banned_until, smoke_room_2_invited, theme_settings")
       .eq("id", user.id)
       .limit(1)
       .maybeSingle();
@@ -115,30 +115,41 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: existingProfileError.message }, { status: 500 });
     }
 
+    const existingThemeSettings = (existingProfile?.theme_settings ?? {}) as {
+      background_color?: string | null;
+      text_color?: string | null;
+      highlight_color?: string | null;
+      font_style?: string | null;
+      youtube_urls?: string[] | null;
+      music_player_urls?: string[] | null;
+      show_music_player?: boolean | null;
+    };
+
     const { data: profile, error: upsertError } = await adminClient
       .from("profiles")
       .upsert(
         {
           id: user.id,
-          username,
-          display_name: "",
-          bio: "",
-          avatar_url: null,
-          banner_url: null,
-          role: null,
-          muted_until: null,
-          voided_until: null,
-          verified_badge: false,
-          shadow_banned: false,
-          shadow_banned_until: null,
-          smoke_room_2_invited: false,
+          username: existingProfile?.username || username,
+          display_name: existingProfile?.display_name ?? "",
+          bio: existingProfile?.bio ?? "",
+          avatar_url: existingProfile?.avatar_url ?? null,
+          banner_url: existingProfile?.banner_url ?? null,
+          role: existingProfile?.role ?? null,
+          muted_until: existingProfile?.muted_until ?? null,
+          voided_until: existingProfile?.voided_until ?? null,
+          verified_badge: existingProfile?.verified_badge ?? false,
+          shadow_banned: existingProfile?.shadow_banned ?? false,
+          shadow_banned_until: existingProfile?.shadow_banned_until ?? null,
+          smoke_room_2_invited: existingProfile?.smoke_room_2_invited ?? false,
           theme_settings: {
-            background_color: DEFAULT_BACKGROUND_COLOR,
-            text_color: DEFAULT_TEXT_COLOR,
-            highlight_color: DEFAULT_HIGHLIGHT_COLOR,
-            font_style: DEFAULT_FONT_STYLE,
-            youtube_urls: [],
-            show_music_player: true,
+            background_color: existingThemeSettings.background_color ?? DEFAULT_BACKGROUND_COLOR,
+            text_color: existingThemeSettings.text_color ?? DEFAULT_TEXT_COLOR,
+            highlight_color: existingThemeSettings.highlight_color ?? DEFAULT_HIGHLIGHT_COLOR,
+            font_style: existingThemeSettings.font_style ?? DEFAULT_FONT_STYLE,
+            youtube_urls: Array.isArray(existingThemeSettings.youtube_urls) ? existingThemeSettings.youtube_urls : [],
+            music_player_urls: Array.isArray(existingThemeSettings.music_player_urls) ? existingThemeSettings.music_player_urls : [],
+            show_music_player: existingThemeSettings.show_music_player ?? true,
           },
         },
         { onConflict: "id", ignoreDuplicates: false }

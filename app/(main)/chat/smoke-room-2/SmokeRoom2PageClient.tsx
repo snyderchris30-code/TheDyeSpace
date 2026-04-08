@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import AsyncStateCard from "@/app/AsyncStateCard";
 import SmokeRoom2Client from "../SmokeRoom2Client";
+import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
 import { createClient } from "@/lib/supabase/client";
 
 export default function SmokeRoom2PageClient() {
@@ -17,23 +18,22 @@ export default function SmokeRoom2PageClient() {
       try {
         const supabase = createClient();
         setError(null);
-        const { data } = await supabase.auth.getSession();
-        const user = data.session?.user;
+        const { user, errorMessage } = await resolveClientAuth(supabase);
         if (!user) {
           setAllowed(false);
+          if (errorMessage) {
+            setError(errorMessage);
+          }
           setLoading(false);
           return;
         }
 
-        const { data: profile, error: profileError } = await supabase
-          .from("profiles")
-          .select("role,smoke_room_2_invited")
-          .eq("id", user.id)
-          .maybeSingle();
-
-        if (profileError) {
-          throw new Error(profileError.message || "Could not verify access to Smoke Room 2.0.");
-        }
+        const profile = await fetchClientProfile<{ role?: string | null; smoke_room_2_invited?: boolean | null }>(
+          supabase,
+          user.id,
+          "role,smoke_room_2_invited",
+          { ensureProfile: true }
+        );
 
         setAllowed(profile?.role === "admin" || profile?.smoke_room_2_invited === true);
       } catch (loadError: any) {

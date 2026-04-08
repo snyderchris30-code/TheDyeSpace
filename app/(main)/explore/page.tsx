@@ -14,6 +14,7 @@ import AsyncStateCard from "@/app/AsyncStateCard";
 import CustomEmojiImage from "@/app/CustomEmojiImage";
 import InlineEmojiText from "@/app/InlineEmojiText";
 import UserIdentity from "@/app/UserIdentity";
+import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
 import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import { Home, Users, BookOpen, PartyPopper, Tag, Ban } from "lucide-react";
 import { Heart, MessageCircle, Send } from "lucide-react";
@@ -194,22 +195,25 @@ export default function ExplorePage() {
 
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getSession().then(({ data }) => {
-      const nextUserId = data.session?.user?.id || null;
+    const syncAuth = async () => {
+      const authState = await resolveClientAuth(supabase);
+      const nextUserId = authState.user?.id || null;
       setSessionUserId(nextUserId);
       if (nextUserId) {
-        supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", nextUserId)
-          .maybeSingle()
-          .then(({ data: profile }) => {
-            setViewerIsAdmin(profile?.role === "admin");
+        try {
+          const profile = await fetchClientProfile<{ role?: string | null }>(supabase, nextUserId, "role", {
+            ensureProfile: true,
           });
+          setViewerIsAdmin(profile?.role === "admin");
+        } catch {
+          setViewerIsAdmin(false);
+        }
       } else {
         setViewerIsAdmin(false);
       }
-    });
+    };
+
+    void syncAuth();
     const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (event === "SIGNED_OUT") {
         setSessionUserId(null);
@@ -219,15 +223,19 @@ export default function ExplorePage() {
 
       if (nextSession?.user?.id) {
         setSessionUserId(nextSession.user.id);
-        supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", nextSession.user.id)
-          .maybeSingle()
-          .then(({ data: profile }) => {
+        void fetchClientProfile<{ role?: string | null }>(supabase, nextSession.user.id, "role", {
+          ensureProfile: true,
+        })
+          .then((profile) => {
             setViewerIsAdmin(profile?.role === "admin");
+          })
+          .catch(() => {
+            setViewerIsAdmin(false);
           });
+        return;
       }
+
+      void syncAuth();
     });
     return () => {
       listener?.subscription.unsubscribe();

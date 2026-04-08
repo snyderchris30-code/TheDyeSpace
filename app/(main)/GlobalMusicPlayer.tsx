@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Music2, Pause, Play, Plus, SkipBack, SkipForward, X } from "lucide-react";
+import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
 import { createClient } from "@/lib/supabase/client";
 import { buildMusicQueue, extractYoutubeVideoId, normalizeMusicPlayerUrls, type MusicQueueEntry } from "@/lib/youtube-media";
 import { DEFAULT_PUBLIC_MUSIC_TITLE, DEFAULT_PUBLIC_MUSIC_URL } from "@/lib/app-config";
@@ -109,33 +110,36 @@ export default function GlobalMusicPlayer() {
 
   const loadProfileMusic = useCallback(
     async (userId: string) => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("username, theme_settings")
-        .eq("id", userId)
-        .maybeSingle();
+      try {
+        const data = await fetchClientProfile<{
+          username?: string | null;
+          theme_settings?: {
+            music_player_urls?: string[] | null;
+            show_music_player?: boolean | null;
+          } | null;
+        }>(supabase, userId, "username, theme_settings", { ensureProfile: true });
 
-      if (error) {
-        setStatus(error.message || "Could not load your playlist.");
+        const nextUrls = normalizeMusicPlayerUrls(
+          Array.isArray(data?.theme_settings?.music_player_urls) ? data.theme_settings.music_player_urls : []
+        );
+
+        const showMusicPlayer = data?.theme_settings?.show_music_player !== false;
+
+        setProfileUsername(data?.username || null);
+        setMusicUrls(nextUrls);
+        setIsVisible(showMusicPlayer);
+        setStatus(null);
+      } catch (error: any) {
+        console.error("[music-player] Failed to load profile music", error);
+        setProfileUsername(null);
         setMusicUrls([]);
+        setIsVisible(true);
+        setCurrentTitle(DEFAULT_PUBLIC_MUSIC_TITLE);
+        setStatus(typeof error?.message === "string" ? error.message : "Could not load your playlist.");
         return;
       }
-
-      const nextUrls = normalizeMusicPlayerUrls(
-        Array.isArray((data?.theme_settings as { music_player_urls?: string[] | null } | null)?.music_player_urls)
-          ? ((data?.theme_settings as { music_player_urls?: string[] | null }).music_player_urls as string[])
-          : []
-      );
-
-      const showMusicPlayer =
-        (data?.theme_settings as { show_music_player?: boolean | null } | null)?.show_music_player !== false;
-
-      setProfileUsername(data?.username || null);
-      setMusicUrls(nextUrls);
-      setIsVisible(showMusicPlayer);
-      setStatus(null);
     },
-    [setIsVisible, supabase]
+    [setCurrentTitle, setIsVisible, supabase]
   );
 
   const persistPlaylist = useCallback(async (nextUrls: string[], successMessage?: string) => {
@@ -172,18 +176,13 @@ export default function GlobalMusicPlayer() {
   }, []);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      const nextSession = data.session || null;
+    const syncAuth = async () => {
+      const authState = await resolveClientAuth(supabase);
+      const nextSession = authState.session || null;
       setSession(nextSession);
-      if (nextSession?.user?.id) {
-        void loadProfileMusic(nextSession.user.id);
-      }
-    });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession || null);
-      if (nextSession?.user?.id) {
-        void loadProfileMusic(nextSession.user.id);
+      if (authState.user?.id) {
+        void loadProfileMusic(authState.user.id);
         return;
       }
 
@@ -193,10 +192,22 @@ export default function GlobalMusicPlayer() {
       setIsVisible(true);
       setCurrentTitle(DEFAULT_PUBLIC_MUSIC_TITLE);
       setIsPlaying(false);
-      setStatus(null);
+      setStatus(authState.errorMessage ? "Could not verify your session. Using the public playlist." : null);
       if (playerRef.current && readyRef.current) {
         playerRef.current.stopVideo?.();
       }
+    };
+
+    void syncAuth();
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession || null);
+      if (nextSession?.user?.id) {
+        void loadProfileMusic(nextSession.user.id);
+        return;
+      }
+
+      void syncAuth();
     });
 
     return () => {

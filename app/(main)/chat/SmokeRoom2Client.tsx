@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import AsyncStateCard from "@/app/AsyncStateCard";
 import AdminActionMenu from "@/app/AdminActionMenu";
 import UserIdentity from "@/app/UserIdentity";
+import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
 import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import { createClient } from "@/lib/supabase/client";
 
@@ -48,8 +49,8 @@ export default function SmokeRoom2Client({ allowed }: { allowed: boolean }) {
 
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getSession().then(async ({ data }) => {
-      const nextUser = data.session?.user || null;
+    resolveClientAuth(supabase).then(async ({ user }) => {
+      const nextUser = user || null;
       setUser(nextUser);
 
       if (!nextUser) {
@@ -57,13 +58,14 @@ export default function SmokeRoom2Client({ allowed }: { allowed: boolean }) {
         return;
       }
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("id,role,username,display_name,verified_badge,member_number")
-        .eq("id", nextUser.id)
-        .maybeSingle();
+      const profile = await fetchClientProfile<ProfileFlags>(
+        supabase,
+        nextUser.id,
+        "id,role,username,display_name,verified_badge,member_number",
+        { ensureProfile: true }
+      );
       setIsAdmin(profile?.role === "admin");
-      setViewerProfile((profile as ProfileFlags) ?? null);
+      setViewerProfile(profile ?? null);
     });
   }, []);
 

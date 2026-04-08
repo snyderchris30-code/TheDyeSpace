@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import AsyncStateCard from "@/app/AsyncStateCard";
 import AdminActionMenu from "@/app/AdminActionMenu";
 import UserIdentity from "@/app/UserIdentity";
+import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
 import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import { createClient } from "@/lib/supabase/client";
 
@@ -54,8 +55,8 @@ export default function GlobalChat() {
 
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getSession().then(async ({ data }) => {
-      const nextUser = data.session?.user || null;
+    resolveClientAuth(supabase).then(async ({ user, session }) => {
+      const nextUser = user || null;
       setUser(nextUser);
 
       if (!nextUser) {
@@ -64,16 +65,17 @@ export default function GlobalChat() {
         return;
       }
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("id,role,smoke_room_2_invited,username,display_name,verified_badge,member_number")
-        .eq("id", nextUser.id)
-        .maybeSingle();
+      const profile = await fetchClientProfile<ProfileFlags>(
+        supabase,
+        nextUser.id,
+        "id,role,smoke_room_2_invited,username,display_name,verified_badge,member_number",
+        { ensureProfile: true }
+      );
 
       const admin = profile?.role === "admin";
       setIsAdmin(admin);
       setCanAccessRoom2(admin || profile?.smoke_room_2_invited === true);
-      setViewerProfile((profile as ProfileFlags) ?? null);
+      setViewerProfile(profile ?? null);
     });
   }, []);
 

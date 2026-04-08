@@ -8,9 +8,9 @@ import { usePathname } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AdminActionMenu from "@/app/AdminActionMenu";
 import UserIdentity from "@/app/UserIdentity";
+import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
 import { createClient } from "@/lib/supabase/client";
 import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
-import { resolveProfileUsername } from "@/lib/profile-identity";
 
 type NotificationItem = { id: string; actor_name: string; type: string; message: string; read: boolean; created_at: string };
 
@@ -68,36 +68,27 @@ export default function MainNavbar() {
         return;
       }
 
-      const fallbackUsername = resolveProfileUsername(user.user_metadata?.username, user.email, user.id);
-      let nextHref = `/profile/${encodeURIComponent(fallbackUsername)}`;
+      setProfileHref("/profile");
 
       try {
-        const { data: profileData, error } = await supabase
-          .from("profiles")
-          .select("username,role")
-          .eq("id", user.id)
-          .limit(1)
-          .maybeSingle();
-
-        if (!error && profileData) {
-          if (profileData?.username) {
-            nextHref = `/profile/${encodeURIComponent(profileData.username)}`;
-          }
-          setIsAdmin(profileData.role === "admin");
+        const profileData = await fetchClientProfile<{ role?: string | null }>(supabase, user.id, "id, role", {
+          ensureProfile: true,
+        });
+        if (active) {
+          setIsAdmin(profileData?.role === "admin");
         }
       } catch {
         // Keep fallback route when profile lookup fails.
-        setIsAdmin(false);
-      }
-
-      if (active) {
-        setProfileHref(nextHref);
+        if (active) {
+          setIsAdmin(false);
+        }
       }
     };
 
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      void updateProfileHref(data.session?.user ?? null);
+    resolveClientAuth(supabase).then(({ session, user }) => {
+      if (!active) return;
+      setSession(session);
+      void updateProfileHref(user);
     });
     const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (event === "SIGNED_OUT") {
@@ -107,10 +98,17 @@ export default function MainNavbar() {
         return;
       }
 
-      if (nextSession) {
+      if (nextSession?.user) {
         setSession(nextSession);
         void updateProfileHref(nextSession.user ?? null);
+        return;
       }
+
+      void resolveClientAuth(supabase).then(({ session, user }) => {
+        if (!active) return;
+        setSession(session);
+        void updateProfileHref(user);
+      });
     });
     return () => { active = false; listener?.subscription.unsubscribe(); };
   }, []);

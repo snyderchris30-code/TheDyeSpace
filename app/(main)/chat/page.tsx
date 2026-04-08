@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
 import { createClient } from "@/lib/supabase/client";
 import GlobalChatClient from "./GlobalChatClient";
 
@@ -9,18 +10,18 @@ export default function Page() {
 
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getSession().then(async ({ data }) => {
-      const user = data.session?.user;
+    resolveClientAuth(supabase).then(async ({ user }) => {
       if (!user) {
         setCanAccessRoom2(false);
         return;
       }
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role, smoke_room_2_invited")
-        .eq("id", user.id)
-        .maybeSingle();
+      const profile = await fetchClientProfile<{ role?: string | null; smoke_room_2_invited?: boolean | null }>(
+        supabase,
+        user.id,
+        "role, smoke_room_2_invited",
+        { ensureProfile: true }
+      );
 
       setCanAccessRoom2(profile?.role === "admin" || profile?.smoke_room_2_invited === true);
     });

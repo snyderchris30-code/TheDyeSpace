@@ -18,10 +18,6 @@ function isProtectedPath(pathname: string) {
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
-  if (pathname.startsWith('/api/')) {
-    return NextResponse.next();
-  }
-
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -81,5 +77,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };

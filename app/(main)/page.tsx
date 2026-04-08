@@ -16,6 +16,7 @@ import EmojiPicker from "@/app/EmojiPicker";
 import InlineEmojiText from "@/app/InlineEmojiText";
 import AdminActionMenu from "@/app/AdminActionMenu";
 import UserIdentity from "@/app/UserIdentity";
+import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
 import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import { appendEmojiToText, buildCustomEmojiAsset } from "@/lib/custom-emojis";
 
@@ -153,20 +154,12 @@ export default function MainFeedPage() {
   const [session, setSession] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  const loadUserRole = useCallback(async (userId: string) => {
+  const loadUserRole = useCallback(async (supabaseClient: any, userId: string) => {
     try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", userId)
-        .maybeSingle();
-
-      if (!error && data?.role === "admin") {
-        setIsAdmin(true);
-      } else {
-        setIsAdmin(false);
-      }
+      const profile = await fetchClientProfile<{ role?: string | null }>(supabaseClient, userId, "role", {
+        ensureProfile: true,
+      });
+      setIsAdmin(profile?.role === "admin");
     } catch {
       setIsAdmin(false);
     }
@@ -174,14 +167,17 @@ export default function MainFeedPage() {
 
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      if (data.session?.user?.id) {
-        void loadUserRole(data.session.user.id);
+    const syncAuth = async () => {
+      const authState = await resolveClientAuth(supabase);
+      setSession(authState.session);
+      if (authState.user?.id) {
+        void loadUserRole(supabase, authState.user.id);
       } else {
         setIsAdmin(false);
       }
-    });
+    };
+
+    void syncAuth();
     const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (event === "SIGNED_OUT") {
         setSession(null);
@@ -192,9 +188,12 @@ export default function MainFeedPage() {
       if (nextSession) {
         setSession(nextSession);
         if (nextSession.user?.id) {
-          void loadUserRole(nextSession.user.id);
+          void loadUserRole(supabase, nextSession.user.id);
         }
+        return;
       }
+
+      void syncAuth();
     });
     return () => { listener?.subscription.unsubscribe(); };
   }, [loadUserRole]);
