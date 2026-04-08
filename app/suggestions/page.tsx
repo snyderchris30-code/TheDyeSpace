@@ -160,24 +160,35 @@ export default function SuggestionsPage() {
                 <LifeBuoy className="h-6 w-6" />
               </div>
               <div>
-                <h2 className="text-2xl font-semibold text-cyan-50">Support the Site</h2>
-                <p className="text-sm text-cyan-100/70">This site is made and fully funded by Shaggy_Dyes (me) at the moment — a one-man army keeping this ship afloat with assistance from Captain Grok.<br/>Every little bit helps keep the servers running and new features coming.</p>
+                <h2 className="text-2xl font-semibold text-cyan-50">Support the Site &amp; Help Fellow Artists</h2>
+                <p className="text-sm text-cyan-100/70">Every little bit helps keep the servers running and new features coming.</p>
               </div>
             </div>
 
-            <div className="rounded-[1.5rem] border border-fuchsia-300/25 bg-black/30 p-5">
+            <div className="rounded-[1.5rem] border border-fuchsia-300/25 bg-black/30 p-5 text-sm leading-7 text-cyan-100/85">
+              <p className="font-semibold text-cyan-50">Verified Seller Badge</p>
+              <p className="mt-2">
+                For real tie-dye artists and hippie vendors.<br />
+                Get the <span className="font-semibold text-cyan-50">Verified Seller</span> badge after manual review.
+              </p>
+              <ul className="mt-4 space-y-1">
+                <li><span className="font-semibold text-cyan-50">$15 per month</span></li>
+                <li><span className="font-semibold text-cyan-50">$120 per year</span> (save $60)</li>
+              </ul>
+              <p className="mt-4"><span className="font-semibold text-cyan-50">How to apply:</span> Go to your profile → &quot;Apply for Verified Seller&quot;</p>
+              <p className="mt-4 font-semibold text-cyan-50">Current Support via Cash App:</p>
               <a
                 href={`https://cash.app/${CASH_APP_CASHTAG.replace("$", "")}`}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex w-full items-center justify-center rounded-[1.25rem] bg-gradient-to-r from-emerald-300 via-cyan-300 to-fuchsia-300 px-5 py-4 text-lg font-black text-slate-950 shadow-[0_16px_32px_rgba(34,211,238,0.18)] transition hover:scale-[1.02]"
+                className="mt-2 inline-flex text-cyan-200 underline decoration-cyan-400/50 underline-offset-4 transition hover:text-cyan-50"
               >
-                Support via Cash App
+                {CASH_APP_CASHTAG}
               </a>
-              <div className="mt-2 text-lg font-bold text-cyan-200">$ShaggyDyes</div>
-              <p className="mt-4 text-sm leading-7 text-cyan-100/85">
-                Thank you, fellow dyer. More donation options coming soon.
+              <p className="mt-4">
+                This site is currently a one-man project with help from Grok. Every donation and Verified Seller badge directly helps keep TheDyeSpace alive and growing.
               </p>
+              <p className="mt-4">Thank you for being part of the community ❤️</p>
             </div>
 
             <div className="mt-6 rounded-[1.5rem] border border-cyan-300/15 bg-slate-950/55 p-5 text-sm leading-7 text-cyan-100/75">

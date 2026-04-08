@@ -8,17 +8,24 @@ import { Heart, MessageCircle, Send, SquarePen } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useEffect, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
+import AffiliateProductPicker from "@/app/AffiliateProductPicker";
 import { countInteractionReactions, type AggregatedPostInteraction, type ReactionEmoji } from "@/lib/post-interactions";
 import { fontClass, resolveProfileAppearance, type ProfileAppearance } from "@/lib/profile-theme";
 import AsyncStateCard from "@/app/AsyncStateCard";
 import CustomEmojiImage from "@/app/CustomEmojiImage";
 import EmojiPicker from "@/app/EmojiPicker";
 import InlineEmojiText from "@/app/InlineEmojiText";
+import PostAffiliateProducts from "@/app/PostAffiliateProducts";
 import AdminActionMenu from "@/app/AdminActionMenu";
 import UserIdentity from "@/app/UserIdentity";
 import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
 import { hasAdminAccess, runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import { appendEmojiToText, buildCustomEmojiAsset } from "@/lib/custom-emojis";
+import {
+  buildPostContentWithAffiliateProducts,
+  extractAffiliateProductIds,
+  stripAffiliateProductTokens,
+} from "@/lib/post-affiliate-products";
 
 const PAGE_SIZE = 8;
 
@@ -146,6 +153,7 @@ export default function MainFeedPage() {
   const [deletedPostIds, setDeletedPostIds] = useState<Set<string>>(new Set());
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editPostContent, setEditPostContent] = useState("");
+  const [editPostAffiliateProductIds, setEditPostAffiliateProductIds] = useState<string[]>([]);
   const [editedPostContent, setEditedPostContent] = useState<Record<string, string>>({});
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editCommentContent, setEditCommentContent] = useState("");
@@ -361,19 +369,21 @@ export default function MainFeedPage() {
   const handleSavePostEdit = useCallback(async (postId: string) => {
     const content = editPostContent.trim();
     if (!content) return;
+    const nextContent = buildPostContentWithAffiliateProducts(content, editPostAffiliateProductIds);
     const res = await fetch("/api/posts/manage", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ postId, content }),
+      body: JSON.stringify({ postId, content: nextContent }),
     });
     if (res.ok) {
       const body = await res.json();
       setEditedPostContent((prev) => ({ ...prev, [postId]: body.content }));
       setEditingPostId(null);
+      setEditPostAffiliateProductIds([]);
     } else {
       setInteractionStatus("Could not update post. Please try again.");
     }
-  }, [editPostContent]);
+  }, [editPostAffiliateProductIds, editPostContent]);
 
   const handleDeleteComment = useCallback(async (commentId: string, postId: string) => {
     if (!confirm("Delete this comment?")) return;
@@ -523,7 +533,7 @@ export default function MainFeedPage() {
           const isOwner = !!session?.user && session.user.id === post.user_id;
           const displayContent = editedPostContent[post.id] ?? post.content;
           const categoryMeta = getCategoryMeta(displayContent);
-          const visibleContent = stripCategoryTag(displayContent);
+          const visibleContent = stripCategoryTag(stripAffiliateProductTokens(displayContent));
           const selectedPostReaction = postInteraction.viewerReaction ? buildCustomEmojiAsset(postInteraction.viewerReaction) : null;
           const totalPostReactions = countInteractionReactions(postInteraction);
 
@@ -565,7 +575,11 @@ export default function MainFeedPage() {
                       <button
                         type="button"
                         className="rounded-full border border-cyan-300/25 bg-black/20 px-3 py-1 text-xs text-cyan-300 hover:bg-cyan-900/30 transition"
-                        onClick={() => { setEditingPostId(post.id); setEditPostContent(displayContent ?? ""); }}
+                        onClick={() => {
+                          setEditingPostId(post.id);
+                          setEditPostContent(stripAffiliateProductTokens(displayContent ?? ""));
+                          setEditPostAffiliateProductIds(extractAffiliateProductIds(displayContent));
+                        }}
                       >
                         Edit
                       </button>
@@ -595,6 +609,7 @@ export default function MainFeedPage() {
                   />
                 )}
               </button>
+              {editingPostId === post.id ? null : <PostAffiliateProducts content={displayContent} className="-mt-1" />}
               {editingPostId === post.id && (
                 <div className="mb-3 flex flex-col gap-2">
                   <textarea
@@ -604,6 +619,10 @@ export default function MainFeedPage() {
                     value={editPostContent}
                     onChange={(e) => setEditPostContent(e.target.value)}
                     maxLength={2000}
+                  />
+                  <AffiliateProductPicker
+                    selectedProductIds={editPostAffiliateProductIds}
+                    onChange={setEditPostAffiliateProductIds}
                   />
                   <div className="flex gap-2">
                     <button
@@ -616,7 +635,10 @@ export default function MainFeedPage() {
                     <button
                       type="button"
                       className="rounded-full border border-cyan-300/25 bg-black/20 px-4 py-1.5 text-xs text-cyan-300 hover:bg-cyan-900/30 transition"
-                      onClick={() => setEditingPostId(null)}
+                      onClick={() => {
+                        setEditingPostId(null);
+                        setEditPostAffiliateProductIds([]);
+                      }}
                     >
                       Cancel
                     </button>

@@ -13,6 +13,7 @@ import { normalizePostImageUrls } from "@/lib/post-media";
 import AsyncStateCard from "@/app/AsyncStateCard";
 import CustomEmojiImage from "@/app/CustomEmojiImage";
 import InlineEmojiText from "@/app/InlineEmojiText";
+import PostAffiliateProducts from "@/app/PostAffiliateProducts";
 import UserIdentity from "@/app/UserIdentity";
 import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
 import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
@@ -21,6 +22,7 @@ import { Heart, MessageCircle, Send } from "lucide-react";
 import EmojiPicker from "@/app/EmojiPicker";
 import { appendEmojiToText, buildCustomEmojiAsset } from "@/lib/custom-emojis";
 import { countInteractionReactions, type AggregatedPostInteraction, type ReactionEmoji } from "@/lib/post-interactions";
+import { stripAffiliateProductTokens } from "@/lib/post-affiliate-products";
 
 type ExplorePost = {
   id: string;
@@ -605,6 +607,7 @@ export default function ExplorePage() {
             const isBusy = interactionBusyPostId === post.id;
             const selectedPostReaction = postInteraction.viewerReaction ? buildCustomEmojiAsset(postInteraction.viewerReaction) : null;
             const totalPostReactions = countInteractionReactions(postInteraction);
+            const visibleContent = stripCategoryTag(stripAffiliateProductTokens(post.content));
 
             return (
             <article
@@ -624,9 +627,10 @@ export default function ExplorePage() {
                   </button>
               ) : null}
                 <InlineEmojiText
-                  text={stripCategoryTag(post.content) || "No description provided."}
+                  text={visibleContent || "No description provided."}
                   className="mb-3 block whitespace-pre-wrap text-sm leading-6 text-[color:var(--post-text)]/92 sm:text-base sm:leading-7"
                 />
+              <PostAffiliateProducts content={post.content} className="mb-4" />
               <div className="mb-3">
                 <UserIdentity
                   displayName={post.author_display_name || "DyeSpace User"}

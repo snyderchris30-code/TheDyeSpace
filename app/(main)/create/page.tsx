@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import AffiliateProductPicker from "@/app/AffiliateProductPicker";
 import { createClient } from "@/lib/supabase/client";
 import EmojiPicker from "@/app/EmojiPicker";
 import InlineEmojiText from "@/app/InlineEmojiText";
 import { appendEmojiToText } from "@/lib/custom-emojis";
+import { buildPostContentWithAffiliateProducts } from "@/lib/post-affiliate-products";
 
 type PostCategory = "general" | "tutorial" | "new_boot_goofin" | "for_sale";
 
@@ -15,6 +17,7 @@ export default function CreatePostPage() {
   const [content, setContent] = useState("");
   const [images, setImages] = useState<File[]>([]);
   const [category, setCategory] = useState<PostCategory>("general");
+  const [selectedAffiliateProductIds, setSelectedAffiliateProductIds] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
@@ -70,7 +73,7 @@ export default function CreatePostPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          content: `${categoryPrefix}${content.trim()}`,
+          content: buildPostContentWithAffiliateProducts(`${categoryPrefix}${content.trim()}`, selectedAffiliateProductIds),
           image_urls: imageUrls.length ? imageUrls : null,
           is_for_sale: isForSale,
         }),
@@ -85,6 +88,7 @@ export default function CreatePostPage() {
       setContent("");
       setImages([]);
       setCategory("general");
+      setSelectedAffiliateProductIds([]);
       // No need to reset isForSale, it's derived from category now
       router.push("/explore");
       router.refresh();
@@ -116,6 +120,11 @@ export default function CreatePostPage() {
           className="mt-2 w-full rounded-2xl bg-slate-800 text-white p-3 border border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-400"
         />
         <EmojiPicker className="mt-2" onSelect={(emojiOrToken) => setContent((prev) => appendEmojiToText(prev, emojiOrToken))} />
+        <AffiliateProductPicker
+          className="mt-4"
+          selectedProductIds={selectedAffiliateProductIds}
+          onChange={setSelectedAffiliateProductIds}
+        />
         {content.trim() ? (
           <div className="mt-2 rounded-xl border border-cyan-300/20 bg-black/25 p-3 text-sm text-cyan-100">
             <p className="mb-1 text-xs uppercase tracking-[0.14em] text-cyan-300/70">Preview</p>

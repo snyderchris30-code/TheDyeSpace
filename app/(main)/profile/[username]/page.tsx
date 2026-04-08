@@ -12,6 +12,7 @@ import AdminActionMenu from "@/app/AdminActionMenu";
 import CustomEmojiImage from "@/app/CustomEmojiImage";
 import EmojiPicker from "@/app/EmojiPicker";
 import InlineEmojiText from "@/app/InlineEmojiText";
+import PostAffiliateProducts from "@/app/PostAffiliateProducts";
 import UserIdentity from "@/app/UserIdentity";
 import AsyncStateCard from "@/app/AsyncStateCard";
 import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
@@ -19,6 +20,7 @@ import { normalizePostImageUrls } from "@/lib/post-media";
 import { countInteractionReactions, type AggregatedPostInteraction, type ReactionEmoji } from "@/lib/post-interactions";
 import { hasAdminAccess, runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import { appendEmojiToText, buildCustomEmojiAsset } from "@/lib/custom-emojis";
+import { stripAffiliateProductTokens } from "@/lib/post-affiliate-products";
 import {
   DEFAULT_BACKGROUND_COLOR,
   DEFAULT_FONT_STYLE,
@@ -1658,9 +1660,10 @@ export default function ProfileEditor() {
                         ) : null}
 
                         <InlineEmojiText
-                          text={stripCategoryTag(post.content) || "No description provided."}
+                          text={stripCategoryTag(stripAffiliateProductTokens(post.content)) || "No description provided."}
                           className="mt-4 block whitespace-pre-wrap text-base leading-7 text-[color:var(--profile-text)]/92 sm:text-lg sm:leading-8"
                         />
+                        <PostAffiliateProducts content={post.content} className="mt-4" />
 
                         {post.image_urls && post.image_urls.length > 0 ? (
                           <div className="mt-5 grid gap-3 sm:grid-cols-2">
