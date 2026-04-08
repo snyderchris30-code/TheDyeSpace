@@ -93,6 +93,10 @@ function normalizeNotificationRows(rows: unknown) {
   return rows.map((row) => normalizeNotificationRow(row as Partial<NotificationRow>));
 }
 
+function createEmptyNotificationsResponse(authenticated = false) {
+  return NextResponse.json({ notifications: [], unreadCount: 0, authenticated });
+}
+
 function getNotificationDbClient(
   sessionClient: Awaited<ReturnType<typeof createSupabaseServerClient>>,
   requestId: string,
@@ -232,7 +236,7 @@ export async function GET(req: NextRequest) {
     const { sessionClient, userId } = await getRequestContext(req, requestId);
 
     if (!userId) {
-      return NextResponse.json({ notifications: [], unreadCount: 0, authenticated: false });
+      return createEmptyNotificationsResponse(false);
     }
 
     const { notifications, usedFallback, clientType } = await readNotificationsForUser(
@@ -259,7 +263,7 @@ export async function GET(req: NextRequest) {
       path: req.nextUrl.pathname,
       error: serializeError(error),
     });
-    return NextResponse.json({ notifications: [], unreadCount: 0, authenticated: false });
+    return createEmptyNotificationsResponse(false);
   }
 }
 
@@ -334,9 +338,6 @@ export async function PATCH(req: NextRequest) {
       path: req.nextUrl.pathname,
       error: serializeError(error),
     });
-    return NextResponse.json(
-      { error: typeof error?.message === "string" ? error.message : "Failed to update notifications." },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: typeof error?.message === "string" ? error.message : "Failed to update notifications." });
   }
 }

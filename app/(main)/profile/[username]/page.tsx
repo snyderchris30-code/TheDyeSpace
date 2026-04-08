@@ -657,11 +657,12 @@ export default function ProfileEditor() {
     } catch (error) {
       console.error("Failed to load profile:", error);
       void reportProfileLoadError("profile-load", error, { loadStage });
+      const err = error as any;
       const message =
-        error?.name === "AbortError"
+        err?.name === "AbortError"
           ? "Profile load timed out. Please refresh and try again."
-          : typeof error?.message === "string"
-          ? error.message
+          : typeof err?.message === "string"
+          ? err.message
           : "Unable to load this profile.";
       setLoadError(message);
       setStatus({ type: "error", text: message });
