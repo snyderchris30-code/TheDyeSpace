@@ -326,7 +326,7 @@ export default function GlobalChat() {
                   <div className="text-cyan-100 whitespace-pre-line">{msg.message}</div>
                 )}
               </div>
-              <div className="flex shrink-0 gap-2 opacity-0 group-hover:opacity-100 transition">
+              <div className="flex shrink-0 gap-2 transition" style={isAdmin ? { opacity: 1 } : {}}>
                 {user && msg.user_id === user.id ? (
                   <>
                     <button
