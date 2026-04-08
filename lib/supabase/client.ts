@@ -8,8 +8,10 @@ export const createClient = () => {
     throw new Error('Missing Supabase public environment variables')
   }
 
-  return createBrowserClient(
-    supabaseUrl,
-    supabaseAnonKey
-  )
+  return createBrowserClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+    },
+  })
 }

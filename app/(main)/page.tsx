@@ -153,6 +153,7 @@ export default function MainFeedPage() {
   // Supabase session detection
   const [session, setSession] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [authResolved, setAuthResolved] = useState(false);
 
   const loadUserRole = useCallback(async (supabaseClient: any, userId: string) => {
     try {
@@ -175,6 +176,7 @@ export default function MainFeedPage() {
       } else {
         setIsAdmin(false);
       }
+      setAuthResolved(true);
     };
 
     void syncAuth();
@@ -681,9 +683,9 @@ export default function MainFeedPage() {
                     </button>
                     <span>{totalPostReactions} reactions</span>
                   </div>
-                ) : (
+                ) : authResolved ? (
                   <span className="italic text-cyan-400">Sign in to like or comment</span>
-                )}
+                ) : null}
               </div>
               {/* Footer links removed from individual posts. Place in site footer or settings/help section only. */}
             </footer>
