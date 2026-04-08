@@ -1161,6 +1161,9 @@ export default function ProfileEditor() {
   }, [session?.user?.id, supabase]);
 
   const profileDisplay = editing ? draft : form;
+  const displayName = profileDisplay.display_name?.trim() || profileDisplay.username?.trim() || "DyeSpace User";
+  const displayUsername = profileDisplay.username?.trim() || null;
+  const bioText = profileDisplay.bio?.trim() || "No bio yet.";
   const profileMutedUntil = profileStatus?.muted_until ? new Date(profileStatus.muted_until) : null;
   const profileIsMuted = Boolean(profileMutedUntil && profileMutedUntil > new Date());
   const profileVoidedUntil = profileStatus?.voided_until ? new Date(profileStatus.voided_until) : null;
@@ -1171,6 +1174,17 @@ export default function ProfileEditor() {
     profileStatus?.shadow_banned || (profileShadowBannedUntil && profileShadowBannedUntil > new Date())
   );
   const typedUsername = sanitizeUsernameInput(draft.username);
+  const profileAppearance = resolveProfileAppearance(profileDisplay);
+  const profileThemeTag = profileDisplay.font_style ? profileDisplay.font_style : "Custom theme";
+  const avatarInitials = (() => {
+    const source = displayName !== "DyeSpace User" ? displayName : displayUsername || "TD";
+    return source
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0].toUpperCase())
+      .join("");
+  })();
   const usernameSavePreview = resolveProfileUsername(draft.username, form.username, session?.user?.email, session?.user?.id);
   const isUsernameFallback = typedUsername.length < 3 && usernameSavePreview !== typedUsername;
   const playlistSongs = useMemo(() => buildPlaylist(profileDisplay.youtube_urls || []), [profileDisplay.youtube_urls]);
@@ -1494,7 +1508,9 @@ export default function ProfileEditor() {
                       {profileDisplay.avatar_url ? (
                         <Image src={profileDisplay.avatar_url} alt="Avatar" className="h-full w-full object-cover" loading="lazy" width={128} height={128} unoptimized />
                       ) : (
-                        <div className="flex h-full w-full items-center justify-center text-4xl font-bold text-cyan-100">TD</div>
+                        <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-cyan-500 via-slate-900 to-purple-800 text-4xl font-bold text-white">
+                          {avatarInitials || "TD"}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -1503,8 +1519,8 @@ export default function ProfileEditor() {
                     <p className="text-[10px] uppercase tracking-[0.28em] text-[color:var(--profile-highlight)]/90 sm:text-xs sm:tracking-[0.45em]">The Dye Space Profile</p>
                     <div className="mt-2">
                       <UserIdentity
-                        displayName={profileDisplay.display_name || "Untitled Profile"}
-                        username={profileDisplay.username || null}
+                        displayName={displayName}
+                        username={displayUsername}
                         verifiedBadge={profileIsVerified}
                         memberNumber={profileStatus?.member_number ?? null}
                         className="min-w-0"
@@ -1514,8 +1530,23 @@ export default function ProfileEditor() {
                       />
                     </div>
                     <p className="mt-3 max-w-2xl whitespace-pre-wrap text-sm leading-6 text-[color:var(--profile-text)]/92 drop-shadow-[0_0_18px_rgba(0,0,0,0.55)] sm:text-base">
-                      {profileDisplay.bio || "No bio yet."}
+                      {bioText}
                     </p>
+                    <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                      {displayUsername ? (
+                        <div className="rounded-3xl border border-cyan-300/20 bg-black/30 px-3 py-2 text-xs text-cyan-100">
+                          @ {displayUsername}
+                        </div>
+                      ) : null}
+                      {profileStatus?.member_number != null ? (
+                        <div className="rounded-3xl border border-cyan-300/20 bg-black/30 px-3 py-2 text-xs text-cyan-100">
+                          Member #{profileStatus.member_number}
+                        </div>
+                      ) : null}
+                      <div className="rounded-3xl border border-cyan-300/20 bg-black/30 px-3 py-2 text-xs text-cyan-100">
+                        Theme: {profileThemeTag}
+                      </div>
+                    </div>
                     <div className="mt-4 flex flex-wrap gap-2">
                       {profileIsMuted ? (
                         <span className="inline-flex items-center rounded-full border border-rose-300/40 bg-rose-500/10 px-3 py-1 text-xs font-semibold text-rose-100">
