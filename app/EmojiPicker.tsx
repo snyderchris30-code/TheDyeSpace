@@ -56,6 +56,8 @@ async function loadEmojiAssets(forceReload = false) {
   return emojiAssetsRequest;
 }
 
+const RECENT_REACTIONS_STORAGE_KEY = "recently-used-emoji-reactions";
+
 export default function EmojiPicker({
   onSelect,
   className,
@@ -70,6 +72,7 @@ export default function EmojiPicker({
 }: EmojiPickerProps) {
   const [open, setOpen] = useState(false);
   const [customEmojiAssets, setCustomEmojiAssets] = useState<CustomEmojiAsset[]>(cachedEmojiAssets || []);
+  const [recentlyUsed, setRecentlyUsed] = useState<string[]>([]);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -89,6 +92,26 @@ export default function EmojiPicker({
       active = false;
     };
   }, [open]);
+
+  useEffect(() => {
+    if (mode !== "reaction") {
+      return;
+    }
+
+    const stored = window.localStorage.getItem(RECENT_REACTIONS_STORAGE_KEY);
+    if (!stored) {
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(stored) as string[];
+      if (Array.isArray(parsed)) {
+        setRecentlyUsed(parsed.filter((item) => typeof item === "string"));
+      }
+    } catch {
+      // ignore invalid storage data
+    }
+  }, [mode]);
 
   useEffect(() => {
     if (!open) {
@@ -111,15 +134,35 @@ export default function EmojiPicker({
   const Icon = mode === "reaction" ? Heart : Smile;
   const panelPositionClass = align === "left" ? "left-0" : "right-0";
 
+  const updateRecentlyUsed = (emojiUrl: string) => {
+    if (mode !== "reaction") {
+      return;
+    }
+
+    setRecentlyUsed((previous) => {
+      const next = [emojiUrl, ...previous.filter((item) => item !== emojiUrl)].slice(0, 8);
+      window.localStorage.setItem(RECENT_REACTIONS_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+
   const handleSelect = (emoji: CustomEmojiAsset) => {
+    if (mode === "reaction") {
+      updateRecentlyUsed(emoji.url);
+    }
+
     onSelect(mode === "reaction" ? emoji.url : encodeCustomEmojiToken(emoji.url));
     if (closeOnSelect) {
       setOpen(false);
     }
   };
 
+  const recentlyUsedAssets = recentlyUsed
+    .map((url) => customEmojiAssets.find((asset) => asset.url === url))
+    .filter((asset): asset is CustomEmojiAsset => Boolean(asset));
+
   return (
-    <div ref={rootRef} className={`relative ${className || ""}`}>
+    <div ref={rootRef} className={`relative w-full ${className || ""}`}>
       <button
         type="button"
         className={triggerClassName || "inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-slate-950/70 px-3 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/50 hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"}
@@ -138,14 +181,44 @@ export default function EmojiPicker({
       </button>
 
       {open ? (
-        <div className={`absolute top-full z-30 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-3xl border border-cyan-300/20 bg-slate-950/95 p-3 shadow-[0_20px_60px_rgba(8,15,30,0.35)] ${panelPositionClass}`}>
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-cyan-200/80">Custom emojis</p>
-            <span className="text-xs text-cyan-100/60">{customEmojiAssets.length} loaded</span>
-          </div>
+        <div className={`relative z-30 mt-2 w-full rounded-3xl border border-cyan-300/20 bg-slate-950/95 p-3 shadow-[0_20px_60px_rgba(8,15,30,0.35)] ${mode === "reaction" ? "" : `absolute top-full ${panelPositionClass} w-[min(22rem,calc(100vw-2rem))]`}`}>
+          {mode === "reaction" ? (
+            <div className="mb-4 flex flex-col gap-3 sm:gap-4">
+              {recentlyUsedAssets.length > 0 && (
+                <div className="space-y-2 rounded-3xl border border-cyan-300/10 bg-black/20 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[11px] uppercase tracking-[0.16em] text-cyan-200/80">Frequently Used</p>
+                    <span className="text-[11px] text-cyan-100/60">{recentlyUsedAssets.length} recent</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {recentlyUsedAssets.map((emoji) => (
+                      <button
+                        key={`recent-${emoji.id}`}
+                        type="button"
+                        className="flex h-10 w-10 items-center justify-center rounded-2xl border border-cyan-300/10 bg-black/30 transition hover:border-cyan-300/40 hover:bg-cyan-900/60"
+                        onClick={() => handleSelect(emoji)}
+                        title={emoji.name}
+                      >
+                        <CustomEmojiImage src={emoji.url} alt={emoji.name} className="h-6 w-6 rounded-xl object-contain" title={emoji.name} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-[11px] uppercase tracking-[0.16em] text-cyan-200/80">Custom emojis</p>
+                <span className="text-[11px] text-cyan-100/60">{customEmojiAssets.length} loaded</span>
+              </div>
+            </div>
+          ) : (
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <p className="text-[11px] uppercase tracking-[0.16em] text-cyan-200/80">Custom emojis</p>
+              <span className="text-xs text-cyan-100/60">{customEmojiAssets.length} loaded</span>
+            </div>
+          )}
 
           {customEmojiAssets.length > 0 ? (
-            <div className="grid max-h-[18rem] grid-cols-6 gap-2 overflow-y-auto rounded-3xl border border-cyan-300/10 bg-black/20 p-2 sm:grid-cols-7">
+            <div className={`grid max-h-[18rem] grid-cols-6 gap-2 overflow-y-auto rounded-3xl border border-cyan-300/10 bg-black/20 p-2 ${mode === "reaction" ? "sm:grid-cols-7" : "sm:grid-cols-7"}`}>
               {customEmojiAssets.map((emoji) => (
                 <button
                   key={emoji.id}
