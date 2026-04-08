@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { ADMIN_USER_UID } from "@/lib/admin-actions";
 
 function createAdminClient() {
   const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -12,6 +13,10 @@ function createAdminClient() {
 }
 
 async function isUserAdmin(adminClient: ReturnType<typeof createAdminClient>, userId: string) {
+  if (userId === ADMIN_USER_UID) {
+    return true;
+  }
+
   const { data: profile, error } = await adminClient
     .from("profiles")
     .select("role")

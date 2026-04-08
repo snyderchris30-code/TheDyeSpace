@@ -22,6 +22,12 @@ export type AdminActionMenuItem = {
   tone: "pink" | "cyan" | "emerald" | "rose" | "teal" | "amber" | "slate";
 };
 
+export const ADMIN_USER_UID = "794077c7-ad51-47cc-8c25-20171edfb017";
+
+export function hasAdminAccess(userId?: string | null, role?: string | null) {
+  return userId === ADMIN_USER_UID || role === "admin";
+}
+
 export const ADMIN_ACTION_MENU_ITEMS: AdminActionMenuItem[] = [
   { label: "Mute 4h", action: "mute", durationHours: 4, tone: "pink" },
   { label: "Mute 8h", action: "mute", durationHours: 8, tone: "pink" },

@@ -17,7 +17,7 @@ import InlineEmojiText from "@/app/InlineEmojiText";
 import AdminActionMenu from "@/app/AdminActionMenu";
 import UserIdentity from "@/app/UserIdentity";
 import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
-import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
+import { hasAdminAccess, runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import { appendEmojiToText, buildCustomEmojiAsset } from "@/lib/custom-emojis";
 
 const PAGE_SIZE = 8;
@@ -160,9 +160,9 @@ export default function MainFeedPage() {
       const profile = await fetchClientProfile<{ role?: string | null }>(supabaseClient, userId, "role", {
         ensureProfile: true,
       });
-      setIsAdmin(profile?.role === "admin");
+      setIsAdmin(hasAdminAccess(userId, profile?.role ?? null));
     } catch {
-      setIsAdmin(false);
+      setIsAdmin(hasAdminAccess(userId, null));
     }
   }, []);
 
@@ -572,7 +572,7 @@ export default function MainFeedPage() {
                     >
                       Delete
                     </button>
-                    {isAdmin && session?.user?.id !== post.user_id ? <AdminActionMenu targetUserId={post.user_id} onAction={handleAdminAction} /> : null}
+                    {isAdmin ? <AdminActionMenu targetUserId={post.user_id} onAction={handleAdminAction} /> : null}
                   </div>
                 )}
               </div>
@@ -741,7 +741,7 @@ export default function MainFeedPage() {
                                 usernameClassName="text-xs text-[color:var(--post-highlight)]/80 hover:text-[color:var(--post-highlight)] hover:underline"
                                 metaClassName="text-xs text-[color:var(--post-text)]/45"
                               />
-                              {isAdmin && session?.user?.id !== comment.author.id ? <AdminActionMenu targetUserId={comment.author.id} onAction={handleAdminAction} label="Admin Tools" /> : null}
+                              {isAdmin ? <AdminActionMenu targetUserId={comment.author.id} onAction={handleAdminAction} label="Admin Tools" /> : null}
                             </div>
                               {editingCommentId === comment.id ? (
                                 <div className="mt-2 flex flex-col gap-2">

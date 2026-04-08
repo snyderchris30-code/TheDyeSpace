@@ -1,4 +1,5 @@
 import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { ADMIN_USER_UID } from "@/lib/admin-actions";
 
 export type AdminProfileStatus = {
   id: string;
@@ -26,6 +27,10 @@ export function createAdminClient() {
 }
 
 export async function userIsAdmin(adminClient: ReturnType<typeof createAdminClient>, userId: string) {
+  if (userId === ADMIN_USER_UID) {
+    return true;
+  }
+
   const { data: profile, error } = await adminClient
     .from("profiles")
     .select("role")

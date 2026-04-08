@@ -17,7 +17,7 @@ import AsyncStateCard from "@/app/AsyncStateCard";
 import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
 import { normalizePostImageUrls } from "@/lib/post-media";
 import { countInteractionReactions, type AggregatedPostInteraction, type ReactionEmoji } from "@/lib/post-interactions";
-import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
+import { hasAdminAccess, runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import { appendEmojiToText, buildCustomEmojiAsset } from "@/lib/custom-emojis";
 import {
   DEFAULT_BACKGROUND_COLOR,
@@ -447,10 +447,10 @@ export default function ProfileEditor() {
         const profile = await fetchClientProfile<Pick<ProfileRow, "role">>(supabase, userId, "id, role", {
           ensureProfile: true,
         });
-        setIsAdmin(profile?.role === "admin");
+        setIsAdmin(hasAdminAccess(userId, profile?.role ?? null));
       } catch (error) {
         console.error("Failed to resolve current user admin role:", error);
-        setIsAdmin(false);
+        setIsAdmin(hasAdminAccess(userId, null));
       }
     },
     [supabase]
@@ -532,7 +532,7 @@ export default function ProfileEditor() {
 
         if (existingProfile) {
           applyLoadedProfile(existingProfile);
-          setIsAdmin(existingProfile.role === "admin");
+          setIsAdmin(hasAdminAccess(userId, existingProfile.role ?? null));
           return;
         }
 
@@ -629,7 +629,7 @@ export default function ProfileEditor() {
       applyLoadedProfile(viewedProfile);
       if (sessionUser?.id && viewedProfile.id === sessionUser.id) {
         setIsOwner(true);
-        setIsAdmin(viewedProfile.role === "admin");
+        setIsAdmin(hasAdminAccess(sessionUser.id, viewedProfile.role ?? null));
       }
     } catch (error) {
       console.error("Failed to load profile:", error);
@@ -1651,7 +1651,7 @@ export default function ProfileEditor() {
                             >
                               Delete
                             </button>
-                            {isAdmin && session?.user?.id !== post.user_id ? (
+                            {isAdmin ? (
                               <AdminActionMenu targetUserId={post.user_id} onAction={handleAdminAction} />
                             ) : null}
                           </div>
@@ -1787,7 +1787,7 @@ export default function ProfileEditor() {
                                             usernameClassName="text-xs text-[color:var(--profile-highlight)]/80 hover:text-[color:var(--profile-highlight)] hover:underline"
                                             metaClassName="text-xs text-[color:var(--profile-text)]/55"
                                           />
-                                          {isAdmin && session?.user?.id !== comment.author.id ? <AdminActionMenu targetUserId={comment.author.id} onAction={handleAdminAction} label="Admin Tools" /> : null}
+                                          {isAdmin ? <AdminActionMenu targetUserId={comment.author.id} onAction={handleAdminAction} label="Admin Tools" /> : null}
                                         </div>
                                         <InlineEmojiText
                                           text={comment.content}
