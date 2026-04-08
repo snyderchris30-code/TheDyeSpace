@@ -651,6 +651,7 @@ export default function MainFeedPage() {
                       mode="reaction"
                       align="left"
                       disabled={isBusy}
+                      triggerAriaLabel="React to post"
                       triggerClassName="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-black/20 px-4 py-2 text-sm text-cyan-100 transition hover:border-cyan-300/40 hover:bg-black/35 disabled:cursor-not-allowed disabled:opacity-60"
                       triggerContent={
                         <>
@@ -659,7 +660,7 @@ export default function MainFeedPage() {
                           ) : (
                             <Heart className="h-4 w-4" />
                           )}
-                          <span>{selectedPostReaction ? "Change Reaction" : "React"}</span>
+                          <span className="text-sm">{totalPostReactions}</span>
                         </>
                       }
                       onSelect={(emoji) => {
@@ -670,9 +671,10 @@ export default function MainFeedPage() {
                       type="button"
                       className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-black/20 px-4 py-2 text-sm text-cyan-100 transition hover:border-cyan-300/40 hover:bg-black/35"
                       onClick={() => setExpandedComments((prev) => ({ ...prev, [post.id]: !prev[post.id] }))}
+                      aria-label={isCommentsOpen ? "Hide comments" : "Show comments"}
                     >
                       <MessageCircle className="h-4 w-4" />
-                      <span>{isCommentsOpen ? "Hide Comments" : `Comments (${post.comments_count})`}</span>
+                      <span className="text-sm">{post.comments_count}</span>
                     </button>
                     <button
                       type="button"
@@ -681,7 +683,6 @@ export default function MainFeedPage() {
                     >
                       <span>Report</span>
                     </button>
-                    <span>{totalPostReactions} reactions</span>
                   </div>
                 ) : authResolved ? (
                   <span className="italic text-cyan-400">Sign in to like or comment</span>

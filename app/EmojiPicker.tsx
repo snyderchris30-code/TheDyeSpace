@@ -26,7 +26,11 @@ type EmojiResponse = {
 let cachedEmojiAssets: CustomEmojiAsset[] | null = null;
 let emojiAssetsRequest: Promise<CustomEmojiAsset[]> | null = null;
 
-async function loadEmojiAssets() {
+async function loadEmojiAssets(forceReload = false) {
+  if (cachedEmojiAssets && !forceReload) {
+    return cachedEmojiAssets;
+  }
+
   if (!emojiAssetsRequest) {
     emojiAssetsRequest = fetch("/api/emojis", { cache: "no-store" })
       .then(async (response) => {
@@ -69,9 +73,13 @@ export default function EmojiPicker({
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    if (!open) {
+      return;
+    }
+
     let active = true;
 
-    void loadEmojiAssets().then((assets) => {
+    void loadEmojiAssets(true).then((assets) => {
       if (active) {
         setCustomEmojiAssets(assets);
       }
@@ -80,7 +88,7 @@ export default function EmojiPicker({
     return () => {
       active = false;
     };
-  }, []);
+  }, [open]);
 
   useEffect(() => {
     if (!open) {
