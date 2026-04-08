@@ -6,5 +6,23 @@ type CustomEmojiImageProps = {
 };
 
 export default function CustomEmojiImage({ src, alt = "custom emoji", className, title }: CustomEmojiImageProps) {
-  return <img src={src} alt={alt} className={className} loading="lazy" title={title} />;
+  // Always encode emoji filenames for URLs
+  const safeSrc = src.startsWith('/emojis/')
+    ? `/emojis/${encodeURIComponent(src.replace(/^\/emojis\//, ''))}`
+    : encodeURI(src);
+  // Default size for emoji images if not overridden
+  const defaultSize = 32;
+  return (
+    <img
+      src={safeSrc}
+      alt={alt}
+      className={className}
+      loading="lazy"
+      title={title}
+      width={defaultSize}
+      height={defaultSize}
+      decoding="async"
+      style={{ width: defaultSize, height: defaultSize, objectFit: 'contain', ...((className ? {} : { display: 'inline-block' })) }}
+    />
+  );
 }

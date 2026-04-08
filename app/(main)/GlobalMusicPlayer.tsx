@@ -220,7 +220,10 @@ export default function GlobalMusicPlayer() {
       return;
     }
 
-    const playerOrigin = `${window.location.protocol}//${window.location.host}`;
+    // Use the custom domain for YouTube embed origin in production
+    const playerOrigin = process.env.NODE_ENV === "production"
+      ? "https://www.thedyespace.app"
+      : `${window.location.protocol}//${window.location.host}`;
 
     playerRef.current = new window.YT.Player(playerMountRef.current, {
       width: "1",

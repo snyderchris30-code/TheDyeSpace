@@ -23,6 +23,9 @@ export default function InlineEmojiText({ text, className }: InlineEmojiTextProp
             className="mx-0.5 inline-block h-5 w-5 align-text-bottom"
             loading="lazy"
             referrerPolicy="no-referrer"
+            width={20}
+            height={20}
+            decoding="async"
           />
         );
       })}
