@@ -27,10 +27,6 @@ let cachedEmojiAssets: CustomEmojiAsset[] | null = null;
 let emojiAssetsRequest: Promise<CustomEmojiAsset[]> | null = null;
 
 async function loadEmojiAssets() {
-  if (cachedEmojiAssets) {
-    return cachedEmojiAssets;
-  }
-
   if (!emojiAssetsRequest) {
     emojiAssetsRequest = fetch("/api/emojis", { cache: "no-store" })
       .then(async (response) => {

@@ -7,9 +7,13 @@ type CustomEmojiImageProps = {
 };
 
 export default function CustomEmojiImage({ src, alt = "custom emoji", className, title }: CustomEmojiImageProps) {
-  // Always encode emoji filenames for URLs
+  // Always encode emoji filenames for URLs, preserving folder separators
   const safeSrc = src.startsWith('/emojis/')
-    ? `/emojis/${encodeURIComponent(src.replace(/^\/emojis\//, ''))}`
+    ? `/emojis/${src
+        .replace(/^\/emojis\//, '')
+        .split('/')
+        .map((segment) => encodeURIComponent(segment))
+        .join('/')}`
     : encodeURI(src);
   // Default size for emoji images if not overridden
   const defaultSize = 32;
@@ -24,6 +28,7 @@ export default function CustomEmojiImage({ src, alt = "custom emoji", className,
       style={{ width: defaultSize, height: defaultSize, objectFit: 'contain', ...((className ? {} : { display: 'inline-block' })) }}
       loading="lazy"
       decoding="async"
+      unoptimized
     />
   );
 }
