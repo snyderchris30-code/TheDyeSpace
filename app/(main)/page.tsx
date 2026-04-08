@@ -261,12 +261,17 @@ export default function MainFeedPage() {
 
         const body = await response.json().catch(() => ({}));
         if (!response.ok) {
+          // Log error details for debugging
+          // eslint-disable-next-line no-console
+          console.error("[Reaction Save] API error:", body?.error, { postId, emoji, response });
           throw new Error(body?.error || "Failed to save reaction.");
         }
 
         setInteractions((prev) => ({ ...prev, [postId]: body.interaction }));
         setPostCounts(postId, { likes: body.likesCount ?? 0 });
       } catch (interactionError) {
+        // eslint-disable-next-line no-console
+        console.error("[Reaction Save] Exception:", interactionError, { postId, emoji });
         setInteractionStatus("Could not save your reaction. Please try again.");
       } finally {
         setInteractionBusyPostId(null);

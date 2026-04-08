@@ -118,7 +118,10 @@ export async function POST(req: NextRequest) {
     error: authError,
   } = await supabase.auth.getUser();
 
+
   if (authError || !user) {
+    // eslint-disable-next-line no-console
+    console.error("[posts/reactions] Auth error or missing user", { authError });
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -127,6 +130,7 @@ export async function POST(req: NextRequest) {
   const allowedEmojiSet = await getCustomEmojiUrlSet();
 
   if (!body.postId || !normalizedEmoji || !allowedEmojiSet.has(normalizedEmoji)) {
+    // eslint-disable-next-line no-console
     console.error("[posts/reactions] Invalid reaction emoji", {
       postId: body.postId,
       emoji: body.emoji,
@@ -143,6 +147,8 @@ export async function POST(req: NextRequest) {
     const viewerIsAdmin = await userIsAdmin(adminClient, user.id);
     const currentUserStatus = await loadProfileStatus(adminClient, user.id);
     if (isMuted(currentUserStatus)) {
+      // eslint-disable-next-line no-console
+      console.error("[posts/reactions] User is muted", { userId: user.id });
       return NextResponse.json({ error: "You are muted and cannot react at this time." }, { status: 403 });
     }
 
@@ -154,6 +160,8 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (postError || !post) {
+      // eslint-disable-next-line no-console
+      console.error("[posts/reactions] Post not found", { postId: body.postId, postError });
       return NextResponse.json({ error: "Post not found." }, { status: 404 });
     }
 
@@ -183,6 +191,8 @@ export async function POST(req: NextRequest) {
           .eq("user_id", user.id);
 
         if (deleteError) {
+          // eslint-disable-next-line no-console
+          console.error("[posts/reactions] Failed to delete reaction", { postId: body.postId, userId: user.id, deleteError });
           return NextResponse.json({ error: deleteError.message }, { status: 500 });
         }
       } else if (currentReaction) {
@@ -193,6 +203,8 @@ export async function POST(req: NextRequest) {
           .eq("user_id", user.id);
 
         if (updateError) {
+          // eslint-disable-next-line no-console
+          console.error("[posts/reactions] Failed to update reaction", { postId: body.postId, userId: user.id, updateError });
           return NextResponse.json({ error: updateError.message }, { status: 500 });
         }
         shouldNotify = true;
@@ -204,6 +216,8 @@ export async function POST(req: NextRequest) {
         });
 
         if (insertError) {
+          // eslint-disable-next-line no-console
+          console.error("[posts/reactions] Failed to insert reaction", { postId: body.postId, userId: user.id, insertError });
           return NextResponse.json({ error: insertError.message }, { status: 500 });
         }
         shouldNotify = true;
@@ -218,6 +232,8 @@ export async function POST(req: NextRequest) {
         .eq("id", body.postId);
 
       if (updatePostError) {
+        // eslint-disable-next-line no-console
+        console.error("[posts/reactions] Failed to update post likes count", { postId: body.postId, updatePostError });
         return NextResponse.json({ error: updatePostError.message }, { status: 500 });
       }
 
@@ -229,6 +245,8 @@ export async function POST(req: NextRequest) {
     }
 
     if (!isMissingInteractionTablesError(currentReactionError)) {
+      // eslint-disable-next-line no-console
+      console.error("[posts/reactions] Unexpected error loading current reaction", { postId: body.postId, userId: user.id, currentReactionError });
       return NextResponse.json({ error: currentReactionError.message }, { status: 500 });
     }
 
@@ -272,6 +290,8 @@ export async function POST(req: NextRequest) {
     );
 
     if (profileError) {
+      // eslint-disable-next-line no-console
+      console.error("[posts/reactions] Failed to upsert profile for legacy reaction", { userId: user.id, profileError });
       return NextResponse.json({ error: profileError.message }, { status: 500 });
     }
 
@@ -284,6 +304,8 @@ export async function POST(req: NextRequest) {
       .eq("id", body.postId);
 
     if (updatePostError) {
+      // eslint-disable-next-line no-console
+      console.error("[posts/reactions] Failed to update post likes count (legacy)", { postId: body.postId, updatePostError });
       return NextResponse.json({ error: updatePostError.message }, { status: 500 });
     }
 
@@ -293,6 +315,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ interaction, likesCount, storage: "legacy" });
   } catch (error: any) {
+    // eslint-disable-next-line no-console
+    console.error("[posts/reactions] Unhandled exception in POST handler", { error });
     return NextResponse.json(
       { error: typeof error?.message === "string" ? error.message : "Failed to save reaction." },
       { status: 500 }

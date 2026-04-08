@@ -54,7 +54,10 @@ export async function POST(req: NextRequest) {
     error: authError,
   } = await supabase.auth.getUser();
 
+
   if (authError || !user) {
+    // eslint-disable-next-line no-console
+    console.error("[posts/comment-reactions] Auth error or missing user", { authError });
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -63,6 +66,7 @@ export async function POST(req: NextRequest) {
   const allowedEmojiSet = await getCustomEmojiUrlSet();
 
   if (!body.postId || !body.commentId || !normalizedEmoji || !allowedEmojiSet.has(normalizedEmoji)) {
+    // eslint-disable-next-line no-console
     console.error("[posts/comment-reactions] Invalid comment reaction emoji", {
       postId: body.postId,
       commentId: body.commentId,
@@ -80,6 +84,8 @@ export async function POST(req: NextRequest) {
     const viewerIsAdmin = await userIsAdmin(adminClient, user.id);
     const currentUserStatus = await loadProfileStatus(adminClient, user.id);
     if (isMuted(currentUserStatus)) {
+      // eslint-disable-next-line no-console
+      console.error("[posts/comment-reactions] User is muted", { userId: user.id });
       return NextResponse.json({ error: "You are muted and cannot react at this time." }, { status: 403 });
     }
 
@@ -91,11 +97,15 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (postError || !post) {
+      // eslint-disable-next-line no-console
+      console.error("[posts/comment-reactions] Post not found", { postId: body.postId, postError });
       return NextResponse.json({ error: "Post not found." }, { status: 404 });
     }
 
     const comment = await loadTargetComment(adminClient, body.commentId, body.postId);
     if (!comment) {
+      // eslint-disable-next-line no-console
+      console.error("[posts/comment-reactions] Comment not found", { commentId: body.commentId, postId: body.postId });
       return NextResponse.json({ error: "Comment not found." }, { status: 404 });
     }
 
@@ -115,6 +125,8 @@ export async function POST(req: NextRequest) {
           .eq("user_id", user.id);
 
         if (deleteError) {
+          // eslint-disable-next-line no-console
+          console.error("[posts/comment-reactions] Failed to delete comment reaction", { commentId: body.commentId, userId: user.id, deleteError });
           return NextResponse.json({ error: deleteError.message }, { status: 500 });
         }
       } else if (currentReaction) {
@@ -125,6 +137,8 @@ export async function POST(req: NextRequest) {
           .eq("user_id", user.id);
 
         if (updateError) {
+          // eslint-disable-next-line no-console
+          console.error("[posts/comment-reactions] Failed to update comment reaction", { commentId: body.commentId, userId: user.id, updateError });
           return NextResponse.json({ error: updateError.message }, { status: 500 });
         }
       } else {
@@ -135,6 +149,8 @@ export async function POST(req: NextRequest) {
         });
 
         if (insertError) {
+          // eslint-disable-next-line no-console
+          console.error("[posts/comment-reactions] Failed to insert comment reaction", { commentId: body.commentId, userId: user.id, insertError });
           return NextResponse.json({ error: insertError.message }, { status: 500 });
         }
       }
@@ -187,12 +203,16 @@ export async function POST(req: NextRequest) {
     );
 
     if (profileError) {
+      // eslint-disable-next-line no-console
+      console.error("[posts/comment-reactions] Failed to upsert profile for legacy comment reaction", { userId: user.id, profileError });
       return NextResponse.json({ error: profileError.message }, { status: 500 });
     }
 
     const interaction = await loadLegacyInteraction(adminClient, body.postId, user.id);
     return NextResponse.json({ interaction, storage: "legacy" });
   } catch (error: any) {
+    // eslint-disable-next-line no-console
+    console.error("[posts/comment-reactions] Unhandled exception in POST handler", { error });
     return NextResponse.json(
       { error: typeof error?.message === "string" ? error.message : "Failed to save comment reaction." },
       { status: 500 }
