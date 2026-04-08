@@ -5,6 +5,7 @@ import { useDeferredValue, useMemo, useState } from "react";
 
 import {
   getAffiliateProductById,
+  parseDyeColors,
   searchAffiliateProducts,
   type AffiliateProduct,
 } from "@/lib/post-affiliate-products";
@@ -14,6 +15,17 @@ type AffiliateProductPickerProps = {
   onChange: (productIds: string[]) => void;
   className?: string;
 };
+
+const SHIRT_TYPE_OPTIONS = [
+  "",
+  "T-Shirt",
+  "Hoodie",
+  "Long Sleeve",
+  "Tank Top",
+  "Crewneck",
+  "Jeans",
+  "Dress",
+];
 
 function ProductThumb({ product }: { product: AffiliateProduct }) {
   return (
@@ -27,7 +39,13 @@ function ProductThumb({ product }: { product: AffiliateProduct }) {
 
 export default function AffiliateProductPicker({ selectedProductIds, onChange, className }: AffiliateProductPickerProps) {
   const [query, setQuery] = useState("");
+  const [shirtType, setShirtType] = useState("");
+  const [material, setMaterial] = useState("");
+  const [dyeColors, setDyeColors] = useState("");
   const deferredQuery = useDeferredValue(query);
+  const deferredMaterial = useDeferredValue(material);
+  const deferredDyeColors = useDeferredValue(dyeColors);
+  const parsedDyeColors = useMemo(() => parseDyeColors(deferredDyeColors), [deferredDyeColors]);
 
   const selectedProducts = useMemo(
     () => selectedProductIds
@@ -38,8 +56,16 @@ export default function AffiliateProductPicker({ selectedProductIds, onChange, c
 
   const results = useMemo(() => {
     const selectedProductSet = new Set(selectedProductIds);
-    return searchAffiliateProducts(deferredQuery, 6).filter((product) => !selectedProductSet.has(product.id));
-  }, [deferredQuery, selectedProductIds]);
+    return searchAffiliateProducts({
+      query: deferredQuery,
+      shirtType,
+      material: deferredMaterial,
+      dyeColors: parsedDyeColors,
+      limit: 8,
+    }).filter((product) => !selectedProductSet.has(product.id));
+  }, [deferredMaterial, deferredQuery, parsedDyeColors, selectedProductIds, shirtType]);
+
+  const hasSearchCriteria = Boolean(query.trim() || shirtType || material.trim() || dyeColors.trim());
 
   const addProduct = (productId: string) => {
     if (selectedProductIds.includes(productId)) {
@@ -58,6 +84,42 @@ export default function AffiliateProductPicker({ selectedProductIds, onChange, c
     <div className={className}>
       <label className="block">
         <span className="text-cyan-300">Add Product Links (optional)</span>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-cyan-300/70">Shirt Type</span>
+            <select
+              value={shirtType}
+              onChange={(event) => setShirtType(event.target.value)}
+              className="w-full rounded-2xl border border-cyan-300/20 bg-slate-950/75 px-4 py-3 text-white outline-none transition focus:border-cyan-300/45"
+            >
+              {SHIRT_TYPE_OPTIONS.map((option) => (
+                <option key={option || "any"} value={option}>
+                  {option || "Any"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-cyan-300/70">Material</span>
+            <input
+              type="text"
+              value={material}
+              onChange={(event) => setMaterial(event.target.value)}
+              placeholder="100% Cotton, 95% Cotton 5% Spandex..."
+              className="w-full rounded-2xl border border-cyan-300/20 bg-slate-950/75 px-4 py-3 text-white outline-none transition focus:border-cyan-300/45"
+            />
+          </label>
+        </div>
+        <label className="mt-3 block">
+          <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-cyan-300/70">Dye Colors</span>
+          <input
+            type="text"
+            value={dyeColors}
+            onChange={(event) => setDyeColors(event.target.value)}
+            placeholder="Bright Green, Black, Aquamarine, Fuchsia..."
+            className="w-full rounded-2xl border border-cyan-300/20 bg-slate-950/75 px-4 py-3 text-white outline-none transition focus:border-cyan-300/45"
+          />
+        </label>
         <div className="relative mt-2">
           <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-cyan-300/70" />
           <input
@@ -70,7 +132,7 @@ export default function AffiliateProductPicker({ selectedProductIds, onChange, c
         </div>
       </label>
 
-      {query.trim() ? (
+      {hasSearchCriteria ? (
         <div className="mt-3 rounded-[1.5rem] border border-cyan-300/15 bg-black/20 p-3">
           <p className="mb-3 text-xs uppercase tracking-[0.2em] text-cyan-300/70">Matching products</p>
           {results.length ? (
@@ -89,8 +151,20 @@ export default function AffiliateProductPicker({ selectedProductIds, onChange, c
                       <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-0.5 text-[11px] font-semibold text-cyan-100/80">
                         {product.provider}
                       </span>
+                      {product.shirtTypes?.[0] ? (
+                        <span className="rounded-full border border-cyan-300/20 bg-black/20 px-2 py-0.5 text-[11px] text-cyan-100/75">
+                          {product.shirtTypes[0]}
+                        </span>
+                      ) : null}
                     </div>
                     <p className="mt-1 text-sm text-cyan-100/75">{product.description}</p>
+                    {product.materials?.length || product.dyeColors?.length ? (
+                      <p className="mt-1 text-xs text-cyan-100/60">
+                        {product.materials?.length ? `Material: ${product.materials[0]}` : null}
+                        {product.materials?.length && product.dyeColors?.length ? " • " : null}
+                        {product.dyeColors?.length ? `Colors: ${product.dyeColors.slice(0, 3).join(", ")}` : null}
+                      </p>
+                    ) : null}
                   </div>
                   <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-100">
                     <Plus className="h-3.5 w-3.5" />
@@ -123,6 +197,13 @@ export default function AffiliateProductPicker({ selectedProductIds, onChange, c
                     </span>
                   </div>
                   <p className="mt-1 text-sm text-cyan-100/75">{product.description}</p>
+                  {product.materials?.length || product.dyeColors?.length ? (
+                    <p className="mt-1 text-xs text-cyan-100/60">
+                      {product.materials?.length ? `Material: ${product.materials[0]}` : null}
+                      {product.materials?.length && product.dyeColors?.length ? " • " : null}
+                      {product.dyeColors?.length ? `Colors: ${product.dyeColors.slice(0, 3).join(", ")}` : null}
+                    </p>
+                  ) : null}
                 </div>
                 <button
                   type="button"
