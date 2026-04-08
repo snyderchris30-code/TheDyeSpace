@@ -279,6 +279,7 @@ export default function ProfileEditor() {
   const viewRef = useRef<HTMLDivElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
   const [session, setSession] = useState<any>(null);
+  const [sessionValidationError, setSessionValidationError] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -564,20 +565,36 @@ export default function ProfileEditor() {
       setLoading(true);
       setLoadError(null);
       setStatus(null);
+      setSessionValidationError(null);
 
       loadStage = "session-check";
-      const { data } = await withTimeout(
-        supabase.auth.getSession(),
-        PROFILE_LOAD_TIMEOUT_MS,
-        "Unable to validate session. Please refresh and try again."
-      );
-      setSession(data.session);
-      const sessionUser = data.session?.user;
+      let sessionUser = null;
+      try {
+        const { data } = await withTimeout(
+          supabase.auth.getSession(),
+          PROFILE_LOAD_TIMEOUT_MS,
+          "Unable to validate session. Please refresh and try again."
+        );
+        setSession(data.session);
+        sessionUser = data.session?.user;
 
-      if (sessionUser?.id) {
-        void loadOwnRole(sessionUser.id);
-      } else {
+        if (sessionUser?.id) {
+          void loadOwnRole(sessionUser.id);
+        } else {
+          setIsAdmin(false);
+        }
+      } catch (error: any) {
+        console.error("Profile session validation failed:", error);
+        void reportProfileLoadError("session-check", error, { routeUsername });
+        setSession(null);
         setIsAdmin(false);
+        setSessionValidationError(
+          error?.name === "AbortError"
+            ? "Session validation timed out. Please log in again."
+            : typeof error?.message === "string"
+            ? error.message
+            : "Unable to validate session. Please log in."
+        );
       }
 
       if (!routeUsername) {
@@ -1213,6 +1230,32 @@ export default function ProfileEditor() {
             }`}
           >
             {status.text}
+          </div>
+        ) : null}
+
+        {sessionValidationError ? (
+          <div className="mb-5 rounded-2xl border border-rose-300/30 bg-rose-500/15 px-4 py-4 text-sm text-rose-100 shadow-lg backdrop-blur-xl">
+            <p className="mb-3 font-semibold">Please log in to continue.</p>
+            <p className="mb-3 text-rose-100/80">{sessionValidationError}</p>
+            <div className="flex flex-wrap gap-3">
+              <Link
+                href={`/login?redirect=/profile/${encodeURIComponent(routeUsername)}`}
+                className="inline-flex items-center rounded-full bg-rose-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-rose-300"
+              >
+                Log In
+              </Link>
+              <button
+                type="button"
+                className="inline-flex items-center rounded-full border border-rose-300/40 bg-black/20 px-4 py-2 text-sm text-rose-100 transition hover:bg-black/35"
+                onClick={() => {
+                  setSessionValidationError(null);
+                  setStatus(null);
+                  void loadProfile();
+                }}
+              >
+                Retry session validation
+              </button>
+            </div>
           </div>
         ) : null}
 

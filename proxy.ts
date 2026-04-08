@@ -5,7 +5,7 @@ import { createServerClient } from '@supabase/ssr';
 const REDIRECT_IF_AUTH_ROUTES = new Set(['/signup']);
 const PUBLIC_ROUTES = new Set(['/login', '/forgot-password', '/reset-password']);
 const PROTECTED_ROUTE_PREFIXES = ['/create', '/notifications'];
-const PROTECTED_EXACT_ROUTES = new Set<string>();
+const PROTECTED_EXACT_ROUTES = new Set<string>(['/profile']);
 
 function isProtectedPath(pathname: string) {
   if (PROTECTED_EXACT_ROUTES.has(pathname)) {
@@ -58,7 +58,11 @@ export async function proxy(request: NextRequest) {
       data: { user: authUser },
     } = await supabase.auth.getUser();
     user = authUser;
-  } catch (error) {
+  } catch (error: any) {
+    console.warn("[proxy] Supabase auth.getUser failed", {
+      pathname,
+      error: typeof error?.message === "string" ? error.message : String(error),
+    });
     // Suppress refresh token errors - user is not authenticated or session is invalid
     // Continue with user = null for proper redirect handling
   }
