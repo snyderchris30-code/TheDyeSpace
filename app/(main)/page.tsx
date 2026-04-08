@@ -678,6 +678,7 @@ export default function MainFeedPage() {
                   <div className="flex flex-wrap items-center gap-3">
                     <EmojiPicker
                       mode="reaction"
+                      reactionLayout="floating-inline"
                       align="left"
                       disabled={isBusy}
                       triggerAriaLabel="React to post"

@@ -1,4 +1,4 @@
-import Image from "next/image";
+import { buildCustomEmojiSrc } from "@/lib/custom-emojis";
 type CustomEmojiImageProps = {
   src: string;
   alt?: string;
@@ -7,28 +7,19 @@ type CustomEmojiImageProps = {
 };
 
 export default function CustomEmojiImage({ src, alt = "custom emoji", className, title }: CustomEmojiImageProps) {
-  // Always encode emoji filenames for URLs, preserving folder separators
-  const safeSrc = src.startsWith('/emojis/')
-    ? `/emojis/${src
-        .replace(/^\/emojis\//, '')
-        .split('/')
-        .map((segment) => encodeURIComponent(segment))
-        .join('/')}`
-    : encodeURI(src);
-  // Default size for emoji images if not overridden
+  const safeSrc = buildCustomEmojiSrc(src);
   const defaultSize = 32;
+
   return (
-    <Image
+    <img
       src={safeSrc}
       alt={alt}
-      className={className}
+      className={`${className ?? ""} inline-block object-contain`}
       title={title}
       width={defaultSize}
       height={defaultSize}
-      style={{ width: defaultSize, height: defaultSize, objectFit: 'contain', ...((className ? {} : { display: 'inline-block' })) }}
       loading="lazy"
       decoding="async"
-      unoptimized
     />
   );
 }

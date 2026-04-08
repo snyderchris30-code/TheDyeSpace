@@ -13,7 +13,7 @@ import {
 } from "@/lib/post-interactions";
 import { normalizeCustomEmojiUrl } from "@/lib/custom-emojis";
 import { loadLegacyInteraction, loadRelationalInteraction } from "@/lib/post-interaction-loaders";
-import { getCustomEmojiUrlSet } from "@/lib/custom-emoji-registry";
+import { getCustomEmojiFileNameSet } from "@/lib/custom-emoji-registry";
 
 import { resolveProfileUsername } from "@/lib/profile-identity";
 
@@ -127,7 +127,7 @@ export async function POST(req: NextRequest) {
 
   const body = (await req.json().catch(() => ({}))) as ReactionBody;
   const normalizedEmoji = normalizeCustomEmojiUrl(body.emoji);
-  const allowedEmojiSet = await getCustomEmojiUrlSet();
+  const allowedEmojiSet = await getCustomEmojiFileNameSet();
 
   if (!body.postId || !normalizedEmoji || !allowedEmojiSet.has(normalizedEmoji)) {
     // eslint-disable-next-line no-console

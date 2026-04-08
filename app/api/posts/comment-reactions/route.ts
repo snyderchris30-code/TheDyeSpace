@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { createAdminClient, isMuted, loadProfileStatus, userIsAdmin } from "@/lib/admin-utils";
-import { getCustomEmojiUrlSet } from "@/lib/custom-emoji-registry";
+import { getCustomEmojiFileNameSet } from "@/lib/custom-emoji-registry";
 import { loadLegacyInteraction, loadRelationalInteraction } from "@/lib/post-interaction-loaders";
 import {
   getStoredCommentReactions,
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
 
   const body = (await req.json().catch(() => ({}))) as CommentReactionBody;
   const normalizedEmoji = normalizeCustomEmojiUrl(body.emoji);
-  const allowedEmojiSet = await getCustomEmojiUrlSet();
+  const allowedEmojiSet = await getCustomEmojiFileNameSet();
 
   if (!body.postId || !body.commentId || !normalizedEmoji || !allowedEmojiSet.has(normalizedEmoji)) {
     // eslint-disable-next-line no-console

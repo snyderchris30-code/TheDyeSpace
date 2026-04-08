@@ -1691,6 +1691,7 @@ export default function ProfileEditor() {
                           {session?.user ? (
                             <EmojiPicker
                               mode="reaction"
+                              reactionLayout="floating-inline"
                               align="left"
                               disabled={isBusy}
                               triggerAriaLabel="React to post"

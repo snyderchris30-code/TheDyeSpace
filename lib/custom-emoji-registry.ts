@@ -42,6 +42,15 @@ export async function listCustomEmojiUrls(): Promise<string[]> {
   return assets.map((asset) => asset.url);
 }
 
+export async function listCustomEmojiFileNames(): Promise<string[]> {
+  const assets = await listCustomEmojiAssets();
+  return assets.map((asset) => asset.fileName);
+}
+
+export async function getCustomEmojiFileNameSet(): Promise<Set<string>> {
+  return new Set(await listCustomEmojiFileNames());
+}
+
 export async function getCustomEmojiUrlSet(): Promise<Set<string>> {
   return new Set(await listCustomEmojiUrls());
 }

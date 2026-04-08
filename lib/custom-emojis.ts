@@ -1,5 +1,5 @@
 const CUSTOM_EMOJI_TOKEN_PATTERN = /\[\[ce\|([^\]]+)\]\]/g;
-const CUSTOM_EMOJI_ASSET_PATTERN = /^\/emojis\/.+\.(png|gif)$/i;
+const CUSTOM_EMOJI_ASSET_PATTERN = /^(?:\/emojis\/)?[^/]+\.(png|gif)$/i;
 
 export type CustomEmojiAsset = {
   id: string;
@@ -33,22 +33,51 @@ export function normalizeCustomEmojiUrl(value: unknown) {
     return null;
   }
 
-  if (CUSTOM_EMOJI_ASSET_PATTERN.test(trimmed)) {
-    const [pathPart] = trimmed.split(/[?#]/, 1);
-    const decoded = decodeEmojiValue(pathPart);
-    return encodeURI(decoded);
+  const [pathPart] = trimmed.split(/[?#]/, 1);
+  const decoded = decodeEmojiValue(pathPart);
+  const normalized = decoded.replace(/^\/emojis\//i, "").trim();
+
+  if (CUSTOM_EMOJI_ASSET_PATTERN.test(normalized)) {
+    return normalized;
   }
 
   try {
     const parsed = new URL(trimmed);
-    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
-      return parsed.toString();
+    const relativePath = parsed.pathname.replace(/^\/emojis\//i, "").trim();
+    if (CUSTOM_EMOJI_ASSET_PATTERN.test(relativePath)) {
+      return relativePath;
     }
   } catch {
-    return null;
+    // ignore invalid URLs
   }
 
   return null;
+}
+
+export function buildCustomEmojiSrc(value: string) {
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    return trimmedValue;
+  }
+
+  if (trimmedValue.startsWith("/emojis/")) {
+    const innerValue = trimmedValue.replace(/^\/emojis\//i, "");
+    return `/emojis/${innerValue
+      .split("/")
+      .map((segment) => encodeURIComponent(segment))
+      .join("/")}`;
+  }
+
+  if (CUSTOM_EMOJI_ASSET_PATTERN.test(trimmedValue)) {
+    return `/emojis/${encodeURIComponent(trimmedValue)}`;
+  }
+
+  try {
+    const parsed = new URL(trimmedValue);
+    return trimmedValue;
+  } catch {
+    return trimmedValue;
+  }
 }
 
 export function normalizeCustomEmojiUrls(value: unknown, maxItems = 200) {
@@ -88,7 +117,8 @@ export function normalizeCustomEmojiUrls(value: unknown, maxItems = 200) {
 }
 
 export function isCustomEmojiReaction(value: unknown): value is string {
-  return Boolean(normalizeCustomEmojiUrl(value)?.match(CUSTOM_EMOJI_ASSET_PATTERN));
+  const normalized = normalizeCustomEmojiUrl(value);
+  return Boolean(normalized && CUSTOM_EMOJI_ASSET_PATTERN.test(normalized));
 }
 
 export function buildCustomEmojiAsset(url: string): CustomEmojiAsset {
