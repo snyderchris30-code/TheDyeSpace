@@ -1,3 +1,4 @@
+import Image from "next/image";
 type CustomEmojiImageProps = {
   src: string;
   alt?: string;
@@ -13,16 +14,16 @@ export default function CustomEmojiImage({ src, alt = "custom emoji", className,
   // Default size for emoji images if not overridden
   const defaultSize = 32;
   return (
-    <img
+    <Image
       src={safeSrc}
       alt={alt}
       className={className}
-      loading="lazy"
       title={title}
       width={defaultSize}
       height={defaultSize}
-      decoding="async"
       style={{ width: defaultSize, height: defaultSize, objectFit: 'contain', ...((className ? {} : { display: 'inline-block' })) }}
+      loading="lazy"
+      decoding="async"
     />
   );
 }

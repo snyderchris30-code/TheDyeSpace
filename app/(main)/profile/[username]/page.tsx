@@ -204,7 +204,7 @@ function buildPlaylist(urls: string[]): PlaylistSong[] {
       return {
         url,
         videoId,
-        embedUrl: `https://www.youtube-nocookie.com/embed/${videoId}`,
+        embedUrl: `https://www.youtube.com/embed/${videoId}`,
         thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
       };
     })

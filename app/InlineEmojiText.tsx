@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { parseEmojiTextSegments } from "@/lib/custom-emojis";
 
 type InlineEmojiTextProps = {
@@ -16,15 +17,15 @@ export default function InlineEmojiText({ text, className }: InlineEmojiTextProp
         }
 
         return (
-          <img
+          <Image
             key={`emoji-${index}-${segment.url}`}
             src={segment.url}
             alt="custom emoji"
             className="mx-0.5 inline-block h-5 w-5 align-text-bottom"
-            loading="lazy"
-            referrerPolicy="no-referrer"
             width={20}
             height={20}
+            style={{ width: 20, height: 20, objectFit: 'contain', display: 'inline-block', verticalAlign: 'text-bottom' }}
+            loading="lazy"
             decoding="async"
           />
         );

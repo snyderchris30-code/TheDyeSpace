@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useState } from "react";
 
 type MusicPlayerContextValue = {
   isMinimized: boolean;
@@ -21,7 +21,7 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
   const [isMinimized, setIsMinimized] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     try {
       const storedValue = window.localStorage.getItem(MUSIC_PLAYER_MINIMIZED_KEY);
       if (storedValue === "true") {

@@ -416,10 +416,24 @@ export default function MainNavbar() {
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
   const handleInstallClick = async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') setShowInstall(false);
+    if (!deferredPrompt) {
+      setShowInstall(false);
+      setDeferredPrompt(null);
+      return;
+    }
+
+    try {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setShowInstall(false);
+      }
+    } catch (error) {
+      console.error("Install prompt failed", error);
+    } finally {
+      setDeferredPrompt(null);
+      setShowInstall(false);
+    }
   };
 
   return (

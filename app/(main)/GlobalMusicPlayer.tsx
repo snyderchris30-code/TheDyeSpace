@@ -224,6 +224,7 @@ export default function GlobalMusicPlayer() {
     const playerOrigin = window.location.origin;
 
     playerRef.current = new window.YT.Player(playerMountRef.current, {
+      host: "https://www.youtube.com",
       width: "1",
       height: "1",
       playerVars: {
