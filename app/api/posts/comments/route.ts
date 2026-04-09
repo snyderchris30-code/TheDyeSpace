@@ -143,6 +143,57 @@ async function createCommentNotification(
   }
 }
 
+async function createMentionNotifications(
+  adminClient: ReturnType<typeof createAdminClient>,
+  actorId: string,
+  actorName: string,
+  postId: string,
+  mentionedUsernames: string[]
+) {
+  const uniqueUsernames = Array.from(new Set(mentionedUsernames.map((username) => username.toLowerCase())));
+  if (!uniqueUsernames.length) {
+    return;
+  }
+
+  const { data: mentionedProfiles, error: mentionProfilesError } = await adminClient
+    .from("profiles")
+    .select("id, username")
+    .in("username", uniqueUsernames);
+
+  if (mentionProfilesError) {
+    console.error("[notifications] Failed to resolve mentioned usernames", {
+      actorId,
+      postId,
+      error: mentionProfilesError.message,
+    });
+    return;
+  }
+
+  for (const profile of mentionedProfiles || []) {
+    if (profile.id === actorId) {
+      continue;
+    }
+
+    try {
+      await insertNotificationRecord(adminClient, {
+        user_id: profile.id,
+        actor_name: actorName,
+        type: "mention",
+        post_id: postId,
+        message: `${actorName} mentioned you in a comment.`,
+        read: false,
+      });
+    } catch (error: any) {
+      console.error("[notifications] Failed to create mention notification", {
+        actorId,
+        postId,
+        mentionedUsername: profile.username,
+        error: error?.message || error,
+      });
+    }
+  }
+}
+
 export async function POST(req: NextRequest) {
   const supabase = await createSupabaseServerClient();
   const {
@@ -194,6 +245,9 @@ export async function POST(req: NextRequest) {
 
     const actorName = actorProfile?.display_name?.trim() || resolveProfileUsername(actorProfile?.username, user.user_metadata?.username, user.email, user.id);
 
+    const mentionMatches = Array.from(content.matchAll(/(?:^|\s)@([a-z0-9._-]{3,30})\b/gi)).map((match) => match[1].toLowerCase());
+    const mentionedUsernames = Array.from(new Set(mentionMatches));
+
     const { data: insertedComment, error: insertError } = await adminClient
       .from("post_comments")
       .insert({
@@ -218,6 +272,9 @@ export async function POST(req: NextRequest) {
       }
 
       await createCommentNotification(adminClient, post.user_id, user.id, actorName, body.postId, insertedComment.id);
+      if (mentionedUsernames.length) {
+        await createMentionNotifications(adminClient, user.id, actorName, body.postId, mentionedUsernames);
+      }
 
       console.info("[comments/create] Comment insert succeeded", {
         postId: body.postId,
@@ -305,6 +362,9 @@ export async function POST(req: NextRequest) {
     const fallbackCommentId = nextComments[nextComments.length - 1]?.id;
     if (fallbackCommentId) {
       await createCommentNotification(adminClient, post.user_id, user.id, actorName, body.postId, fallbackCommentId, false);
+      if (mentionedUsernames.length) {
+        await createMentionNotifications(adminClient, user.id, actorName, body.postId, mentionedUsernames);
+      }
     }
 
     console.info("[comments/create] Legacy comment save succeeded", {

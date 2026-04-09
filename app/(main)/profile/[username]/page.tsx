@@ -377,6 +377,9 @@ export default function ProfileEditor() {
   const [interactions, setInteractions] = useState<InteractionMap>({});
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [commentUsernameSuggestions, setCommentUsernameSuggestions] = useState<Record<string, string[]>>({});
+  const [commentMentionPositions, setCommentMentionPositions] = useState<Record<string, { start: number; end: number }>>({});
+  const commentTextAreaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const [interactionBusyPostId, setInteractionBusyPostId] = useState<string | null>(null);
   const [songInput, setSongInput] = useState("");
   const [playerSong, setPlayerSong] = useState<PlaylistSong | null>(null);
@@ -1297,6 +1300,93 @@ export default function ProfileEditor() {
     [session?.user]
   );
 
+  const extractCommentMentionToken = useCallback((value: string, cursor: number) => {
+    const prefix = value.slice(0, cursor);
+    const match = prefix.match(/(?:^|\s)@([a-zA-Z0-9._-]{1,30})$/);
+    if (!match) {
+      return null;
+    }
+
+    const query = sanitizeUsernameInput(match[1]);
+    if (!query) {
+      return null;
+    }
+
+    return {
+      query,
+      start: cursor - match[1].length - 1,
+      end: cursor,
+    };
+  }, []);
+
+  const fetchUsernameSuggestions = useCallback(
+    async (query: string) => {
+      if (!query) {
+        return [];
+      }
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("username")
+        .ilike("username", `${query}%`)
+        .order("username", { ascending: true })
+        .limit(6);
+
+      if (error) {
+        console.error("Failed to load username suggestions:", error);
+        return [];
+      }
+
+      return (data || [])
+        .map((item: any) => (typeof item?.username === "string" ? item.username : ""))
+        .filter((name: string) => name.length > 0);
+    },
+    [supabase]
+  );
+
+  const handleCommentInputChange = useCallback(
+    async (postId: string, event: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const value = event.target.value;
+      const cursor = event.target.selectionStart ?? value.length;
+      setCommentDrafts((prev) => ({ ...prev, [postId]: value }));
+
+      const token = extractCommentMentionToken(value, cursor);
+      if (!token) {
+        setCommentUsernameSuggestions((prev) => ({ ...prev, [postId]: [] }));
+        setCommentMentionPositions((prev) => ({ ...prev, [postId]: { start: 0, end: 0 } }));
+        return;
+      }
+
+      setCommentMentionPositions((prev) => ({ ...prev, [postId]: { start: token.start, end: token.end } }));
+      const suggestions = await fetchUsernameSuggestions(token.query.toLowerCase());
+      setCommentUsernameSuggestions((prev) => ({ ...prev, [postId]: suggestions }));
+    },
+    [extractCommentMentionToken, fetchUsernameSuggestions]
+  );
+
+  const handleMentionSelect = useCallback(
+    (postId: string, username: string) => {
+      const currentComment = commentDrafts[postId] || "";
+      const position = commentMentionPositions[postId];
+      if (!position) {
+        return;
+      }
+
+      const nextComment = `${currentComment.slice(0, position.start)}@${username} ${currentComment.slice(position.end)}`;
+      setCommentDrafts((prev) => ({ ...prev, [postId]: nextComment }));
+      setCommentUsernameSuggestions((prev) => ({ ...prev, [postId]: [] }));
+      setCommentMentionPositions((prev) => ({ ...prev, [postId]: { start: 0, end: 0 } }));
+
+      const textarea = commentTextAreaRefs.current[postId];
+      if (textarea) {
+        textarea.focus();
+        const caret = position.start + username.length + 2;
+        textarea.setSelectionRange(caret, caret);
+      }
+    },
+    [commentDrafts, commentMentionPositions]
+  );
+
   const handleCommentSubmit = useCallback(
     async (postId: string) => {
       if (!session?.user) {
@@ -1325,6 +1415,8 @@ export default function ProfileEditor() {
         setInteractions((prev) => ({ ...prev, [postId]: body.interaction }));
         updatePostCounters(postId, { comments_count: body.commentsCount ?? 0 });
         setCommentDrafts((prev) => ({ ...prev, [postId]: "" }));
+        setCommentUsernameSuggestions((prev) => ({ ...prev, [postId]: [] }));
+        setCommentMentionPositions((prev) => ({ ...prev, [postId]: { start: 0, end: 0 } }));
         setExpandedComments((prev) => ({ ...prev, [postId]: true }));
       } catch (error: any) {
         setStatus({
@@ -2251,31 +2343,50 @@ export default function ProfileEditor() {
                             </div>
 
                             {session?.user ? (
-                              <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
-                                <textarea
-                                  className="min-h-24 flex-1 rounded-2xl border border-cyan-300/20 bg-slate-950/75 px-4 py-3 text-white outline-none transition focus:border-cyan-300/50"
-                                  placeholder="Add a comment"
-                                  value={commentDrafts[post.id] || ""}
-                                  onChange={(e) => setCommentDrafts((prev) => ({ ...prev, [post.id]: e.target.value }))}
-                                />
-                                <EmojiPicker
-                                  className="sm:self-end"
-                                  onSelect={(emojiOrToken) =>
-                                    setCommentDrafts((prev) => ({
-                                      ...prev,
-                                      [post.id]: appendEmojiToText(prev[post.id] || "", emojiOrToken),
-                                    }))
-                                  }
-                                />
-                                <button
-                                  className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-300 via-teal-300 to-emerald-300 px-5 py-3 text-sm font-semibold text-slate-950 shadow-lg transition hover:scale-[1.02] disabled:opacity-60"
-                                  type="button"
-                                  onClick={() => void handleCommentSubmit(post.id)}
-                                  disabled={isBusy || !(commentDrafts[post.id] || "").trim()}
-                                >
-                                  <Send className="h-4 w-4" />
-                                  <span>{isBusy ? "Posting..." : "Post Comment"}</span>
-                                </button>
+                              <div className="mt-5 flex flex-col gap-3">
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                                  <textarea
+                                    ref={(element) => {
+                                      commentTextAreaRefs.current[post.id] = element;
+                                    }}
+                                    className="min-h-24 flex-1 rounded-2xl border border-cyan-300/20 bg-slate-950/75 px-4 py-3 text-white outline-none transition focus:border-cyan-300/50"
+                                    placeholder="Add a comment"
+                                    value={commentDrafts[post.id] || ""}
+                                    onChange={(e) => void handleCommentInputChange(post.id, e)}
+                                  />
+                                  <EmojiPicker
+                                    className="sm:self-end"
+                                    onSelect={(emojiOrToken) =>
+                                      setCommentDrafts((prev) => ({
+                                        ...prev,
+                                        [post.id]: appendEmojiToText(prev[post.id] || "", emojiOrToken),
+                                      }))
+                                    }
+                                  />
+                                  <button
+                                    className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-300 via-teal-300 to-emerald-300 px-5 py-3 text-sm font-semibold text-slate-950 shadow-lg transition hover:scale-[1.02] disabled:opacity-60"
+                                    type="button"
+                                    onClick={() => void handleCommentSubmit(post.id)}
+                                    disabled={isBusy || !(commentDrafts[post.id] || "").trim()}
+                                  >
+                                    <Send className="h-4 w-4" />
+                                    <span>{isBusy ? "Posting..." : "Post Comment"}</span>
+                                  </button>
+                                </div>
+                                {commentUsernameSuggestions[post.id]?.length ? (
+                                  <div className="flex flex-wrap gap-2 rounded-2xl border border-cyan-300/20 bg-slate-950/80 p-3 text-sm text-cyan-100">
+                                    {commentUsernameSuggestions[post.id].map((username) => (
+                                      <button
+                                        key={username}
+                                        type="button"
+                                        className="rounded-full border border-cyan-300/30 bg-black/40 px-3 py-1 transition hover:border-cyan-200/60 hover:bg-cyan-300/10"
+                                        onClick={() => handleMentionSelect(post.id, username)}
+                                      >
+                                        @{username}
+                                      </button>
+                                    ))}
+                                  </div>
+                                ) : null}
                               </div>
                             ) : (
                               <p className="mt-5 text-sm text-cyan-100/65">Sign in to leave a comment.</p>

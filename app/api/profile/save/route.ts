@@ -146,6 +146,29 @@ export async function POST(req: NextRequest) {
       user.id
     );
 
+    if (safeUsername !== existingProfile?.username) {
+      const { data: usernameConflict, error: usernameConflictError } = await adminClient
+        .from("profiles")
+        .select("id")
+        .eq("username", safeUsername)
+        .neq("id", user.id)
+        .limit(1)
+        .maybeSingle();
+
+      if (usernameConflictError) {
+        logError("profile/save", "Failed to validate username uniqueness", usernameConflictError, {
+          ...requestContext,
+          userId: user.id,
+          requestedUsername: safeUsername,
+        });
+        return NextResponse.json({ error: usernameConflictError.message }, { status: 500 });
+      }
+
+      if (usernameConflict) {
+        return NextResponse.json({ error: "Username is already taken" }, { status: 400 });
+      }
+    }
+
     const nextYoutubeUrls = body.youtube_urls
       ? normalizeYoutubeVideoUrls(body.youtube_urls)
       : Array.isArray(existingThemeSettings.youtube_urls)

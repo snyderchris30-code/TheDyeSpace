@@ -110,7 +110,39 @@ export async function POST(req: Request) {
         : typeof user.user_metadata?.username === "string"
         ? user.user_metadata.username
         : undefined;
-    const username = resolveProfileUsername(requestedUsername, user.email, user.id);
+    const initialUsername = resolveProfileUsername(requestedUsername, user.email, user.id);
+    let username = initialUsername;
+    let usernameAttempt = 1;
+
+    while (true) {
+      const { data: usernameConflict, error: usernameConflictError } = await adminClient
+        .from("profiles")
+        .select("id")
+        .eq("username", username)
+        .neq("id", user.id)
+        .limit(1)
+        .maybeSingle();
+
+      if (usernameConflictError) {
+        logError("profile/init", "Failed to validate username uniqueness", usernameConflictError, {
+          ...requestContext,
+          userId: user.id,
+          requestedUsername: initialUsername,
+        });
+        return NextResponse.json({ error: usernameConflictError.message }, { status: 500 });
+      }
+
+      if (!usernameConflict) {
+        break;
+      }
+
+      username = `${initialUsername}-${user.id.slice(0, 8)}${usernameAttempt > 1 ? usernameAttempt : ""}`;
+      usernameAttempt += 1;
+      if (usernameAttempt > 5) {
+        break;
+      }
+    }
+
     const metadataDisplayName = firstNonEmptyString(
       typeof requestPayload.display_name === "string" ? requestPayload.display_name : null,
       typeof user.user_metadata?.display_name === "string" ? user.user_metadata.display_name : null,
