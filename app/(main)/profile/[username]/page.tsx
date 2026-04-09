@@ -216,6 +216,11 @@ function normalizeYoutubeUrls(values: string[]) {
 }
 
 function buildPlaylist(urls: string[]): PlaylistSong[] {
+  const originParam =
+    typeof window !== "undefined" && window.location.origin
+      ? `origin=${encodeURIComponent(window.location.origin)}&`
+      : "";
+
   return normalizeYoutubeUrls(urls)
     .map((url) => {
       const videoId = extractYoutubeVideoId(url);
@@ -223,7 +228,7 @@ function buildPlaylist(urls: string[]): PlaylistSong[] {
       return {
         url,
         videoId,
-        embedUrl: `https://www.youtube.com/embed/${videoId}`,
+        embedUrl: `https://www.youtube.com/embed/${videoId}?${originParam}enablejsapi=1&rel=0&modestbranding=1&playsinline=1`,
         thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
       };
     })
