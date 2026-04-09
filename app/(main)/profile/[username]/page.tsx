@@ -673,14 +673,37 @@ export default function ProfileEditor() {
       } catch (err) {
         console.error(`Profile fetch failed for username: ${routeUsername}`, err);
 
-        if (sessionUser && isOwnRoute) {
+        if (sessionUser) {
+          const canonicalUsername = resolveProfileUsername(
+            typeof sessionUser.user_metadata?.username === "string"
+              ? sessionUser.user_metadata.username
+              : undefined,
+            sessionUser.email,
+            sessionUser.id
+          );
+          const ownRouteByCanonicalUsername = routeUsername === canonicalUsername;
+
           try {
-            await fetchOrCreateOwnProfile(sessionUser);
-            return;
-          } catch (autoCreateErr) {
-            console.error("Auto-create profile failed:", autoCreateErr);
-            void reportProfileLoadError("profile-auto-create", autoCreateErr, { routeUsername });
-            throw autoCreateErr;
+            const existingOwnProfile = await fetchProfileById(sessionUser.id);
+            if (existingOwnProfile && existingOwnProfile.username === routeUsername) {
+              applyLoadedProfile(existingOwnProfile);
+              setIsOwner(true);
+              setIsAdmin(hasAdminAccess(sessionUser.id, existingOwnProfile.role ?? null));
+              return;
+            }
+          } catch (profileByIdError) {
+            console.error("Failed to fetch current user profile by ID after username fetch failed:", profileByIdError);
+          }
+
+          if ((isOwnRoute || ownRouteByCanonicalUsername) && !viewedProfile) {
+            try {
+              await fetchOrCreateOwnProfile(sessionUser);
+              return;
+            } catch (autoCreateErr) {
+              console.error("Auto-create profile failed:", autoCreateErr);
+              void reportProfileLoadError("profile-auto-create", autoCreateErr, { routeUsername });
+              throw autoCreateErr;
+            }
           }
         }
 
