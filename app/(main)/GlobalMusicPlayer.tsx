@@ -4,7 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Music2, Pause, Play, Plus, SkipBack, SkipForward, X } from "lucide-react";
 import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
 import { createClient } from "@/lib/supabase/client";
-import { buildMusicQueue, extractYoutubeVideoId, normalizeMusicPlayerUrls, type MusicQueueEntry } from "@/lib/youtube-media";
+import {
+  buildMusicQueue,
+  extractYoutubeVideoId,
+  normalizeMusicPlayerUrls,
+  resolveYoutubeEmbedOrigin,
+  type MusicQueueEntry,
+} from "@/lib/youtube-media";
 import { DEFAULT_PUBLIC_MUSIC_TITLE, DEFAULT_PUBLIC_MUSIC_URL } from "@/lib/app-config";
 import { useRouter } from "next/navigation";
 import { useMusicPlayerContext } from "@/app/MusicPlayerContext";
@@ -230,22 +236,23 @@ export default function GlobalMusicPlayer() {
     }
 
     playerMountRef.current.innerHTML = "";
-    const playerOrigin = window.location.origin;
+    const playerOrigin = resolveYoutubeEmbedOrigin(window.location.origin) || "https://www.thedyespace.app";
+    const playerVars: Record<string, number | string> = {
+      // Respect YouTube embed behavior: no forced autoplay on load.
+      autoplay: 0,
+      controls: 0,
+      rel: 0,
+      modestbranding: 1,
+      playsinline: 1,
+      enablejsapi: 1,
+      origin: playerOrigin,
+    };
 
     playerRef.current = new window.YT.Player(playerMountRef.current, {
       host: "https://www.youtube.com",
       width: "1",
       height: "1",
-      playerVars: {
-        // Respect YouTube embed behavior: no forced autoplay on load.
-        autoplay: 0,
-        controls: 0,
-        rel: 0,
-        modestbranding: 1,
-        playsinline: 1,
-        enablejsapi: 1,
-        origin: playerOrigin,
-      },
+      playerVars,
       events: {
         onReady: () => {
           readyRef.current = true;

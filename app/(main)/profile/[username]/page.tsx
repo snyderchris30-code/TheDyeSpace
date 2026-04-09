@@ -21,6 +21,7 @@ import { countInteractionReactions, type AggregatedPostInteraction, type Reactio
 import { hasAdminAccess, runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import { appendEmojiToText, buildCustomEmojiAsset } from "@/lib/custom-emojis";
 import { stripAffiliateProductTokens } from "@/lib/post-affiliate-products";
+import { buildYoutubeEmbedUrl, extractYoutubeVideoId } from "@/lib/youtube-media";
 import {
   DEFAULT_BACKGROUND_COLOR,
   DEFAULT_FONT_STYLE,
@@ -71,6 +72,11 @@ type StatusState = {
   text: string;
 };
 
+type LoadErrorState = {
+  title: string;
+  message: string;
+};
+
 type FormState = {
   display_name: string;
   username: string;
@@ -109,6 +115,16 @@ type PlaylistSong = {
   thumbnailUrl: string;
 };
 
+type ProfileLookupResponse = {
+  profile: ProfileRow | null;
+  meta?: {
+    createdProfile?: boolean;
+    resolvedUsername?: string | null;
+    notFound?: boolean;
+  };
+  error?: string;
+};
+
 type ProfilePost = {
   id: string;
   user_id: string;
@@ -130,45 +146,6 @@ function normalizeUsername(value: string) {
   }
 
   return decoded.toLowerCase().replace(/^@+/, "");
-}
-
-function getUserRouteIdentityValues(user: any) {
-  const values: string[] = [];
-
-  if (typeof user?.id === "string" && user.id.trim().length > 0) {
-    values.push(user.id);
-  }
-
-  if (typeof user?.user_metadata?.username === "string" && user.user_metadata.username.trim().length > 0) {
-    values.push(user.user_metadata.username);
-    values.push(sanitizeUsernameInput(user.user_metadata.username));
-  }
-
-  if (typeof user?.email === "string" && user.email.trim().length > 0) {
-    values.push(user.email);
-    values.push(sanitizeUsernameInput(user.email));
-  }
-
-  return values.filter((value, index) => value.trim().length > 0 && values.indexOf(value) === index);
-}
-
-function isOwnRouteUsername(routeUsername: string, user: any) {
-  if (!user) return false;
-
-  const candidateUsername = resolveProfileUsername(
-    typeof user.user_metadata?.username === "string" ? user.user_metadata.username : undefined,
-    typeof user.email === "string" ? user.email : undefined,
-    typeof user.id === "string" ? user.id : undefined
-  );
-
-  return Boolean(
-    routeUsername === candidateUsername ||
-      getUserRouteIdentityValues(user).some(
-        (value) =>
-          normalizeUsername(value) === routeUsername ||
-          sanitizeUsernameInput(value) === routeUsername
-      )
-  );
 }
 
 function stripCategoryTag(content: string | null) {
@@ -212,13 +189,6 @@ function applyProfileThemeVars(element: HTMLElement | null, appearance?: Profile
   element.style.setProperty("--profile-highlight", resolved.highlight_color);
 }
 
-const YOUTUBE_URL_REGEX = /(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
-
-function extractYoutubeVideoId(url: string) {
-  const match = url.match(YOUTUBE_URL_REGEX);
-  return match ? match[1] : null;
-}
-
 function normalizeYoutubeUrls(values: string[]) {
   const uniqueUrls = new Set<string>();
 
@@ -237,11 +207,6 @@ function normalizeYoutubeUrls(values: string[]) {
 }
 
 function buildPlaylist(urls: string[]): PlaylistSong[] {
-  const originParam =
-    typeof window !== "undefined" && window.location.origin
-      ? `origin=${encodeURIComponent(window.location.origin)}&`
-      : "";
-
   return normalizeYoutubeUrls(urls)
     .map((url) => {
       const videoId = extractYoutubeVideoId(url);
@@ -249,7 +214,7 @@ function buildPlaylist(urls: string[]): PlaylistSong[] {
       return {
         url,
         videoId,
-        embedUrl: `https://www.youtube.com/embed/${videoId}?${originParam}rel=0&modestbranding=1&playsinline=1`,
+        embedUrl: buildYoutubeEmbedUrl(videoId),
         thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
       };
     })
@@ -257,8 +222,7 @@ function buildPlaylist(urls: string[]): PlaylistSong[] {
 }
 
 const PROFILE_LOAD_TIMEOUT_MS = 15000;
-const PROFILE_FETCH_ATTEMPTS = 2;
-const PROFILE_FETCH_TIMEOUT_MS = 3000;
+const PROFILE_FETCH_TIMEOUT_MS = 8000;
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = window.setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
@@ -329,7 +293,7 @@ export default function ProfileEditor() {
   const [viewerIsVerifiedSeller, setViewerIsVerifiedSeller] = useState(false);
   const [viewerCanAccessSmokeLounge, setViewerCanAccessSmokeLounge] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<LoadErrorState | null>(null);
   const [isFollowing, setIsFollowing] = useState(false);
   const [isFollowBusy, setIsFollowBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -509,102 +473,19 @@ export default function ProfileEditor() {
     [supabase]
   );
 
-  const fetchProfileByUsername = useCallback(
-    async (username: string) => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings, created_at, role, muted_until, voided_until, verified_badge, member_number, shadow_banned, shadow_banned_until")
-        .eq("username", username)
-        .limit(1)
-        .maybeSingle<ProfileRow>();
+  const fetchProfileSnapshotByUsername = useCallback(async (username: string, signal?: AbortSignal) => {
+    const response = await fetch(`/api/profile/lookup?username=${encodeURIComponent(username)}`, {
+      cache: "no-store",
+      signal,
+    });
+    const body = (await response.json().catch(() => ({}))) as ProfileLookupResponse;
 
-      if (error) {
-        console.error("Supabase error fetching profile by username:", username, error);
-        throw error;
-      }
+    if (!response.ok) {
+      throw new Error(typeof body?.error === "string" ? body.error : "Could not load this profile right now.");
+    }
 
-      return data;
-    },
-    [supabase]
-  );
-
-  const fetchProfileByUsernameWithRetry = useCallback(
-    async (username: string) => {
-      console.log("Starting profile fetch for username:", username);
-
-      let lastError: unknown = null;
-      for (let attempt = 1; attempt <= PROFILE_FETCH_ATTEMPTS; attempt += 1) {
-        try {
-          const profile = await withTimeout(
-            fetchProfileByUsername(username),
-            PROFILE_FETCH_TIMEOUT_MS,
-            `Profile fetch timed out for username: ${username}`
-          );
-
-          if (profile) {
-            console.log("Profile found in DB", { username, userId: profile.id });
-          } else {
-            console.warn("No profile found in DB for username:", username);
-          }
-
-          return profile;
-        } catch (error) {
-          lastError = error;
-          console.warn(`Attempt ${attempt} failed for profile fetch username: ${username}`, error);
-          if (attempt < PROFILE_FETCH_ATTEMPTS) {
-            console.warn("Retrying profile fetch for username:", username);
-          }
-        }
-      }
-
-      throw lastError;
-    },
-    [fetchProfileByUsername]
-  );
-
-  const createMissingProfileForUser = useCallback(
-    async (user: any) => {
-      const userId = user?.id;
-      if (!userId) {
-        throw new Error("Unable to create profile: missing user id.");
-      }
-
-      const username = resolveProfileUsername(
-        typeof user.user_metadata?.username === "string" ? user.user_metadata.username : undefined,
-        typeof user.email === "string" ? user.email : undefined,
-        userId
-      );
-      const displayName = user.user_metadata?.display_name || username;
-
-      console.log("Creating missing profile for user:", userId, username);
-
-      const response = await withTimeout(
-        fetch("/api/profile/init", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username, display_name: displayName }),
-        }),
-        PROFILE_FETCH_TIMEOUT_MS,
-        "Profile creation request timed out."
-      );
-
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        const errorMessage = typeof body?.error === "string" ? body.error : "Failed to create missing profile.";
-        console.error("Profile init API error:", errorMessage, body);
-        throw new Error(errorMessage);
-      }
-
-      const body = await response.json().catch(() => ({}));
-      if (!body?.profile) {
-        throw new Error("Profile initialization did not return a profile row.");
-      }
-
-      console.log("Missing profile created successfully for user:", userId, username);
-      return body.profile as ProfileRow;
-    },
-    []
-  );
+    return body;
+  }, []);
 
   const loadOwnRole = useCallback(
     async (userId: string) => {
@@ -680,48 +561,6 @@ export default function ProfileEditor() {
     [loadInteractions, reportProfileLoadError, supabase]
   );
 
-  const fetchOrCreateOwnProfile = useCallback(
-    async (user: any) => {
-      const userId = user?.id;
-      if (!userId) {
-        return;
-      }
-
-      setIsOwner(true);
-
-      try {
-        const existingProfile = await withTimeout(
-          fetchClientProfile<ProfileRow>(
-            supabase,
-            userId,
-            "id, username, display_name, bio, avatar_url, banner_url, theme_settings, created_at, role, muted_until, voided_until, verified_badge, member_number, shadow_banned, shadow_banned_until",
-            { ensureProfile: true }
-          ),
-          PROFILE_LOAD_TIMEOUT_MS,
-          "Profile lookup timed out. Please refresh and try again."
-        );
-
-        if (existingProfile) {
-          applyLoadedProfile(existingProfile);
-          setIsAdmin(hasAdminAccess(userId, existingProfile.role ?? null));
-          setViewerIsVerifiedSeller(existingProfile.verified_badge === true);
-          return;
-        }
-
-        throw new Error("We could not initialize your profile yet. Please try again in a moment.");
-      } catch (error: any) {
-        void reportProfileLoadError("profile-init-or-load", error, { profileUserId: userId });
-        const message = typeof error?.message === "string" ? error.message : "Could not load your profile right now. Please refresh and try again.";
-        setStatus({
-          type: "error",
-          text: message,
-        });
-        setLoadError(message);
-      }
-    },
-    [applyLoadedProfile, reportProfileLoadError, supabase]
-  );
-
   const loadProfile = useCallback(async () => {
     let loadStage = "session";
     try {
@@ -758,67 +597,60 @@ export default function ProfileEditor() {
         throw new Error("Unable to determine profile route.");
       }
 
-      console.log("Starting profile fetch for username:", routeUsername);
-      console.log("User is authenticated with UID:", sessionUser?.id ?? "none");
-
-      const canonicalUsername = sessionUser
-        ? resolveProfileUsername(
-            typeof sessionUser.user_metadata?.username === "string"
-              ? sessionUser.user_metadata.username
-              : undefined,
-            typeof sessionUser.email === "string" ? sessionUser.email : undefined,
-            typeof sessionUser.id === "string" ? sessionUser.id : undefined
-          )
-        : null;
-      const ownRouteByCanonicalUsername = Boolean(sessionUser && canonicalUsername === routeUsername);
-      const isOwnRoute = Boolean(
-        sessionUser &&
-          getUserRouteIdentityValues(sessionUser)
-            .some(
-              (value) =>
-                normalizeUsername(value) === routeUsername ||
-                sanitizeUsernameInput(value) === routeUsername
-            )
-      );
+      console.log("Profile fetch started", {
+        username: routeUsername,
+        userId: sessionUser?.id ?? null,
+      });
 
       setIsOwner(false);
       loadStage = "route-profile-fetch";
-      let viewedProfile: ProfileRow | null = null;
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), PROFILE_FETCH_TIMEOUT_MS);
 
+      let lookup: ProfileLookupResponse;
       try {
-        viewedProfile = await fetchProfileByUsernameWithRetry(routeUsername);
-      } catch (err) {
-        console.error(`Profile fetch failed for username: ${routeUsername}`, err);
+        lookup = await fetchProfileSnapshotByUsername(routeUsername, controller.signal);
+      } catch (error) {
+        window.clearTimeout(timeoutId);
+        if (controller.signal.aborted) {
+          const timeoutMessage = "This profile did not respond in time. Retry to load it again.";
+          console.warn("Profile fetch timed out", {
+            username: routeUsername,
+            timeoutMs: PROFILE_FETCH_TIMEOUT_MS,
+          });
+          void reportProfileLoadError("profile-timeout", error, {
+            routeUsername,
+            timeoutMs: PROFILE_FETCH_TIMEOUT_MS,
+          });
+          setLoadError({
+            title: "Profile not available",
+            message: timeoutMessage,
+          });
+          setStatus({ type: "error", text: timeoutMessage });
+          return;
+        }
+
+        throw error;
       }
 
-      if (!viewedProfile && sessionUser && (isOwnRoute || ownRouteByCanonicalUsername)) {
-        console.warn("No profile found - attempting to create missing own profile.", { routeUsername, userId: sessionUser.id });
-        try {
-          await createMissingProfileForUser(sessionUser);
-          viewedProfile = await fetchProfileByUsernameWithRetry(routeUsername);
-        } catch (createError) {
-          console.error(`Profile auto-create failed for username: ${routeUsername}`, createError);
-          void reportProfileLoadError("profile-auto-create", createError, { routeUsername });
-        }
-      }
+      window.clearTimeout(timeoutId);
+      const viewedProfile = lookup.profile;
 
-      if (!viewedProfile && sessionUser) {
-        try {
-          const existingOwnProfile = await fetchProfileById(sessionUser.id);
-          if (existingOwnProfile && existingOwnProfile.username === routeUsername) {
-            applyLoadedProfile(existingOwnProfile);
-            setIsOwner(true);
-            setIsAdmin(hasAdminAccess(sessionUser.id, existingOwnProfile.role ?? null));
-            return;
-          }
-        } catch (profileByIdError) {
-          console.error("Failed to fetch current user profile by ID after username fetch failed:", profileByIdError);
-        }
+      if (lookup.meta?.createdProfile) {
+        console.log("Profile created successfully", {
+          requestedUsername: routeUsername,
+          resolvedUsername: lookup.meta.resolvedUsername ?? routeUsername,
+          userId: sessionUser?.id ?? null,
+        });
       }
 
       if (!viewedProfile) {
-        setLoadError("Profile not found.");
-        setStatus({ type: "error", text: "Profile not found. Couldn't load profile." });
+        const message = "Profile not found. Couldn't load profile.";
+        setLoadError({
+          title: "Profile not found",
+          message,
+        });
+        setStatus({ type: "error", text: message });
         console.error(`Profile not found for username: ${routeUsername}`);
         return;
       }
@@ -836,12 +668,15 @@ export default function ProfileEditor() {
         err?.name === "AbortError"
           ? "Profile load timed out. Please refresh and try again."
           : typeof err?.message === "string" ? err.message : "Unable to load this profile.";
-      setLoadError(message);
+      setLoadError({
+        title: "Couldn't load profile",
+        message,
+      });
       setStatus({ type: "error", text: message });
     } finally {
       setLoading(false);
     }
-  }, [applyLoadedProfile, createMissingProfileForUser, fetchProfileById, fetchProfileByUsernameWithRetry, loadOwnRole, reportProfileLoadError, routeUsername, supabase]);
+  }, [applyLoadedProfile, fetchProfileSnapshotByUsername, loadOwnRole, reportProfileLoadError, routeUsername, supabase]);
 
   useEffect(() => {
     void loadProfile();
@@ -1648,8 +1483,8 @@ export default function ProfileEditor() {
         ) : loadError ? (
           <AsyncStateCard
             tone="error"
-            title="Couldn\'t load profile"
-            message={loadError}
+            title={loadError.title}
+            message={loadError.message}
             actionLabel="Retry loading"
             onAction={() => {
               setLoading(true);

@@ -1,71 +1,9 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { createClient as createServiceClient } from "@supabase/supabase-js";
-import {
-  DEFAULT_BACKGROUND_COLOR,
-  DEFAULT_FONT_STYLE,
-  DEFAULT_HIGHLIGHT_COLOR,
-  DEFAULT_TEXT_COLOR,
-  type ProfileAppearance,
-} from "@/lib/profile-theme";
-import { resolveProfileUsername } from "@/lib/profile-identity";
+
+import { createAdminClient } from "@/lib/admin-utils";
+import { ensureProfileForUser } from "@/lib/profile-bootstrap";
 import { createRequestLogContext, logError, logInfo, logWarn } from "@/lib/server-logging";
-
-const ADMIN_AUTO_FOLLOW_USER_ID = "794077c7-ad51-47cc-8c25-20171edfb017";
-
-function firstNonEmptyString(...values: Array<string | null | undefined>) {
-  for (const value of values) {
-    if (typeof value === "string" && value.trim().length > 0) {
-      return value.trim();
-    }
-  }
-
-  return null;
-}
-
-function isMissingUserFollowsTable(error: any) {
-  return error?.code === "42P01" || /user_follows/i.test(String(error?.message || ""));
-}
-
-async function ensureAdminAutoFollow(adminClient: any, targetUserId: string) {
-  if (!targetUserId || targetUserId === ADMIN_AUTO_FOLLOW_USER_ID) {
-    return;
-  }
-
-  const { error: followError } = await adminClient.from("user_follows").upsert({
-    follower_id: ADMIN_AUTO_FOLLOW_USER_ID,
-    followed_id: targetUserId,
-  });
-
-  if (followError && !isMissingUserFollowsTable(followError)) {
-    throw followError;
-  }
-
-  const { error: notificationError } = await adminClient.from("notifications").insert({
-    user_id: targetUserId,
-    actor_name: "TheDyeSpace",
-    type: "follow",
-    post_id: null,
-    message: "TheDyeSpace started following you.",
-    read: false,
-  });
-
-  if (notificationError) {
-    const cacheError = String(notificationError.message || "").includes(
-      "Could not find the 'post_id' column of 'notifications' in the schema cache"
-    );
-
-    if (cacheError) {
-      await adminClient.from("notifications").insert({
-        user_id: targetUserId,
-        actor_name: "TheDyeSpace",
-        type: "follow",
-        message: "TheDyeSpace started following you.",
-        read: false,
-      });
-    }
-  }
-}
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function POST(req: Request) {
   const requestContext = createRequestLogContext(req, "profile/init");
@@ -85,169 +23,48 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!serviceUrl || !serviceKey) {
-      logError("profile/init", "Missing service role configuration", new Error("Service role key missing"), {
+    let adminClient;
+    try {
+      adminClient = createAdminClient();
+    } catch (error) {
+      logError("profile/init", "Missing service role configuration", error, {
         ...requestContext,
         userId: user.id,
       });
-      return NextResponse.json(
-        { error: "Server misconfiguration: service role key missing" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Server misconfiguration: service role key missing" }, { status: 500 });
     }
-
-    const adminClient = createServiceClient(serviceUrl, serviceKey, {
-      auth: { persistSession: false },
-    });
 
     const requestPayload = await req.json().catch(() => ({} as any));
-    const requestedUsername =
-      typeof requestPayload.username === "string" && requestPayload.username.trim()
-        ? requestPayload.username
-        : typeof user.user_metadata?.username === "string"
-        ? user.user_metadata.username
-        : undefined;
-    const initialUsername = resolveProfileUsername(requestedUsername, user.email, user.id);
-    let username = initialUsername;
-    let usernameAttempt = 1;
-
-    while (true) {
-      const { data: usernameConflict, error: usernameConflictError } = await adminClient
-        .from("profiles")
-        .select("id")
-        .eq("username", username)
-        .neq("id", user.id)
-        .limit(1)
-        .maybeSingle();
-
-      if (usernameConflictError) {
-        logError("profile/init", "Failed to validate username uniqueness", usernameConflictError, {
-          ...requestContext,
-          userId: user.id,
-          requestedUsername: initialUsername,
-        });
-        return NextResponse.json({ error: usernameConflictError.message }, { status: 500 });
-      }
-
-      if (!usernameConflict) {
-        break;
-      }
-
-      username = `${initialUsername}-${user.id.slice(0, 8)}${usernameAttempt > 1 ? usernameAttempt : ""}`;
-      usernameAttempt += 1;
-      if (usernameAttempt > 5) {
-        break;
-      }
-    }
-
-    const metadataDisplayName = firstNonEmptyString(
-      typeof requestPayload.display_name === "string" ? requestPayload.display_name : null,
-      typeof user.user_metadata?.display_name === "string" ? user.user_metadata.display_name : null,
-      typeof user.user_metadata?.full_name === "string" ? user.user_metadata.full_name : null,
-      typeof user.user_metadata?.name === "string" ? user.user_metadata.name : null
-    );
-    const metadataAvatarUrl = firstNonEmptyString(
-      typeof user.user_metadata?.avatar_url === "string" ? user.user_metadata.avatar_url : null,
-      typeof user.user_metadata?.picture === "string" ? user.user_metadata.picture : null,
-      typeof user.user_metadata?.avatar === "string" ? user.user_metadata.avatar : null
-    );
-
     logInfo("profile/init", "Initializing profile", {
       ...requestContext,
       userId: user.id,
-      resolvedUsername: username,
+      requestedUsername: typeof requestPayload.username === "string" ? requestPayload.username : null,
     });
 
-    const { data: existingProfile, error: existingProfileError } = await adminClient
-      .from("profiles")
-      .select("id, username, display_name, bio, avatar_url, banner_url, role, muted_until, voided_until, verified_badge, member_number, shadow_banned, shadow_banned_until, smoke_room_2_invited, theme_settings")
-      .eq("id", user.id)
-      .limit(1)
-      .maybeSingle();
+    const ensuredProfile = await ensureProfileForUser(adminClient, user, {
+      username: typeof requestPayload.username === "string" ? requestPayload.username : null,
+      displayName: typeof requestPayload.display_name === "string" ? requestPayload.display_name : null,
+    });
 
-    if (existingProfileError) {
-      logError("profile/init", "Failed to query existing profile", existingProfileError, {
+    if (ensuredProfile.autoFollowError) {
+      logWarn("profile/init", "Admin auto-follow skipped", {
         ...requestContext,
         userId: user.id,
+        error:
+          ensuredProfile.autoFollowError instanceof Error
+            ? ensuredProfile.autoFollowError.message
+            : String(ensuredProfile.autoFollowError),
       });
-      return NextResponse.json({ error: existingProfileError.message }, { status: 500 });
-    }
-
-    const existingThemeSettings = (existingProfile?.theme_settings ?? {}) as ProfileAppearance;
-
-    const { data: profile, error: upsertError } = await adminClient
-      .from("profiles")
-      .upsert(
-        {
-          id: user.id,
-          username: existingProfile?.username || username,
-          display_name: firstNonEmptyString(existingProfile?.display_name, metadataDisplayName, username) ?? username,
-          bio: existingProfile?.bio ?? "",
-          avatar_url: firstNonEmptyString(existingProfile?.avatar_url, metadataAvatarUrl),
-          banner_url: existingProfile?.banner_url ?? null,
-          role: existingProfile?.role ?? null,
-          muted_until: existingProfile?.muted_until ?? null,
-          voided_until: existingProfile?.voided_until ?? null,
-          verified_badge: existingProfile?.verified_badge ?? false,
-          shadow_banned: existingProfile?.shadow_banned ?? false,
-          shadow_banned_until: existingProfile?.shadow_banned_until ?? null,
-          smoke_room_2_invited:
-            existingProfile?.verified_badge === true
-              ? true
-              : existingProfile?.smoke_room_2_invited ?? false,
-          theme_settings: {
-            ...existingThemeSettings,
-            background_color: existingThemeSettings.background_color ?? DEFAULT_BACKGROUND_COLOR,
-            background_opacity:
-              typeof existingThemeSettings.background_opacity === "number"
-                ? existingThemeSettings.background_opacity
-                : 0.7,
-            text_color: existingThemeSettings.text_color ?? DEFAULT_TEXT_COLOR,
-            highlight_color: existingThemeSettings.highlight_color ?? DEFAULT_HIGHLIGHT_COLOR,
-            font_style: existingThemeSettings.font_style ?? DEFAULT_FONT_STYLE,
-            youtube_urls: Array.isArray(existingThemeSettings.youtube_urls) ? existingThemeSettings.youtube_urls : [],
-            music_player_urls: Array.isArray(existingThemeSettings.music_player_urls) ? existingThemeSettings.music_player_urls : [],
-            show_music_player: existingThemeSettings.show_music_player ?? true,
-          },
-        },
-        { onConflict: "id", ignoreDuplicates: false }
-      )
-      .select(
-        "id, username, display_name, bio, avatar_url, banner_url, theme_settings, created_at, role, muted_until, voided_until, verified_badge, member_number, shadow_banned, shadow_banned_until, smoke_room_2_invited"
-      )
-      .limit(1)
-      .maybeSingle();
-
-    if (upsertError) {
-      logError("profile/init", "Failed to upsert profile", upsertError, {
-        ...requestContext,
-        userId: user.id,
-      });
-      return NextResponse.json({ error: upsertError.message }, { status: 500 });
-    }
-
-    if (!existingProfile) {
-      try {
-        await ensureAdminAutoFollow(adminClient, user.id);
-      } catch (error: any) {
-        logWarn("profile/init", "Admin auto-follow skipped", {
-          ...requestContext,
-          userId: user.id,
-          error: error?.message || error,
-        });
-      }
     }
 
     logInfo("profile/init", "Profile initialized", {
       ...requestContext,
       userId: user.id,
-      createdProfile: !existingProfile,
+      createdProfile: ensuredProfile.createdProfile,
+      resolvedUsername: ensuredProfile.resolvedUsername,
     });
 
-    return NextResponse.json({ profile });
+    return NextResponse.json({ profile: ensuredProfile.profile });
   } catch (error: any) {
     logError("profile/init", "Unexpected profile init failure", error, requestContext);
     return NextResponse.json(

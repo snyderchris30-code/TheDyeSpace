@@ -73,6 +73,53 @@ export function normalizeMusicPlayerUrls(input: unknown): string[] {
   return Array.from(uniqueUrls);
 }
 
+const DEFAULT_YOUTUBE_EMBED_ORIGIN = "https://www.thedyespace.app";
+
+export function resolveYoutubeEmbedOrigin(origin?: string | null) {
+  const candidateOrigin = origin ?? (typeof window !== "undefined" ? window.location.origin : DEFAULT_YOUTUBE_EMBED_ORIGIN);
+  if (!candidateOrigin) {
+    return DEFAULT_YOUTUBE_EMBED_ORIGIN;
+  }
+
+  try {
+    const parsedOrigin = new URL(candidateOrigin);
+    if (parsedOrigin.protocol !== "http:" && parsedOrigin.protocol !== "https:") {
+      return DEFAULT_YOUTUBE_EMBED_ORIGIN;
+    }
+
+    return parsedOrigin.origin;
+  } catch {
+    return DEFAULT_YOUTUBE_EMBED_ORIGIN;
+  }
+}
+
+export function buildYoutubeEmbedUrl(
+  videoId: string,
+  options: {
+    origin?: string | null;
+    enableJsApi?: boolean;
+    privacyEnhanced?: boolean;
+  } = {}
+) {
+  const params = new URLSearchParams({
+    rel: "0",
+    modestbranding: "1",
+    playsinline: "1",
+  });
+
+  if (options.enableJsApi) {
+    params.set("enablejsapi", "1");
+  }
+
+  const safeOrigin = resolveYoutubeEmbedOrigin(options.origin);
+  if (safeOrigin) {
+    params.set("origin", safeOrigin);
+  }
+
+  const host = options.privacyEnhanced === false ? "https://www.youtube.com" : "https://www.youtube-nocookie.com";
+  return `${host}/embed/${videoId}?${params.toString()}`;
+}
+
 export function buildMusicQueue(urls: string[]): MusicQueueEntry[] {
   const queue: MusicQueueEntry[] = [];
 
