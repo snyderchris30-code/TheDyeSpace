@@ -87,6 +87,17 @@ export default function TermsOfService() {
               constitutes acceptance of the updated Terms.
             </p>
           </section>
+          {/* Legal Protections and Disclaimers */}
+          <section className="mt-10">
+            <h2 className="text-xl font-semibold text-cyan-100 mb-2">Important Protections</h2>
+            <ul className="list-disc space-y-2 pl-6">
+              <li><strong>Age and Location:</strong> TheDyeSpace is for users 18 years and older located in the United States only.</li>
+              <li><strong>Prohibited Activity:</strong> No illegal substances or activities are allowed. This includes selling, promoting, or discussing drugs (even if referred to as 'special dyes', 'herbal extracts', or similar). Any such content will result in immediate removal and possible permanent ban.</li>
+              <li><strong>Verified Seller Badge:</strong> The Verified Seller badge is manually reviewed by site admins. It indicates that we have reviewed the seller’s business, but TheDyeSpace does not guarantee the quality, safety, or delivery of any products sold by Verified Sellers. Buyers assume all risk.</li>
+              <li><strong>Affiliate Links:</strong> Some links on the site may be affiliate links. TheDyeSpace may earn a small commission if you make a purchase through them, at no extra cost to you.</li>
+              <li>We reserve the right to remove any content and ban any user at any time for any reason.</li>
+            </ul>
+          </section>
         </div>
 
         <div className="mt-8 flex gap-6 justify-center">

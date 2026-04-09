@@ -11,6 +11,10 @@ export default function CommunityGuidelines() {
           <li>🚫 No hate, harassment, or illegal sales. Keep it groovy and legal.</li>
           <li>🎶 Respect copyright on music and images. Give credit where it&apos;s due.</li>
           <li>🆘 Use the Report Abuse button if you see something uncool.</li>
+            <li>Must be 18+ and in the United States</li>
+            <li>No promotion or sale of illegal substances (including anything disguised as tie-dye)</li>
+            <li>No hate speech, harassment, or impersonation</li>
+            <li>Keep the platform positive and creative</li>
         </ul>
         <div className="mt-8 flex gap-6 justify-center">
           <Link href="/terms" className="text-cyan-300 underline hover:text-green-300">Terms of Service</Link>

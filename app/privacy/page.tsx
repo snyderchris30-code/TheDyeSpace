@@ -16,6 +16,15 @@ export default function PrivacyPolicy() {
           <Link href="/terms" className="text-cyan-300 underline hover:text-green-300">Terms of Service</Link>
           <Link href="/guidelines" className="text-cyan-300 underline hover:text-green-300">Community Guidelines</Link>
         </div>
+          <div className="mt-10">
+            <h2 className="text-xl font-semibold text-cyan-100 mb-2">Additional Privacy Protections</h2>
+            <ul className="list-disc space-y-2 pl-6 text-base">
+              <li>We collect basic account information (email, username, profile data) to operate the site.</li>
+              <li>We do not sell your personal data.</li>
+              <li>Private chats are only visible to participants in that chat.</li>
+              <li>Reported content may be reviewed by admins for safety.</li>
+            </ul>
+          </div>
       </div>
     </div>
   );
