@@ -243,6 +243,7 @@ export default function GlobalMusicPlayer() {
         rel: 0,
         modestbranding: 1,
         playsinline: 1,
+        enablejsapi: 1,
         origin: playerOrigin,
       },
       events: {

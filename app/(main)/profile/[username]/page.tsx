@@ -133,20 +133,41 @@ function normalizeUsername(value: string) {
 }
 
 function getUserRouteIdentityValues(user: any) {
-  return [user?.id, user?.user_metadata?.username, user?.email].filter(
-    (value): value is string => typeof value === "string" && value.trim().length > 0
-  );
+  const values: string[] = [];
+
+  if (typeof user?.id === "string" && user.id.trim().length > 0) {
+    values.push(user.id);
+  }
+
+  if (typeof user?.user_metadata?.username === "string" && user.user_metadata.username.trim().length > 0) {
+    values.push(user.user_metadata.username);
+    values.push(sanitizeUsernameInput(user.user_metadata.username));
+  }
+
+  if (typeof user?.email === "string" && user.email.trim().length > 0) {
+    values.push(user.email);
+    values.push(sanitizeUsernameInput(user.email));
+  }
+
+  return values.filter((value, index) => value.trim().length > 0 && values.indexOf(value) === index);
 }
 
 function isOwnRouteUsername(routeUsername: string, user: any) {
+  if (!user) return false;
+
+  const candidateUsername = resolveProfileUsername(
+    typeof user.user_metadata?.username === "string" ? user.user_metadata.username : undefined,
+    typeof user.email === "string" ? user.email : undefined,
+    typeof user.id === "string" ? user.id : undefined
+  );
+
   return Boolean(
-    user &&
-      getUserRouteIdentityValues(user)
-        .some(
-          (value) =>
-            normalizeUsername(value) === routeUsername ||
-            sanitizeUsernameInput(value) === routeUsername
-        )
+    routeUsername === candidateUsername ||
+      getUserRouteIdentityValues(user).some(
+        (value) =>
+          normalizeUsername(value) === routeUsername ||
+          sanitizeUsernameInput(value) === routeUsername
+      )
   );
 }
 
@@ -228,7 +249,7 @@ function buildPlaylist(urls: string[]): PlaylistSong[] {
       return {
         url,
         videoId,
-        embedUrl: `https://www.youtube.com/embed/${videoId}?${originParam}enablejsapi=1&rel=0&modestbranding=1&playsinline=1`,
+        embedUrl: `https://www.youtube.com/embed/${videoId}?${originParam}rel=0&modestbranding=1&playsinline=1`,
         thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
       };
     })
@@ -650,6 +671,16 @@ export default function ProfileEditor() {
         throw new Error("Unable to determine profile route.");
       }
 
+      const canonicalUsername = sessionUser
+        ? resolveProfileUsername(
+            typeof sessionUser.user_metadata?.username === "string"
+              ? sessionUser.user_metadata.username
+              : undefined,
+            typeof sessionUser.email === "string" ? sessionUser.email : undefined,
+            typeof sessionUser.id === "string" ? sessionUser.id : undefined
+          )
+        : null;
+      const ownRouteByCanonicalUsername = Boolean(sessionUser && canonicalUsername === routeUsername);
       const isOwnRoute = Boolean(
         sessionUser &&
           getUserRouteIdentityValues(sessionUser)
@@ -660,7 +691,7 @@ export default function ProfileEditor() {
             )
       );
 
-      if (isOwnRoute && sessionUser) {
+      if ((isOwnRoute || ownRouteByCanonicalUsername) && sessionUser) {
         loadStage = "own-profile";
         await fetchOrCreateOwnProfile(sessionUser);
         return;
@@ -716,6 +747,17 @@ export default function ProfileEditor() {
       }
 
       if (!viewedProfile) {
+        if ((isOwnRoute || ownRouteByCanonicalUsername) && sessionUser) {
+          console.warn(`No profile row found for current user ${routeUsername}, attempting auto-create.`);
+          try {
+            await fetchOrCreateOwnProfile(sessionUser);
+            return;
+          } catch (createError) {
+            console.error(`Profile auto-create failed for username: ${routeUsername}`, createError);
+            void reportProfileLoadError("profile-auto-create", createError, { routeUsername });
+          }
+        }
+
         setLoadError("Profile not found.");
         setStatus({ type: "error", text: "Profile not found. Couldn't load profile." });
         console.error(`Profile not found for username: ${routeUsername}`);
@@ -1493,7 +1535,7 @@ export default function ProfileEditor() {
                             allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                             allowFullScreen
                             loading="lazy"
-                            referrerPolicy="strict-origin-when-cross-origin"
+                            referrerPolicy="origin"
                           />
                         ) : (
                           <div className="relative h-40 w-full overflow-hidden rounded-2xl bg-slate-900 sm:h-52">
@@ -2584,7 +2626,7 @@ export default function ProfileEditor() {
                   allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                   allowFullScreen
                   loading="lazy"
-                  referrerPolicy="strict-origin-when-cross-origin"
+                  referrerPolicy="origin"
                 />
               </div>
             ) : null}

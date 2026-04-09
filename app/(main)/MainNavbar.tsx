@@ -12,6 +12,12 @@ import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
 import { createClient } from "@/lib/supabase/client";
 import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 
+type BeforeInstallPromptEvent = Event & {
+  platform?: string;
+  prompt: () => Promise<void>;
+  userChoice?: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+};
+
 type NotificationItem = { id: string; actor_name: string; type: string; message: string; read: boolean; created_at: string };
 
 async function fetchNotifications(): Promise<NotificationItem[]> {
@@ -410,11 +416,12 @@ export default function MainNavbar() {
   );
 
   // PWA Install Button logic
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
-    const handleOutside = (event: MouseEvent | TouchEvent) => {
+    const eventOptions = { passive: true } as AddEventListenerOptions;
+    const handleOutside = (event: Event) => {
       const target = event.target as HTMLElement | null;
       if (!target) return;
 
@@ -430,22 +437,33 @@ export default function MainNavbar() {
     };
 
     document.addEventListener("click", handleOutside);
-    document.addEventListener("touchstart", handleOutside);
+    document.addEventListener("touchstart", handleOutside, eventOptions);
 
     return () => {
       document.removeEventListener("click", handleOutside);
-      document.removeEventListener("touchstart", handleOutside);
+      document.removeEventListener("touchstart", handleOutside, eventOptions);
     };
   }, []);
   const [showInstall, setShowInstall] = useState(false);
   useEffect(() => {
-    const handler = (e: any) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
+    const handler = (event: Event) => {
+      const promptEvent = event as BeforeInstallPromptEvent;
+      promptEvent.preventDefault();
+      setDeferredPrompt(promptEvent);
       setShowInstall(true);
     };
-    window.addEventListener('beforeinstallprompt', handler);
-    return () => window.removeEventListener('beforeinstallprompt', handler);
+
+    const onInstalled = () => {
+      setDeferredPrompt(null);
+      setShowInstall(false);
+    };
+
+    window.addEventListener('beforeinstallprompt', handler as EventListener);
+    window.addEventListener('appinstalled', onInstalled);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handler as EventListener);
+      window.removeEventListener('appinstalled', onInstalled);
+    };
   }, []);
   const handleInstallClick = async () => {
     if (!deferredPrompt) {
@@ -455,13 +473,15 @@ export default function MainNavbar() {
     }
 
     try {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') {
-        setShowInstall(false);
+      await deferredPrompt.prompt();
+      if (deferredPrompt.userChoice && typeof deferredPrompt.userChoice.then === 'function') {
+        const result = await deferredPrompt.userChoice;
+        if (result?.outcome === 'accepted') {
+          setShowInstall(false);
+        }
       }
     } catch (error) {
-      console.error("Install prompt failed", error);
+      console.error('Install prompt failed', error);
     } finally {
       setDeferredPrompt(null);
       setShowInstall(false);
