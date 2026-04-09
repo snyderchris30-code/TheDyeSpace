@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AsyncStateCard from "@/app/AsyncStateCard";
 import { createClient } from "@/lib/supabase/client";
 import { Bell } from "lucide-react";
@@ -16,13 +16,27 @@ type Notification = {
   post_id?: string | null;
 };
 
+type PendingContactRequest = {
+  id: string;
+  status: "pending" | "approved" | "denied";
+  created_at: string;
+  requester: {
+    id: string;
+    username: string | null;
+    display_name: string | null;
+  };
+};
+
 export default function NotificationsPage() {
   const supabase = useMemo(() => createClient(), []);
   const auth = useMemo(() => supabase.auth, [supabase]);
+  const lastAuthUserIdRef = useRef<string | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [pendingContactRequests, setPendingContactRequests] = useState<PendingContactRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [requestActionId, setRequestActionId] = useState<string | null>(null);
 
   const formatMessage = (notif: Notification) => {
     const actor = (notif.actor_name || "someone").replace(/^@+/, "");
@@ -33,7 +47,7 @@ export default function NotificationsPage() {
     return `@${actor} interacted with your account`;
   };
 
-  const fetchNotifications = useCallback(async (targetUserId: string) => {
+  const fetchNotifications = useCallback(async () => {
     const response = await fetch("/api/notifications", { cache: "no-store" });
     const body = await response.json().catch(() => ({}));
 
@@ -47,6 +61,24 @@ export default function NotificationsPage() {
     const list = Array.isArray(body?.notifications) ? body.notifications : [];
     setNotifications(list as Notification[]);
   }, []);
+
+  const fetchPendingContactRequests = useCallback(async () => {
+    const response = await fetch("/api/profile/contact-requests", { cache: "no-store" });
+    const body = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setPendingContactRequests([]);
+      return;
+    }
+
+    setPendingContactRequests(
+      Array.isArray(body?.pendingRequests) ? (body.pendingRequests as PendingContactRequest[]) : []
+    );
+  }, []);
+
+  const loadNotificationState = useCallback(async () => {
+    await Promise.all([fetchNotifications(), fetchPendingContactRequests()]);
+  }, [fetchNotifications, fetchPendingContactRequests]);
 
   useEffect(() => {
     let isMounted = true;
@@ -64,14 +96,18 @@ export default function NotificationsPage() {
         }
 
         if (!currentUserId) {
+          lastAuthUserIdRef.current = null;
           setUserId(null);
           setNotifications([]);
+          setPendingContactRequests([]);
+          setError(null);
           setLoading(false);
           return;
         }
 
+        lastAuthUserIdRef.current = currentUserId;
         setUserId(currentUserId);
-        await fetchNotifications(currentUserId);
+        await loadNotificationState();
         if (!isMounted) return;
         setLoading(false);
       };
@@ -82,21 +118,60 @@ export default function NotificationsPage() {
         data: { subscription },
       } = auth.onAuthStateChange((_event, session) => {
         const nextUserId = session?.user?.id || null;
+
+        if ((_event === "TOKEN_REFRESHED" || _event === "INITIAL_SESSION") && nextUserId === lastAuthUserIdRef.current) {
+          return;
+        }
+
+        lastAuthUserIdRef.current = nextUserId;
         setUserId(nextUserId);
 
         if (!nextUserId) {
           setNotifications([]);
+          setPendingContactRequests([]);
+          setError(null);
           return;
         }
 
-        void fetchNotifications(nextUserId);
+        void loadNotificationState();
       });
 
     return () => {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, [fetchNotifications, auth]);
+  }, [auth, loadNotificationState]);
+
+  useEffect(() => {
+    if (!userId) {
+      return;
+    }
+
+    const channel = supabase
+      .channel(`public:notifications-page:${userId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` }, () => {
+        void loadNotificationState();
+      })
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "verified_seller_contact_requests", filter: `seller_user_id=eq.${userId}` },
+        () => {
+          void loadNotificationState();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "verified_seller_contact_requests", filter: `requester_user_id=eq.${userId}` },
+        () => {
+          void loadNotificationState();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [loadNotificationState, supabase, userId]);
 
   const markAsRead = async (notifId: string) => {
     if (!userId) return;
@@ -112,7 +187,35 @@ export default function NotificationsPage() {
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
       setError(body?.error || "Failed to mark notification as read.");
-      await fetchNotifications(userId);
+      await fetchNotifications();
+    }
+  };
+
+  const handleContactRequestAction = async (requestId: string, action: "approve" | "deny") => {
+    setRequestActionId(requestId);
+    try {
+      const response = await fetch("/api/profile/contact-requests", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId, action }),
+      });
+      const body = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(body?.error || "Failed to update contact request.");
+      }
+
+      setError(null);
+      setPendingContactRequests(
+        Array.isArray(body?.pendingRequests) ? (body.pendingRequests as PendingContactRequest[]) : []
+      );
+      if (userId) {
+        void fetchNotifications();
+      }
+    } catch (actionError: any) {
+      setError(typeof actionError?.message === "string" ? actionError.message : "Failed to update contact request.");
+    } finally {
+      setRequestActionId(null);
     }
   };
 
@@ -126,6 +229,58 @@ export default function NotificationsPage() {
           </h1>
           <p className="text-cyan-100/70">Stay updated with the latest activity in TheDyeSpace.</p>
         </div>
+
+        {pendingContactRequests.length > 0 ? (
+          <div className="mb-6 rounded-2xl border border-amber-300/20 bg-amber-500/5 p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-amber-200/80">Verified Seller</p>
+                <h2 className="mt-1 text-xl font-semibold text-amber-50">Contact Info Requests</h2>
+              </div>
+              <span className="rounded-full border border-amber-300/20 bg-amber-500/10 px-3 py-1 text-xs text-amber-100/80">
+                {pendingContactRequests.length} pending
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              {pendingContactRequests.map((request) => {
+                const requesterName = request.requester.display_name || request.requester.username || "Buyer";
+
+                return (
+                  <div
+                    key={request.id}
+                    className="flex flex-col gap-3 rounded-2xl border border-amber-300/15 bg-black/20 p-4 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div>
+                      <p className="font-semibold text-amber-50">{requesterName}</p>
+                      <p className="mt-1 text-xs text-amber-100/70">
+                        Requested {new Date(request.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        className="rounded-full border border-emerald-300/45 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        onClick={() => void handleContactRequestAction(request.id, "approve")}
+                        disabled={requestActionId === request.id}
+                      >
+                        {requestActionId === request.id ? "Working..." : "Accept"}
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-full border border-rose-300/45 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        onClick={() => void handleContactRequestAction(request.id, "deny")}
+                        disabled={requestActionId === request.id}
+                      >
+                        {requestActionId === request.id ? "Working..." : "Deny"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
 
         {loading ? (
           <AsyncStateCard
@@ -143,7 +298,7 @@ export default function NotificationsPage() {
               setLoading(true);
               setError(null);
               if (userId) {
-                void fetchNotifications(userId).finally(() => setLoading(false));
+                void loadNotificationState().finally(() => setLoading(false));
               } else {
                 window.location.reload();
               }

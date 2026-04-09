@@ -1,0 +1,73 @@
+
+> thedyespacev3@1.0.0 build
+> next build
+
+▲ Next.js 16.2.1 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 7.8s
+  Running TypeScript ...
+  Finished TypeScript in 6.3s ...
+  Collecting page data using 5 workers ...
+  Generating static pages using 5 workers (0/44) ...
+  Generating static pages using 5 workers (11/44) 
+  Generating static pages using 5 workers (22/44) 
+  Generating static pages using 5 workers (33/44) 
+✓ Generating static pages using 5 workers (44/44) in 441ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /admin/reports
+├ ƒ /api/admin/ai-watcher
+├ ƒ /api/admin/custom-emojis
+├ ƒ /api/admin/deleted-items
+├ ƒ /api/admin/reports
+├ ƒ /api/admin/smoke-session
+├ ƒ /api/admin/users
+├ ƒ /api/client-errors
+├ ƒ /api/emojis
+├ ƒ /api/notifications
+├ ƒ /api/posts/comment-reactions
+├ ƒ /api/posts/comments
+├ ƒ /api/posts/create
+├ ƒ /api/posts/feed
+├ ƒ /api/posts/interactions
+├ ƒ /api/posts/manage
+├ ƒ /api/posts/reactions
+├ ƒ /api/posts/update-status
+├ ƒ /api/posts/upload
+├ ƒ /api/profile/follow
+├ ƒ /api/profile/following
+├ ƒ /api/profile/init
+├ ƒ /api/profile/save
+├ ƒ /api/storage/profile-buckets
+├ ƒ /api/storage/setup
+├ ƒ /api/suggestions
+├ ○ /chat
+├ ƒ /chat/smoke-room-2
+├ ○ /create
+├ ○ /deleted-items
+├ ○ /explore
+├ ○ /forgot-password
+├ ○ /guidelines
+├ ○ /login
+├ ○ /music
+├ ○ /notifications
+├ ○ /privacy
+├ ○ /profile
+├ ƒ /profile/[username]
+├ ○ /reset-password
+├ ○ /settings
+├ ○ /signup
+├ ○ /suggestions
+└ ○ /terms
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

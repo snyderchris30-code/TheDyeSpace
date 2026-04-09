@@ -10,6 +10,11 @@ export interface ProfileThemeSettings {
   music_player_urls?: string[] | null;
   show_music_player?: boolean | null;
   custom_emojis?: string[] | null;
+  seller_background_url?: string | null;
+  seller_contact_email?: string | null;
+  seller_contact_phone?: string | null;
+  seller_contact_link?: string | null;
+  seller_contact_message?: string | null;
 }
 
 export interface Profile {
@@ -55,7 +60,7 @@ export interface Notification {
   id: string;
   user_id: string;
   actor_name: string;
-  type: 'like' | 'comment' | 'follow';
+  type: string;
   post_id: string | null;
   read: boolean;
   created_at: string;

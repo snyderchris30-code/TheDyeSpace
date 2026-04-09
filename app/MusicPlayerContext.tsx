@@ -22,13 +22,18 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
   const [isPlaying, setIsPlaying] = useState(false);
 
   useLayoutEffect(() => {
+    let shouldSet = false;
     try {
       const storedValue = window.localStorage.getItem(MUSIC_PLAYER_MINIMIZED_KEY);
       if (storedValue === "true") {
-        setIsMinimized(true);
+        shouldSet = true;
       }
     } catch {
       // Ignore localStorage failures on hydration.
+    }
+    if (shouldSet) {
+      // Defer setState to next tick to avoid calling synchronously in render
+      setTimeout(() => setIsMinimized(true), 0);
     }
   }, []);
   const [currentIndex, setCurrentIndex] = useState(0);

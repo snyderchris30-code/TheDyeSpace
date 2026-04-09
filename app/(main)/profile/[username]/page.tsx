@@ -35,6 +35,7 @@ import {
   type ProfileAppearance,
 } from "@/lib/profile-theme";
 import { resolveProfileUsername, sanitizeUsernameInput } from "@/lib/profile-identity";
+import { canAccessSmokeLounge, type VerifiedSellerContactRequestStatus } from "@/lib/verified-seller";
 const LightboxModal = dynamic(() => import("../../../LightboxModal"), { ssr: false });
 
 const DEFAULT_BANNER_URL = "https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=1400&q=80";
@@ -83,6 +84,22 @@ type FormState = {
   font_style: FontStyle;
   youtube_urls: string[];
   show_music_player: boolean;
+  seller_background_url: string | null;
+  seller_contact_email: string;
+  seller_contact_phone: string;
+  seller_contact_link: string;
+  seller_contact_message: string;
+};
+
+type SellerContactRequestSummary = {
+  id: string;
+  status: VerifiedSellerContactRequestStatus;
+  created_at: string;
+  requester: {
+    id: string;
+    username: string | null;
+    display_name: string | null;
+  };
 };
 
 type PlaylistSong = {
@@ -281,6 +298,8 @@ export default function ProfileEditor() {
   const [isUploading, setIsUploading] = useState(false);
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
   const [profileStatus, setProfileStatus] = useState<Pick<ProfileRow, "muted_until" | "voided_until" | "verified_badge" | "member_number" | "shadow_banned" | "shadow_banned_until"> | null>(null);
+  const [viewerIsVerifiedSeller, setViewerIsVerifiedSeller] = useState(false);
+  const [viewerCanAccessSmokeLounge, setViewerCanAccessSmokeLounge] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isFollowing, setIsFollowing] = useState(false);
@@ -300,6 +319,11 @@ export default function ProfileEditor() {
     font_style: DEFAULT_FONT_STYLE,
     youtube_urls: [],
     show_music_player: true,
+    seller_background_url: null,
+    seller_contact_email: "",
+    seller_contact_phone: "",
+    seller_contact_link: "",
+    seller_contact_message: "",
   });
   const [draft, setDraft] = useState<FormState>({
     display_name: "",
@@ -314,6 +338,11 @@ export default function ProfileEditor() {
     font_style: DEFAULT_FONT_STYLE,
     youtube_urls: [],
     show_music_player: true,
+    seller_background_url: null,
+    seller_contact_email: "",
+    seller_contact_phone: "",
+    seller_contact_link: "",
+    seller_contact_message: "",
   });
   const [editing, setEditing] = useState(false);
   const [posts, setPosts] = useState<ProfilePost[]>([]);
@@ -327,6 +356,22 @@ export default function ProfileEditor() {
   const [videoTitles, setVideoTitles] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<StatusState | null>(null);
   const [editorAutoOpened, setEditorAutoOpened] = useState(false);
+  const [contactRequestStatus, setContactRequestStatus] = useState<VerifiedSellerContactRequestStatus | null>(null);
+  const [pendingContactRequests, setPendingContactRequests] = useState<SellerContactRequestSummary[]>([]);
+  const [sharedSellerContactDetails, setSharedSellerContactDetails] = useState<string | null>(null);
+  const [requestContactInfoBusy, setRequestContactInfoBusy] = useState(false);
+  const [contactRequestActionId, setContactRequestActionId] = useState<string | null>(null);
+  const sessionUserIdRef = useRef<string | null>(null);
+  const profileUserIdRef = useRef<string | null>(null);
+  const lastAuthSessionUserIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    sessionUserIdRef.current = session?.user?.id ?? null;
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    profileUserIdRef.current = profileUserId;
+  }, [profileUserId]);
 
   const reportProfileLoadError = useCallback(
     async (stage: string, error: unknown, details?: Record<string, unknown>) => {
@@ -341,8 +386,8 @@ export default function ProfileEditor() {
             : "Client-side profile load failure",
         stage,
         routeUsername,
-        sessionUserId: session?.user?.id ?? null,
-        profileUserId: details?.profileUserId ?? profileUserId ?? null,
+        sessionUserId: sessionUserIdRef.current,
+        profileUserId: details?.profileUserId ?? profileUserIdRef.current ?? null,
         href: typeof window !== "undefined" ? window.location.href : null,
         userAgent: typeof navigator !== "undefined" ? navigator.userAgent : null,
         details: {
@@ -351,7 +396,7 @@ export default function ProfileEditor() {
         },
       });
     },
-    [profileUserId, routeUsername, session?.user?.id]
+    [routeUsername]
   );
 
   const applyProfileToForm = useCallback((profile: ProfileRow) => {
@@ -369,6 +414,11 @@ export default function ProfileEditor() {
       font_style: normalizeFontStyle(appearance?.font_style),
       youtube_urls: normalizeYoutubeUrls(Array.isArray(appearance?.youtube_urls) ? appearance.youtube_urls : []),
       show_music_player: appearance?.show_music_player !== false,
+      seller_background_url: typeof appearance?.seller_background_url === "string" ? appearance.seller_background_url : null,
+      seller_contact_email: typeof appearance?.seller_contact_email === "string" ? appearance.seller_contact_email : "",
+      seller_contact_phone: typeof appearance?.seller_contact_phone === "string" ? appearance.seller_contact_phone : "",
+      seller_contact_link: typeof appearance?.seller_contact_link === "string" ? appearance.seller_contact_link : "",
+      seller_contact_message: typeof appearance?.seller_contact_message === "string" ? appearance.seller_contact_message : "",
     };
     setForm(nextForm);
     setDraft(nextForm);
@@ -446,13 +496,19 @@ export default function ProfileEditor() {
   const loadOwnRole = useCallback(
     async (userId: string) => {
       try {
-        const profile = await fetchClientProfile<Pick<ProfileRow, "role">>(supabase, userId, "id, role", {
+        const profile = await fetchClientProfile<
+          Pick<ProfileRow, "role" | "verified_badge"> & { smoke_room_2_invited?: boolean | null }
+        >(supabase, userId, "id, role, verified_badge, smoke_room_2_invited", {
           ensureProfile: true,
         });
         setIsAdmin(hasAdminAccess(userId, profile?.role ?? null));
+        setViewerIsVerifiedSeller(profile?.verified_badge === true);
+        setViewerCanAccessSmokeLounge(canAccessSmokeLounge(profile));
       } catch (error) {
         console.error("Failed to resolve current user admin role:", error);
         setIsAdmin(hasAdminAccess(userId, null));
+        setViewerIsVerifiedSeller(false);
+        setViewerCanAccessSmokeLounge(false);
       }
     },
     [supabase]
@@ -535,6 +591,7 @@ export default function ProfileEditor() {
         if (existingProfile) {
           applyLoadedProfile(existingProfile);
           setIsAdmin(hasAdminAccess(userId, existingProfile.role ?? null));
+          setViewerIsVerifiedSeller(existingProfile.verified_badge === true);
           return;
         }
 
@@ -567,12 +624,15 @@ export default function ProfileEditor() {
         "Unable to validate session. Please refresh and try again."
       );
       const sessionUser = authState.user;
+      lastAuthSessionUserIdRef.current = sessionUser?.id ?? null;
       setSession(authState.session);
 
       if (sessionUser?.id) {
         void loadOwnRole(sessionUser.id);
       } else {
         setIsAdmin(false);
+        setViewerIsVerifiedSeller(false);
+        setViewerCanAccessSmokeLounge(false);
       }
 
       if (!sessionUser && authState.errorMessage) {
@@ -654,12 +714,22 @@ export default function ProfileEditor() {
     void loadProfile();
 
     const { data: listener } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
+      const nextUserId = nextSession?.user?.id ?? null;
+
       if (event === "SIGNED_OUT") {
+        lastAuthSessionUserIdRef.current = null;
         setSession(null);
+        setViewerIsVerifiedSeller(false);
+        setViewerCanAccessSmokeLounge(false);
+        return;
+      }
+
+      if ((event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION") && nextUserId === lastAuthSessionUserIdRef.current) {
         return;
       }
 
       if (nextSession) {
+        lastAuthSessionUserIdRef.current = nextUserId;
         setSession(nextSession);
         if (nextSession.user?.id) {
           void loadOwnRole(nextSession.user.id);
@@ -674,7 +744,7 @@ export default function ProfileEditor() {
     return () => {
       listener?.subscription.unsubscribe();
     };
-  }, [applyProfileToForm, fetchOrCreateOwnProfile, fetchProfileByUsername, loadOwnRole, loadProfile, routeUsername, supabase]);
+  }, [fetchOrCreateOwnProfile, loadOwnRole, loadProfile, routeUsername, supabase]);
 
   useEffect(() => {
     const visibleState = editing ? draft : form;
@@ -716,6 +786,52 @@ export default function ProfileEditor() {
     void loadPosts(profileUserId);
   }, [loadPosts, profileUserId]);
 
+  const loadContactRequestState = useCallback(async () => {
+    if (!session?.user?.id || !profileUserId || profileStatus?.verified_badge !== true) {
+      setContactRequestStatus(null);
+      setPendingContactRequests([]);
+      setSharedSellerContactDetails(null);
+      return;
+    }
+
+    const response = await fetch(`/api/profile/contact-requests?sellerUserId=${encodeURIComponent(profileUserId)}`, {
+      cache: "no-store",
+    });
+    const body = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(body?.error || "Failed to load contact request data.");
+    }
+
+    if (typeof body?.viewerVerified === "boolean") {
+      setViewerIsVerifiedSeller(body.viewerVerified);
+    }
+
+    setContactRequestStatus(
+      typeof body?.requestStatus === "string" ? (body.requestStatus as VerifiedSellerContactRequestStatus) : null
+    );
+    setPendingContactRequests(
+      Array.isArray(body?.pendingRequests) ? (body.pendingRequests as SellerContactRequestSummary[]) : []
+    );
+    setSharedSellerContactDetails(typeof body?.contactDetails === "string" && body.contactDetails.trim() ? body.contactDetails : null);
+  }, [profileStatus?.verified_badge, profileUserId, session?.user?.id]);
+
+  useEffect(() => {
+    if (!session?.user?.id || !profileUserId || profileStatus?.verified_badge !== true) {
+      setContactRequestStatus(null);
+      setPendingContactRequests([]);
+      setSharedSellerContactDetails(null);
+      return;
+    }
+
+    void loadContactRequestState().catch((error: any) => {
+      setStatus({
+        type: "error",
+        text: typeof error?.message === "string" ? error.message : "Failed to load contact requests.",
+      });
+    });
+  }, [loadContactRequestState, profileStatus?.verified_badge, profileUserId, session?.user?.id]);
+
   const ensureProfileBuckets = useCallback(async () => {
     const response = await fetch("/api/storage/profile-buckets", { method: "POST" });
     if (!response.ok) {
@@ -746,6 +862,11 @@ export default function ProfileEditor() {
         font_style: payloadState.font_style,
         youtube_urls: payloadState.youtube_urls,
         show_music_player: payloadState.show_music_player,
+        seller_background_url: payloadState.seller_background_url,
+        seller_contact_email: payloadState.seller_contact_email || null,
+        seller_contact_phone: payloadState.seller_contact_phone || null,
+        seller_contact_link: payloadState.seller_contact_link || null,
+        seller_contact_message: payloadState.seller_contact_message || null,
       };
 
       const saveRes = await fetch("/api/profile/save", {
@@ -780,7 +901,7 @@ export default function ProfileEditor() {
       file: File,
       options: {
         bucket: "avatars" | "banners";
-        field: "avatar_url" | "banner_url";
+        field: "avatar_url" | "banner_url" | "seller_background_url";
         successText: string;
         errorText: string;
       }
@@ -861,6 +982,19 @@ export default function ProfileEditor() {
     e.target.value = "";
   };
 
+  const handleSellerBackgroundUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      await uploadMediaAndSetDraft(file, {
+        bucket: "banners",
+        field: "seller_background_url",
+        successText: "Verified Seller background uploaded successfully.",
+        errorText: "Failed to upload your seller background. Please try again.",
+      });
+    }
+    e.target.value = "";
+  };
+
   const openEditor = () => {
     setDraft(form);
     setSongInput("");
@@ -933,6 +1067,72 @@ export default function ProfileEditor() {
       setIsFollowBusy(false);
     }
   };
+
+  const handleRequestContactInfo = useCallback(async () => {
+    if (!session?.user?.id || !profileUserId) {
+      setStatus({ type: "error", text: "Please sign in to request contact info." });
+      return;
+    }
+
+    setRequestContactInfoBusy(true);
+    try {
+      const response = await fetch("/api/profile/contact-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sellerUserId: profileUserId }),
+      });
+      const body = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(body?.error || "Failed to request contact info.");
+      }
+
+      setContactRequestStatus("pending");
+  setSharedSellerContactDetails(null);
+      setStatus({ type: "success", text: "Contact info request sent to this Verified Seller." });
+    } catch (error: any) {
+      setStatus({
+        type: "error",
+        text: typeof error?.message === "string" ? error.message : "Failed to request contact info.",
+      });
+    } finally {
+      setRequestContactInfoBusy(false);
+    }
+  }, [profileUserId, session?.user?.id]);
+
+  const handleContactRequestAction = useCallback(
+    async (requestId: string, action: "approve" | "deny") => {
+      setContactRequestActionId(requestId);
+      try {
+        const response = await fetch("/api/profile/contact-requests", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requestId, action }),
+        });
+        const body = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(body?.error || "Failed to update contact request.");
+        }
+
+        setPendingContactRequests(
+          Array.isArray(body?.pendingRequests) ? (body.pendingRequests as SellerContactRequestSummary[]) : []
+        );
+        setStatus({
+          type: "success",
+          text: action === "approve" ? "Buyer contact request approved." : "Buyer contact request denied.",
+        });
+      } catch (error: any) {
+        setStatus({
+          type: "error",
+          text: typeof error?.message === "string" ? error.message : "Failed to update contact request.",
+        });
+      } finally {
+        setContactRequestActionId(null);
+      }
+    },
+    []
+  );
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -1169,6 +1369,10 @@ export default function ProfileEditor() {
   const typedUsername = sanitizeUsernameInput(draft.username);
   const profileAppearance = resolveProfileAppearance(profileDisplay);
   const profileThemeTag = profileDisplay.font_style ? profileDisplay.font_style : "Custom theme";
+  const verifiedSellerBackgroundUrl =
+    profileIsVerified && typeof profileDisplay.seller_background_url === "string" && profileDisplay.seller_background_url.trim()
+      ? profileDisplay.seller_background_url
+      : null;
   const avatarInitials = (() => {
     const source = displayName !== "DyeSpace User" ? displayName : displayUsername || "TD";
     return source
@@ -1226,7 +1430,26 @@ export default function ProfileEditor() {
   }, [editing, editorAutoOpened, form, isOwner, loading, shouldAutoOpenEditor]);
 
   return (
-    <div className="min-h-screen px-4 pb-16 pt-8 text-white sm:px-8 sm:pt-10" aria-label="Profile Customization Hub">
+    <div className="relative min-h-screen px-4 pb-16 pt-8 text-white sm:px-8 sm:pt-10" aria-label="Profile Customization Hub">
+      {verifiedSellerBackgroundUrl ? (
+        <>
+          <div className="pointer-events-none fixed inset-0 -z-20 overflow-hidden" aria-hidden="true">
+            <Image
+              src={verifiedSellerBackgroundUrl}
+              alt=""
+              className="object-cover opacity-20"
+              fill
+              priority
+              sizes="100vw"
+              unoptimized
+            />
+          </div>
+          <div
+            className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(68,249,207,0.10),transparent_28%),linear-gradient(180deg,rgba(3,8,18,0.12),rgba(3,8,18,0.78))]"
+            aria-hidden="true"
+          />
+        </>
+      ) : null}
       <div className="mx-auto max-w-6xl">
         {status ? (
           <div
@@ -1558,6 +1781,59 @@ export default function ProfileEditor() {
                         </span>
                       ) : null}
                     </div>
+                    {profileIsVerified && displayUsername ? (
+                      <div className="mt-5 flex flex-wrap items-center gap-3">
+                        <Link
+                          href={`/profile/${encodeURIComponent(displayUsername)}/listings`}
+                          className="inline-flex items-center justify-center rounded-2xl border border-cyan-300/60 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-400/15 hover:text-cyan-50"
+                        >
+                          My For Sale Listings
+                        </Link>
+                        <Link
+                          href={`/profile/${encodeURIComponent(displayUsername)}/fan-chat`}
+                          className="inline-flex items-center justify-center rounded-2xl border border-fuchsia-300/60 bg-fuchsia-400/10 px-4 py-2 text-sm font-semibold text-fuchsia-100 transition hover:bg-fuchsia-400/15 hover:text-fuchsia-50"
+                        >
+                          My Fan Chat Group
+                        </Link>
+                        {viewerCanAccessSmokeLounge ? (
+                          <Link
+                            href="/chat/smoke-room-2"
+                            className="inline-flex items-center justify-center rounded-2xl border border-amber-300/60 bg-amber-400/10 px-4 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-400/15 hover:text-amber-50"
+                          >
+                            Join The Smoke Lounge 2.0
+                          </Link>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {profileIsVerified && !isOwner && session?.user && !viewerIsVerifiedSeller ? (
+                      <div className="mt-4 flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          className="inline-flex items-center justify-center rounded-2xl border border-amber-300/60 bg-amber-400/10 px-4 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-400/15 hover:text-amber-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          onClick={() => void handleRequestContactInfo()}
+                          disabled={requestContactInfoBusy || contactRequestStatus === "pending" || contactRequestStatus === "approved"}
+                        >
+                          {requestContactInfoBusy
+                            ? "Sending Request..."
+                            : contactRequestStatus === "pending"
+                              ? "Contact Info Requested"
+                              : contactRequestStatus === "approved"
+                                ? "Contact Info Shared"
+                                : contactRequestStatus === "denied"
+                                  ? "Request Contact Info Again"
+                                  : "Request Contact Info"}
+                        </button>
+                        {contactRequestStatus === "denied" ? (
+                          <span className="text-xs text-amber-100/80">Your last request was denied. You can send another request.</span>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {profileIsVerified && !isOwner && contactRequestStatus === "approved" && sharedSellerContactDetails ? (
+                      <div className="mt-4 rounded-2xl border border-emerald-300/25 bg-emerald-500/10 p-4 text-emerald-50 shadow-lg backdrop-blur-xl">
+                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-200/80">Approved Contact Info</p>
+                        <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-emerald-50/92">{sharedSellerContactDetails}</p>
+                      </div>
+                    ) : null}
                     {isAdmin && profileUserId ? (
                       <div className="mt-4">
                         <AdminActionMenu targetUserId={profileUserId} onAction={handleAdminAction} label="Admin Tools" />
@@ -1567,6 +1843,64 @@ export default function ProfileEditor() {
                 </div>
               </div>
             </section>
+
+            {isOwner && profileIsVerified ? (
+              <section className="mt-8 rounded-[1.75rem] border border-amber-300/20 bg-slate-950/45 p-6 shadow-xl backdrop-blur-xl">
+                <div className="mb-4 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.35em] text-amber-300/80">Verified Seller</p>
+                    <h2 className="mt-2 text-2xl font-bold text-amber-50">Contact Info Requests</h2>
+                  </div>
+                  <div className="rounded-full border border-amber-300/20 bg-amber-500/10 px-4 py-2 text-sm text-amber-100/85">
+                    {pendingContactRequests.length} pending
+                  </div>
+                </div>
+
+                {pendingContactRequests.length === 0 ? (
+                  <p className="rounded-2xl border border-amber-300/15 bg-black/20 px-4 py-4 text-sm text-amber-100/70">
+                    No buyers have requested your contact information yet.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {pendingContactRequests.map((request) => {
+                      const requesterName = request.requester.display_name || request.requester.username || "Buyer";
+
+                      return (
+                        <div
+                          key={request.id}
+                          className="flex flex-col gap-3 rounded-2xl border border-amber-300/15 bg-black/20 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <div>
+                            <p className="text-sm font-semibold text-amber-50">{requesterName}</p>
+                            <p className="mt-1 text-xs text-amber-100/70">
+                              Requested {new Date(request.created_at).toLocaleString()}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              className="inline-flex items-center justify-center rounded-full border border-emerald-300/45 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                              onClick={() => void handleContactRequestAction(request.id, "approve")}
+                              disabled={contactRequestActionId === request.id}
+                            >
+                              {contactRequestActionId === request.id ? "Working..." : "Accept"}
+                            </button>
+                            <button
+                              type="button"
+                              className="inline-flex items-center justify-center rounded-full border border-rose-300/45 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                              onClick={() => void handleContactRequestAction(request.id, "deny")}
+                              disabled={contactRequestActionId === request.id}
+                            >
+                              {contactRequestActionId === request.id ? "Working..." : "Deny"}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            ) : null}
 
             <section className="mt-10">
               <div className="mb-5 flex items-center justify-between gap-4">
@@ -1969,6 +2303,90 @@ export default function ProfileEditor() {
                     placeholder="Share something about yourself"
                   />
                 </label>
+
+                {profileIsVerified ? (
+                  <>
+                    <div className="sm:col-span-2 rounded-2xl border border-amber-300/20 bg-amber-500/5 p-4">
+                      <div className="mb-3">
+                        <p className="text-sm font-semibold text-amber-100">Verified Seller Background</p>
+                        <p className="text-xs text-amber-100/70">
+                          This image only appears on your profile page and will carry over to your seller listings and fan chat pages.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <label className="flex h-11 cursor-pointer items-center justify-center rounded-xl border border-amber-300/30 bg-black/30 px-4 text-sm text-amber-100 hover:bg-black/50">
+                          Upload Seller Background
+                          <input type="file" accept="image/*" className="hidden" onChange={handleSellerBackgroundUpload} disabled={isUploading} />
+                        </label>
+                        {draft.seller_background_url ? (
+                          <button
+                            type="button"
+                            className="inline-flex h-11 items-center justify-center rounded-xl border border-white/15 bg-black/30 px-4 text-sm text-white/90 hover:bg-black/50"
+                            onClick={() => setDraft((prev) => ({ ...prev, seller_background_url: null }))}
+                          >
+                            Remove Background
+                          </button>
+                        ) : null}
+                      </div>
+                      <p className="mt-3 text-xs text-amber-100/70">
+                        {draft.seller_background_url
+                          ? "Seller background photo ready. Save changes after removing it, or upload again to replace it."
+                          : "No seller background photo uploaded yet."}
+                      </p>
+                    </div>
+
+                    <div className="sm:col-span-2 rounded-2xl border border-amber-300/20 bg-amber-500/5 p-4">
+                      <div className="mb-3">
+                        <p className="text-sm font-semibold text-amber-100">Contact Information</p>
+                        <p className="text-xs text-amber-100/70">
+                          These details are only shared when you approve a buyer&apos;s contact request.
+                        </p>
+                      </div>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <label className="block">
+                          <span className="mb-2 block text-sm text-amber-100">Email (optional)</span>
+                          <input
+                            className="h-11 w-full rounded-xl border border-white/15 bg-black/30 px-3 text-white outline-none focus:border-amber-300/50"
+                            value={draft.seller_contact_email}
+                            onChange={(e) => setDraft((prev) => ({ ...prev, seller_contact_email: e.target.value }))}
+                            placeholder="seller@example.com"
+                            type="email"
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className="mb-2 block text-sm text-amber-100">Phone number (optional)</span>
+                          <input
+                            className="h-11 w-full rounded-xl border border-white/15 bg-black/30 px-3 text-white outline-none focus:border-amber-300/50"
+                            value={draft.seller_contact_phone}
+                            onChange={(e) => setDraft((prev) => ({ ...prev, seller_contact_phone: e.target.value }))}
+                            placeholder="(555) 555-5555"
+                          />
+                        </label>
+
+                        <label className="block sm:col-span-2">
+                          <span className="mb-2 block text-sm text-amber-100">Business Instagram / Website (optional)</span>
+                          <input
+                            className="h-11 w-full rounded-xl border border-white/15 bg-black/30 px-3 text-white outline-none focus:border-amber-300/50"
+                            value={draft.seller_contact_link}
+                            onChange={(e) => setDraft((prev) => ({ ...prev, seller_contact_link: e.target.value }))}
+                            placeholder="https://instagram.com/your-shop"
+                          />
+                        </label>
+
+                        <label className="block sm:col-span-2">
+                          <span className="mb-2 block text-sm text-amber-100">Short message to buyers</span>
+                          <textarea
+                            className="min-h-24 w-full rounded-2xl border border-white/15 bg-black/30 px-4 py-3 text-white outline-none focus:border-amber-300/50"
+                            value={draft.seller_contact_message}
+                            onChange={(e) => setDraft((prev) => ({ ...prev, seller_contact_message: e.target.value }))}
+                            placeholder="Let buyers know the best way to reach you and what to include in their message."
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  </>
+                ) : null}
 
                 <div className="sm:col-span-2 rounded-2xl border border-cyan-300/20 bg-black/25 p-4">
                   <div className="mb-3 flex items-center gap-2 text-cyan-100">

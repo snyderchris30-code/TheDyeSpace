@@ -80,7 +80,7 @@ export default function SmokeRoom2Client({ allowed }: { allowed: boolean }) {
 
     if (error || !data) {
       setMessages([]);
-      setError("Couldn\'t load Smoke Room 2.0 right now. Please try again.");
+      setError("Couldn\'t load The Smoke Lounge 2.0 right now. Please try again.");
       setLoading(false);
       return;
     }
@@ -193,12 +193,12 @@ export default function SmokeRoom2Client({ allowed }: { allowed: boolean }) {
   );
 
   if (!allowed) {
-    return <div className="text-center text-rose-300 mt-10">You do not have access to The Smoke Room 2.0.</div>;
+    return <div className="text-center text-rose-300 mt-10">You do not have access to this private room.</div>;
   }
 
   return (
     <div className="flex flex-col h-[70vh] max-w-2xl mx-auto mt-8 rounded-3xl border border-red-400 bg-slate-950/55 p-4 shadow-2xl backdrop-blur-xl cosmic-bg">
-      <h2 className="glow-text text-2xl font-bold mb-2 text-red-200">The Smoke Room 2.0 (Private)</h2>
+      <h2 className="glow-text text-2xl font-bold mb-2 text-red-200">The Smoke Lounge 2.0 (Verified Sellers Only)</h2>
       {adminActionStatus ? (
         <div className="mb-2 rounded-lg border border-red-300/25 bg-red-900/25 px-2 py-1 text-xs text-red-100">{adminActionStatus}</div>
       ) : null}
@@ -207,14 +207,14 @@ export default function SmokeRoom2Client({ allowed }: { allowed: boolean }) {
           <AsyncStateCard
             compact
             loading
-            title="Loading Smoke Room 2.0"
+            title="Loading The Smoke Lounge 2.0"
             message="Pulling in private-room messages and moderation controls."
           />
         ) : error ? (
           <AsyncStateCard
             compact
             tone="error"
-            title="Couldn\'t load Smoke Room 2.0"
+            title="Couldn\'t load The Smoke Lounge 2.0"
             message={error}
             actionLabel="Retry room"
             onAction={() => {

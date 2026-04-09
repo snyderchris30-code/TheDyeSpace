@@ -6,6 +6,7 @@ import {
   DEFAULT_FONT_STYLE,
   DEFAULT_HIGHLIGHT_COLOR,
   DEFAULT_TEXT_COLOR,
+  type ProfileAppearance,
 } from "@/lib/profile-theme";
 import { resolveProfileUsername } from "@/lib/profile-identity";
 import { createRequestLogContext, logError, logInfo, logWarn } from "@/lib/server-logging";
@@ -135,16 +136,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: existingProfileError.message }, { status: 500 });
     }
 
-    const existingThemeSettings = (existingProfile?.theme_settings ?? {}) as {
-      background_color?: string | null;
-      background_opacity?: number | null;
-      text_color?: string | null;
-      highlight_color?: string | null;
-      font_style?: string | null;
-      youtube_urls?: string[] | null;
-      music_player_urls?: string[] | null;
-      show_music_player?: boolean | null;
-    };
+    const existingThemeSettings = (existingProfile?.theme_settings ?? {}) as ProfileAppearance;
 
     const { data: profile, error: upsertError } = await adminClient
       .from("profiles")
@@ -162,8 +154,12 @@ export async function POST(req: Request) {
           verified_badge: existingProfile?.verified_badge ?? false,
           shadow_banned: existingProfile?.shadow_banned ?? false,
           shadow_banned_until: existingProfile?.shadow_banned_until ?? null,
-          smoke_room_2_invited: existingProfile?.smoke_room_2_invited ?? false,
+          smoke_room_2_invited:
+            existingProfile?.verified_badge === true
+              ? true
+              : existingProfile?.smoke_room_2_invited ?? false,
           theme_settings: {
+            ...existingThemeSettings,
             background_color: existingThemeSettings.background_color ?? DEFAULT_BACKGROUND_COLOR,
             background_opacity:
               typeof existingThemeSettings.background_opacity === "number"

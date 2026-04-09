@@ -57,6 +57,7 @@ export default function GlobalMusicPlayer() {
   const loadedEntryKeyRef = useRef<string | null>(null);
   const currentEntryRef = useRef<MusicQueueEntry | null>(null);
   const queueLengthRef = useRef(0);
+  const lastSessionUserIdRef = useRef<string | null>(null);
   const [session, setSession] = useState<any>(null);
   const [profileUsername, setProfileUsername] = useState<string | null>(null);
   const [musicUrls, setMusicUrls] = useState<string[]>([]);
@@ -179,6 +180,7 @@ export default function GlobalMusicPlayer() {
     const syncAuth = async () => {
       const authState = await resolveClientAuth(supabase);
       const nextSession = authState.session || null;
+      lastSessionUserIdRef.current = authState.user?.id ?? null;
       setSession(nextSession);
 
       if (authState.user?.id) {
@@ -201,9 +203,16 @@ export default function GlobalMusicPlayer() {
     void syncAuth();
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      const nextUserId = nextSession?.user?.id ?? null;
+
+      if ((_event === "TOKEN_REFRESHED" || _event === "INITIAL_SESSION") && nextUserId === lastSessionUserIdRef.current) {
+        return;
+      }
+
+      lastSessionUserIdRef.current = nextUserId;
       setSession(nextSession || null);
-      if (nextSession?.user?.id) {
-        void loadProfileMusic(nextSession.user.id);
+      if (nextUserId) {
+        void loadProfileMusic(nextUserId);
         return;
       }
 

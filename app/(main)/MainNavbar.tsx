@@ -38,6 +38,7 @@ const NAV_DROPDOWN_LAYER_CLASS = "z-[2147483600]";
 export default function MainNavbar() {
   const seenNotificationIdsRef = React.useRef<Set<string>>(new Set());
   const hasPrimedNotificationIdsRef = React.useRef(false);
+  const lastSessionUserIdRef = React.useRef<string | null>(null);
   const shareLinks = [
     { label: "www.thedyespace.com", url: "https://www.thedyespace.com" },
     { label: "www.thedyespace.app", url: "https://www.thedyespace.app" },
@@ -87,18 +88,27 @@ export default function MainNavbar() {
 
     resolveClientAuth(supabase).then(({ session, user }) => {
       if (!active) return;
+      lastSessionUserIdRef.current = user?.id || null;
       setSession(session);
       void updateProfileHref(user);
     });
     const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      const nextUserId = nextSession?.user?.id || null;
+
       if (event === "SIGNED_OUT") {
+        lastSessionUserIdRef.current = null;
         setSession(null);
         setProfileHref("/login");
         setIsAdmin(false);
         return;
       }
 
+      if ((event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION") && nextUserId === lastSessionUserIdRef.current) {
+        return;
+      }
+
       if (nextSession?.user) {
+        lastSessionUserIdRef.current = nextUserId;
         setSession(nextSession);
         void updateProfileHref(nextSession.user ?? null);
         return;
@@ -150,26 +160,22 @@ export default function MainNavbar() {
 
     void loadUserCount();
 
-    // Realtime subscription fires when replication is enabled on the table
     const channel = supabase
       .channel("public:profiles:navbar-count")
-      .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "profiles" }, () => {
+        if (active) {
+          void loadUserCount();
+        }
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "profiles" }, () => {
         if (active) {
           void loadUserCount();
         }
       })
       .subscribe();
 
-    // Polling fallback: refresh every 30 s in case realtime is not enabled
-    const interval = window.setInterval(() => {
-      if (active) {
-        void loadUserCount();
-      }
-    }, 30_000);
-
     return () => {
       active = false;
-      window.clearInterval(interval);
       void supabase.removeChannel(channel);
     };
   }, [loadUserCount]);
@@ -204,8 +210,9 @@ export default function MainNavbar() {
   const { data: notifications = [], refetch } = useQuery({
     queryKey: ["notifications", notificationUserId ?? "anonymous"],
     queryFn: fetchNotifications,
-    staleTime: 1000 * 30,
-    refetchInterval: notificationUserId ? 1000 * 30 : false,
+    staleTime: 1000 * 60 * 5,
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
     enabled: Boolean(notificationUserId),
   });
 
@@ -217,6 +224,31 @@ export default function MainNavbar() {
     seenNotificationIdsRef.current.clear();
     hasPrimedNotificationIdsRef.current = false;
   }, [notificationUserId]);
+
+  useEffect(() => {
+    if (!notificationUserId) {
+      return;
+    }
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`public:navbar-notifications:${notificationUserId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${notificationUserId}` }, () => {
+        queryClient.invalidateQueries({ queryKey: ["notifications", notificationUserId] });
+        void refetch();
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [notificationUserId, queryClient, refetch]);
+
+  useEffect(() => {
+    if (notifDrop && notificationUserId) {
+      void refetch();
+    }
+  }, [notifDrop, notificationUserId, refetch]);
 
   useEffect(() => {
     if (!isLoggedIn || typeof window === "undefined") return;

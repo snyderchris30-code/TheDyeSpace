@@ -8,9 +8,11 @@ import {
   DEFAULT_TEXT_COLOR,
   normalizeFontStyle,
   type FontStyle,
+  type ProfileAppearance,
 } from "@/lib/profile-theme";
 import { resolveProfileUsername } from "@/lib/profile-identity";
 import { createRequestLogContext, logError, logInfo, logWarn } from "@/lib/server-logging";
+import { resolveSellerContactSettings } from "@/lib/verified-seller";
 import { normalizeMusicPlayerUrls, normalizeYoutubeVideoUrls } from "@/lib/youtube-media";
 
 const ADMIN_AUTO_FOLLOW_USER_ID = "794077c7-ad51-47cc-8c25-20171edfb017";
@@ -73,6 +75,11 @@ type SaveBody = {
   youtube_urls?: string[];
   music_player_urls?: string[];
   show_music_player?: boolean;
+  seller_background_url?: string | null;
+  seller_contact_email?: string | null;
+  seller_contact_phone?: string | null;
+  seller_contact_link?: string | null;
+  seller_contact_message?: string | null;
 };
 
 export async function POST(req: NextRequest) {
@@ -115,7 +122,7 @@ export async function POST(req: NextRequest) {
 
     const { data: existingProfile, error: existingProfileError } = await adminClient
       .from("profiles")
-      .select("username, display_name, bio, avatar_url, banner_url, theme_settings")
+      .select("username, display_name, bio, avatar_url, banner_url, theme_settings, verified_badge")
       .eq("id", user.id)
       .limit(1)
       .maybeSingle();
@@ -128,16 +135,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: existingProfileError.message }, { status: 500 });
     }
 
-    const existingThemeSettings = (existingProfile?.theme_settings ?? {}) as {
-      background_color?: string | null;
-      background_opacity?: number | null;
-      text_color?: string | null;
-      highlight_color?: string | null;
-      font_style?: FontStyle | null;
-      youtube_urls?: string[] | null;
-      music_player_urls?: string[] | null;
-      show_music_player?: boolean | null;
-    };
+    const existingThemeSettings = (existingProfile?.theme_settings ?? {}) as ProfileAppearance;
+    const existingSellerSettings = resolveSellerContactSettings(existingThemeSettings);
 
     const safeUsername = resolveProfileUsername(
       body.username,
@@ -162,6 +161,30 @@ export async function POST(req: NextRequest) {
       : existingThemeSettings.font_style
         ? normalizeFontStyle(existingThemeSettings.font_style)
         : DEFAULT_FONT_STYLE;
+    const nextSellerSettings = existingProfile?.verified_badge === true
+      ? resolveSellerContactSettings({
+          seller_background_url:
+            body.seller_background_url !== undefined
+              ? body.seller_background_url
+              : existingSellerSettings.seller_background_url,
+          seller_contact_email:
+            body.seller_contact_email !== undefined
+              ? body.seller_contact_email
+              : existingSellerSettings.seller_contact_email,
+          seller_contact_phone:
+            body.seller_contact_phone !== undefined
+              ? body.seller_contact_phone
+              : existingSellerSettings.seller_contact_phone,
+          seller_contact_link:
+            body.seller_contact_link !== undefined
+              ? body.seller_contact_link
+              : existingSellerSettings.seller_contact_link,
+          seller_contact_message:
+            body.seller_contact_message !== undefined
+              ? body.seller_contact_message
+              : existingSellerSettings.seller_contact_message,
+        })
+      : existingSellerSettings;
 
     logInfo("profile/save", "Saving profile", {
       ...requestContext,
@@ -172,6 +195,7 @@ export async function POST(req: NextRequest) {
       youtubeUrlCount: nextYoutubeUrls.length,
       musicPlayerUrlCount: nextMusicPlayerUrls.length,
       fontStyle: nextFontStyle,
+      verifiedSeller: existingProfile?.verified_badge === true,
     });
 
     const { data: profile, error: upsertError } = await adminClient
@@ -199,6 +223,11 @@ export async function POST(req: NextRequest) {
             youtube_urls: nextYoutubeUrls,
             music_player_urls: nextMusicPlayerUrls,
             show_music_player: body.show_music_player ?? existingThemeSettings.show_music_player ?? true,
+            seller_background_url: nextSellerSettings.seller_background_url,
+            seller_contact_email: nextSellerSettings.seller_contact_email,
+            seller_contact_phone: nextSellerSettings.seller_contact_phone,
+            seller_contact_link: nextSellerSettings.seller_contact_link,
+            seller_contact_message: nextSellerSettings.seller_contact_message,
           },
         },
         { onConflict: "id", ignoreDuplicates: false }

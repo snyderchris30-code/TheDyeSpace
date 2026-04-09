@@ -29,6 +29,11 @@ export type ProfileAppearance = {
   youtube_urls?: string[] | null;
   music_player_urls?: string[] | null;
   show_music_player?: boolean | null;
+  seller_background_url?: string | null;
+  seller_contact_email?: string | null;
+  seller_contact_phone?: string | null;
+  seller_contact_link?: string | null;
+  seller_contact_message?: string | null;
 };
 
 export type ProfilePalette = {

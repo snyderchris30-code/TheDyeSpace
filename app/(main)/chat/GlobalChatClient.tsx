@@ -6,6 +6,7 @@ import UserIdentity from "@/app/UserIdentity";
 import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
 import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import { createClient } from "@/lib/supabase/client";
+import { canAccessSmokeLounge } from "@/lib/verified-seller";
 
 interface ChatMessage {
   id: string;
@@ -74,7 +75,7 @@ export default function GlobalChat() {
 
       const admin = profile?.role === "admin";
       setIsAdmin(admin);
-      setCanAccessRoom2(admin || profile?.smoke_room_2_invited === true);
+      setCanAccessRoom2(canAccessSmokeLounge(profile));
       setViewerProfile(profile ?? null);
     });
   }, []);
@@ -259,7 +260,7 @@ export default function GlobalChat() {
           href="/chat/smoke-room-2"
           className="mb-2 inline-flex w-fit items-center rounded-full border border-red-300/40 bg-red-900/30 px-3 py-1 text-xs font-semibold text-red-100 hover:bg-red-900/45"
         >
-          Enter Dye Chat 2.0
+          Enter The Smoke Lounge 2.0
         </a>
       ) : null}
       {adminActionStatus ? (

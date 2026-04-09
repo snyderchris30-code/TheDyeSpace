@@ -12,31 +12,33 @@ export default function Navbar({ user }: { user?: { avatar_url?: string } }) {
 
   useEffect(() => {
     const supabase = createClient();
+    let active = true;
     let subscription: any;
 
     async function fetchUserCount() {
       const { count } = await supabase
         .from("profiles")
         .select("id", { count: "exact", head: true });
-      setUserCount(count ?? null);
+      if (active) {
+        setUserCount(count ?? null);
+      }
     }
 
-    fetchUserCount();
+    void fetchUserCount();
 
-    // Realtime subscription fires when replication is enabled on the table
     subscription = supabase
       .channel('public:profiles')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'profiles' }, () => {
-        fetchUserCount();
+        void fetchUserCount();
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'profiles' }, () => {
+        void fetchUserCount();
       })
       .subscribe();
 
-    // Polling fallback: refresh every 30 s in case realtime is not enabled
-    const interval = window.setInterval(fetchUserCount, 30_000);
-
     return () => {
-      window.clearInterval(interval);
-      supabase.removeChannel(subscription);
+      active = false;
+      void supabase.removeChannel(subscription);
     };
   }, []);
 

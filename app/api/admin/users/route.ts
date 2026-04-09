@@ -101,12 +101,12 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "give_verified_badge") {
-      updates = { verified_badge: true };
+      updates = { verified_badge: true, smoke_room_2_invited: true };
       message = "Verified Badge granted.";
     }
 
     if (action === "remove_verified_badge") {
-      updates = { verified_badge: false };
+      updates = { verified_badge: false, smoke_room_2_invited: false };
       message = "Verified Badge removed.";
     }
 

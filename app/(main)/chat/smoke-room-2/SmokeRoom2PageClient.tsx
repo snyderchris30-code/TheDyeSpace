@@ -6,6 +6,7 @@ import AsyncStateCard from "@/app/AsyncStateCard";
 import SmokeRoom2Client from "../SmokeRoom2Client";
 import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
 import { createClient } from "@/lib/supabase/client";
+import { canAccessSmokeLounge } from "@/lib/verified-seller";
 
 export default function SmokeRoom2PageClient() {
   const [allowed, setAllowed] = useState(false);
@@ -28,17 +29,17 @@ export default function SmokeRoom2PageClient() {
           return;
         }
 
-        const profile = await fetchClientProfile<{ role?: string | null; smoke_room_2_invited?: boolean | null }>(
+        const profile = await fetchClientProfile<{ role?: string | null; verified_badge?: boolean | null; smoke_room_2_invited?: boolean | null }>(
           supabase,
           user.id,
-          "role,smoke_room_2_invited",
+          "role, verified_badge, smoke_room_2_invited",
           { ensureProfile: true }
         );
 
-        setAllowed(profile?.role === "admin" || profile?.smoke_room_2_invited === true);
+        setAllowed(canAccessSmokeLounge(profile));
       } catch (loadError: any) {
         setAllowed(false);
-        setError(typeof loadError?.message === "string" ? loadError.message : "Could not verify access to Smoke Room 2.0.");
+        setError(typeof loadError?.message === "string" ? loadError.message : "Could not verify access to The Smoke Lounge 2.0.");
       } finally {
         setLoading(false);
       }
@@ -52,7 +53,7 @@ export default function SmokeRoom2PageClient() {
       <div className="mx-auto mt-10 max-w-2xl px-4">
         <AsyncStateCard
           loading
-          title="Loading Smoke Room 2.0"
+          title="Loading The Smoke Lounge 2.0"
           message="Checking your invite status before opening the private room."
         />
       </div>
@@ -64,7 +65,7 @@ export default function SmokeRoom2PageClient() {
       <div className="mx-auto mt-10 max-w-2xl px-4">
         <AsyncStateCard
           tone="error"
-          title="Couldn\'t open Smoke Room 2.0"
+          title="Couldn\'t open The Smoke Lounge 2.0"
           message={error}
           actionLabel="Try again"
           onAction={() => {
@@ -90,7 +91,7 @@ export default function SmokeRoom2PageClient() {
             href="/chat/smoke-room-2"
             className="rounded-full border border-red-300/40 bg-red-900/30 px-4 py-2 text-sm font-semibold text-red-100 hover:bg-red-900/45"
           >
-            The Smoke Room 2.0
+            The Smoke Lounge 2.0
           </Link>
         ) : null}
       </div>

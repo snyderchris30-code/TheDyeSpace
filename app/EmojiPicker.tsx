@@ -26,10 +26,14 @@ type EmojiResponse = {
 
 let cachedEmojiAssets: CustomEmojiAsset[] | null = null;
 let emojiAssetsRequest: Promise<CustomEmojiAsset[]> | null = null;
+let cachedEmojiAssetsLoadedAt = 0;
+
+const EMOJI_ASSET_CACHE_TTL_MS = 5 * 60 * 1000;
 
 async function loadEmojiAssets(forceReload = false) {
-  if (cachedEmojiAssets && !forceReload) {
-    return cachedEmojiAssets;
+  const cacheIsFresh = cachedEmojiAssets && Date.now() - cachedEmojiAssetsLoadedAt < EMOJI_ASSET_CACHE_TTL_MS;
+  if (cacheIsFresh && !forceReload) {
+    return cachedEmojiAssets ?? [];
   }
 
   if (!emojiAssetsRequest) {
@@ -47,6 +51,7 @@ async function loadEmojiAssets(forceReload = false) {
           : [];
 
         cachedEmojiAssets = assets;
+        cachedEmojiAssetsLoadedAt = Date.now();
         return assets;
       })
       .finally(() => {
@@ -54,7 +59,7 @@ async function loadEmojiAssets(forceReload = false) {
       });
   }
 
-  return emojiAssetsRequest;
+  return emojiAssetsRequest ?? Promise.resolve([] as CustomEmojiAsset[]);
 }
 
 const RECENT_REACTIONS_STORAGE_KEY = "recently-used-emoji-reactions";
@@ -115,7 +120,7 @@ export default function EmojiPicker({
       setVisibleEmojiCount(REACTION_BATCH_SIZE);
     }
 
-    void loadEmojiAssets(true).then((assets) => {
+    void loadEmojiAssets().then((assets) => {
       if (active) {
         setCustomEmojiAssets(assets);
       }
