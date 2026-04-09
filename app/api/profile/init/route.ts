@@ -103,8 +103,16 @@ export async function POST(req: Request) {
       auth: { persistSession: false },
     });
 
-    const username = resolveProfileUsername(user.user_metadata?.username, user.email, user.id);
+    const requestPayload = await req.json().catch(() => ({} as any));
+    const requestedUsername =
+      typeof requestPayload.username === "string" && requestPayload.username.trim()
+        ? requestPayload.username
+        : typeof user.user_metadata?.username === "string"
+        ? user.user_metadata.username
+        : undefined;
+    const username = resolveProfileUsername(requestedUsername, user.email, user.id);
     const metadataDisplayName = firstNonEmptyString(
+      typeof requestPayload.display_name === "string" ? requestPayload.display_name : null,
       typeof user.user_metadata?.display_name === "string" ? user.user_metadata.display_name : null,
       typeof user.user_metadata?.full_name === "string" ? user.user_metadata.full_name : null,
       typeof user.user_metadata?.name === "string" ? user.user_metadata.name : null
@@ -144,7 +152,7 @@ export async function POST(req: Request) {
         {
           id: user.id,
           username: existingProfile?.username || username,
-          display_name: firstNonEmptyString(existingProfile?.display_name, metadataDisplayName) ?? "",
+          display_name: firstNonEmptyString(existingProfile?.display_name, metadataDisplayName, username) ?? username,
           bio: existingProfile?.bio ?? "",
           avatar_url: firstNonEmptyString(existingProfile?.avatar_url, metadataAvatarUrl),
           banner_url: existingProfile?.banner_url ?? null,

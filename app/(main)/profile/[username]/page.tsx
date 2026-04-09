@@ -257,6 +257,8 @@ function buildPlaylist(urls: string[]): PlaylistSong[] {
 }
 
 const PROFILE_LOAD_TIMEOUT_MS = 15000;
+const PROFILE_FETCH_ATTEMPTS = 2;
+const PROFILE_FETCH_TIMEOUT_MS = 3000;
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = window.setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
@@ -513,10 +515,48 @@ export default function ProfileEditor() {
         .limit(1)
         .maybeSingle<ProfileRow>();
 
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase error fetching profile by username:", username, error);
+        throw error;
+      }
+
       return data;
     },
     [supabase]
+  );
+
+  const fetchProfileByUsernameWithRetry = useCallback(
+    async (username: string) => {
+      console.log("Starting profile fetch for username:", username);
+
+      let lastError: unknown = null;
+      for (let attempt = 1; attempt <= PROFILE_FETCH_ATTEMPTS; attempt += 1) {
+        try {
+          const profile = await withTimeout(
+            fetchProfileByUsername(username),
+            PROFILE_FETCH_TIMEOUT_MS,
+            `Profile fetch timed out for username: ${username}`
+          );
+
+          if (profile) {
+            console.log("Profile found in DB", { username, userId: profile.id });
+          } else {
+            console.warn("No profile found in DB for username:", username);
+          }
+
+          return profile;
+        } catch (error) {
+          lastError = error;
+          console.warn(`Attempt ${attempt} failed for profile fetch username: ${username}`, error);
+          if (attempt < PROFILE_FETCH_ATTEMPTS) {
+            console.warn("Retrying profile fetch for username:", username);
+          }
+        }
+      }
+
+      throw lastError;
+    },
+    [fetchProfileByUsername]
   );
 
   const createMissingProfileForUser = useCallback(
@@ -531,17 +571,24 @@ export default function ProfileEditor() {
         typeof user.email === "string" ? user.email : undefined,
         userId
       );
+      const displayName = user.user_metadata?.display_name || username;
 
       console.log("Creating missing profile for user:", userId, username);
 
-      const response = await fetch("/api/profile/init", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
+      const response = await withTimeout(
+        fetch("/api/profile/init", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, display_name: displayName }),
+        }),
+        PROFILE_FETCH_TIMEOUT_MS,
+        "Profile creation request timed out."
+      );
 
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         const errorMessage = typeof body?.error === "string" ? body.error : "Failed to create missing profile.";
+        console.error("Profile init API error:", errorMessage, body);
         throw new Error(errorMessage);
       }
 
@@ -550,6 +597,7 @@ export default function ProfileEditor() {
         throw new Error("Profile initialization did not return a profile row.");
       }
 
+      console.log("Missing profile created successfully for user:", userId, username);
       return body.profile as ProfileRow;
     },
     []
@@ -707,6 +755,9 @@ export default function ProfileEditor() {
         throw new Error("Unable to determine profile route.");
       }
 
+      console.log("Starting profile fetch for username:", routeUsername);
+      console.log("User is authenticated with UID:", sessionUser?.id ?? "none");
+
       const canonicalUsername = sessionUser
         ? resolveProfileUsername(
             typeof sessionUser.user_metadata?.username === "string"
@@ -732,24 +783,16 @@ export default function ProfileEditor() {
       let viewedProfile: ProfileRow | null = null;
 
       try {
-        viewedProfile = await withTimeout(
-          fetchProfileByUsername(routeUsername),
-          PROFILE_LOAD_TIMEOUT_MS,
-          "Unable to load this profile. Please refresh and try again."
-        );
+        viewedProfile = await fetchProfileByUsernameWithRetry(routeUsername);
       } catch (err) {
         console.error(`Profile fetch failed for username: ${routeUsername}`, err);
       }
 
       if (!viewedProfile && sessionUser && (isOwnRoute || ownRouteByCanonicalUsername)) {
-        console.warn(`No profile row found for current user ${routeUsername}, attempting auto-create.`);
+        console.warn("No profile found - attempting to create missing own profile.", { routeUsername, userId: sessionUser.id });
         try {
           await createMissingProfileForUser(sessionUser);
-          viewedProfile = await withTimeout(
-            fetchProfileByUsername(routeUsername),
-            PROFILE_LOAD_TIMEOUT_MS,
-            "Unable to load this profile after creating it. Please refresh and try again."
-          );
+          viewedProfile = await fetchProfileByUsernameWithRetry(routeUsername);
         } catch (createError) {
           console.error(`Profile auto-create failed for username: ${routeUsername}`, createError);
           void reportProfileLoadError("profile-auto-create", createError, { routeUsername });
@@ -795,7 +838,11 @@ export default function ProfileEditor() {
     } finally {
       setLoading(false);
     }
-  }, [applyLoadedProfile, fetchOrCreateOwnProfile, fetchProfileByUsername, loadOwnRole, reportProfileLoadError, routeUsername, supabase]);
+  }, [applyLoadedProfile, createMissingProfileForUser, fetchProfileById, fetchProfileByUsernameWithRetry, loadOwnRole, reportProfileLoadError, routeUsername, supabase]);
+
+  useEffect(() => {
+    void loadProfile();
+  }, [loadProfile]);
 
   const loadContactRequestState = useCallback(async () => {
     if (!session?.user?.id || !profileUserId || profileStatus?.verified_badge !== true) {
