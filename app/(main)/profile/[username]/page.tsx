@@ -1769,7 +1769,7 @@ export default function ProfileEditor() {
                     {profileIsVerified && displayUsername ? (
                       <div className="mt-5 flex flex-wrap items-center gap-3">
                         <Link
-                          href={`/profile/${encodeURIComponent(displayUsername)}/listings`}
+                          href={`/profile/${encodeURIComponent(displayUsername)}/shop`}
                           className="inline-flex items-center justify-center rounded-2xl border border-cyan-300/60 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-400/15 hover:text-cyan-50"
                         >
                           My For Sale Listings
