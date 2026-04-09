@@ -671,7 +671,8 @@ export default function ProfileEditor() {
           "Unable to load this profile. Please refresh and try again."
         );
       } catch (err) {
-        // Try to auto-create if this is the logged-in user
+        console.error(`Profile fetch failed for username: ${routeUsername}`, err);
+
         if (sessionUser && isOwnRoute) {
           try {
             await fetchOrCreateOwnProfile(sessionUser);
@@ -681,13 +682,18 @@ export default function ProfileEditor() {
             void reportProfileLoadError("profile-auto-create", autoCreateErr, { routeUsername });
             throw autoCreateErr;
           }
-        } else {
-          throw err;
         }
+
+        throw err;
       }
+
       if (!viewedProfile) {
-        throw new Error("Profile not found.");
+        setLoadError("Profile not found.");
+        setStatus({ type: "error", text: "Profile not found. Couldn't load profile." });
+        console.error(`Profile not found for username: ${routeUsername}`);
+        return;
       }
+
       applyLoadedProfile(viewedProfile);
       if (sessionUser?.id && viewedProfile.id === sessionUser.id) {
         setIsOwner(true);
@@ -700,91 +706,13 @@ export default function ProfileEditor() {
       const message =
         err?.name === "AbortError"
           ? "Profile load timed out. Please refresh and try again."
-          : typeof err?.message === "string"
-          ? err.message
-          : "Unable to load this profile.";
+          : typeof err?.message === "string" ? err.message : "Unable to load this profile.";
       setLoadError(message);
       setStatus({ type: "error", text: message });
     } finally {
       setLoading(false);
     }
   }, [applyLoadedProfile, fetchOrCreateOwnProfile, fetchProfileByUsername, loadOwnRole, reportProfileLoadError, routeUsername, supabase]);
-
-  useEffect(() => {
-    void loadProfile();
-
-    const { data: listener } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
-      const nextUserId = nextSession?.user?.id ?? null;
-
-      if (event === "SIGNED_OUT") {
-        lastAuthSessionUserIdRef.current = null;
-        setSession(null);
-        setViewerIsVerifiedSeller(false);
-        setViewerCanAccessSmokeLounge(false);
-        return;
-      }
-
-      if ((event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION") && nextUserId === lastAuthSessionUserIdRef.current) {
-        return;
-      }
-
-      if (nextSession) {
-        lastAuthSessionUserIdRef.current = nextUserId;
-        setSession(nextSession);
-        if (nextSession.user?.id) {
-          void loadOwnRole(nextSession.user.id);
-        }
-      }
-
-      if (nextSession?.user && isOwnRouteUsername(routeUsername, nextSession.user)) {
-        await fetchOrCreateOwnProfile(nextSession.user);
-      }
-    });
-
-    return () => {
-      listener?.subscription.unsubscribe();
-    };
-  }, [fetchOrCreateOwnProfile, loadOwnRole, loadProfile, routeUsername, supabase]);
-
-  useEffect(() => {
-    const visibleState = editing ? draft : form;
-    applyThemeStyles(viewRef.current, visibleState);
-  }, [draft, editing, form]);
-
-  useEffect(() => {
-    applyThemeStyles(previewRef.current, draft);
-  }, [draft]);
-
-  useEffect(() => {
-    const loadFollowState = async () => {
-      if (!session?.user?.id || !profileUserId || isOwner) {
-        setIsFollowing(false);
-        return;
-      }
-
-      try {
-        const response = await fetch(`/api/profile/follow?targetUserId=${encodeURIComponent(profileUserId)}`, { cache: "no-store" });
-        const body = await response.json().catch(() => ({}));
-        if (response.ok) {
-          setIsFollowing(Boolean(body?.isFollowing));
-        }
-      } catch {
-        setIsFollowing(false);
-      }
-    };
-
-    void loadFollowState();
-  }, [isOwner, profileUserId, session?.user?.id]);
-
-  useEffect(() => {
-    if (!profileUserId) {
-      setPosts([]);
-      setInteractions({});
-      return;
-    }
-
-    void loadPosts(profileUserId);
-  }, [loadPosts, profileUserId]);
 
   const loadContactRequestState = useCallback(async () => {
     if (!session?.user?.id || !profileUserId || profileStatus?.verified_badge !== true) {
