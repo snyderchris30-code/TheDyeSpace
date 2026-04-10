@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { hasAdminAccess } from "@/lib/admin-actions";
 
 type DeletedPost = {
   id: string;
@@ -49,7 +50,7 @@ export default function DeletedItemsPage() {
         .limit(1)
         .maybeSingle();
 
-      const admin = profile?.role === "admin";
+      const admin = hasAdminAccess(userId, profile?.role ?? null);
       setIsAdmin(admin);
 
       if (!admin) {

@@ -53,6 +53,23 @@ type RawRunRecord = {
   metadata: Record<string, unknown> | null;
 };
 
+type WatcherRunResponse = {
+  ok?: boolean;
+  error?: string;
+  runId?: string;
+  trigger?: string;
+  dailyReportDate?: string;
+  dailyReportCreated?: boolean;
+  notificationSent?: boolean;
+  scanned?: {
+    scannedPosts?: number;
+    scannedComments?: number;
+    scannedReactions?: number;
+    scannedProfiles?: number;
+    flaggedCount?: number;
+  };
+};
+
 function jsonError(message: string, status: number, code: ApiErrorCode) {
   return NextResponse.json(
     { error: message, code },
@@ -323,6 +340,121 @@ export async function PATCH(req: NextRequest) {
     logError("admin/ai-watcher", "Failed to update AI watcher flag", error, requestContext);
     return jsonError(
       typeof error?.message === "string" ? error.message : "Failed to update the AI watcher flag.",
+      500,
+      "INTERNAL_ERROR"
+    );
+  }
+}
+
+function parseWatcherRunResponse(payload: unknown): WatcherRunResponse {
+  if (!payload || typeof payload !== "object") {
+    return {};
+  }
+
+  return payload as WatcherRunResponse;
+}
+
+function buildWatcherNotificationMessage(result: WatcherRunResponse) {
+  const scannedPosts = result.scanned?.scannedPosts ?? 0;
+  const scannedComments = result.scanned?.scannedComments ?? 0;
+  const scannedReactions = result.scanned?.scannedReactions ?? 0;
+  const scannedProfiles = result.scanned?.scannedProfiles ?? 0;
+  const flaggedCount = result.scanned?.flaggedCount ?? 0;
+
+  return `Manual AI watcher test finished. Scanned ${scannedPosts} posts, ${scannedComments} comments, ${scannedReactions} reactions, and ${scannedProfiles} profiles. Flagged ${flaggedCount} item${flaggedCount === 1 ? "" : "s"}.${result.dailyReportDate ? ` Daily report: ${result.dailyReportDate}.` : ""}`;
+}
+
+async function insertAdminNotification(adminClient: ReturnType<typeof createAdminClient>, userId: string, message: string) {
+  const { error } = await adminClient
+    .from("notifications")
+    .insert({
+      user_id: userId,
+      actor_name: "AI Watcher Bot",
+      type: "comment",
+      message,
+    });
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function POST(req: NextRequest) {
+  const requestContext = createRequestLogContext(req, "admin/ai-watcher");
+  try {
+    const auth = await requireAdmin(req, requestContext);
+    if (auth.error) {
+      return auth.error;
+    }
+
+    const { adminClient, user } = auth;
+    const body = (await req.json().catch(() => ({}))) as {
+      notifyAdmin?: boolean;
+    };
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+    const cronToken = process.env.AI_WATCHER_CRON_TOKEN?.trim() || null;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      return jsonError("AI watcher is missing required runtime secrets.", 500, "INTERNAL_ERROR");
+    }
+
+    const watcherUrl = `${supabaseUrl.replace(/\/$/, "")}/functions/v1/ai-watcher`;
+    const notifyAdmin = body.notifyAdmin !== false;
+
+    logInfo("admin/ai-watcher", "Triggering manual AI watcher run", {
+      ...requestContext,
+      adminUserId: user.id,
+      watcherUrl,
+      notifyAdmin,
+    });
+
+    const watcherResponse = await fetch(watcherUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceRoleKey}`,
+        ...(cronToken ? { "x-ai-watcher-cron-token": cronToken } : {}),
+      },
+      body: JSON.stringify({
+        trigger: "admin_dashboard",
+        requestedByUserId: user.id,
+        notifyAdmin,
+        notifyAdminUserId: user.id,
+        note: "Triggered from the admin moderation dashboard.",
+      }),
+      cache: "no-store",
+    });
+
+    const watcherBody = parseWatcherRunResponse(await watcherResponse.json().catch(() => ({})));
+
+    if (!watcherResponse.ok || watcherBody.ok === false) {
+      throw new Error(watcherBody.error || "Failed to run the AI watcher.");
+    }
+
+    if (notifyAdmin && !watcherBody.notificationSent) {
+      await insertAdminNotification(adminClient, user.id, buildWatcherNotificationMessage(watcherBody));
+    }
+
+    logInfo("admin/ai-watcher", "Manual AI watcher run completed", {
+      ...requestContext,
+      adminUserId: user.id,
+      runId: watcherBody.runId ?? null,
+      notificationSent: notifyAdmin,
+    });
+
+    return jsonOk({
+      success: true,
+      message: notifyAdmin
+        ? "AI watcher test run completed and an admin notification was sent."
+        : "AI watcher test run completed.",
+      result: watcherBody,
+    });
+  } catch (error: any) {
+    logError("admin/ai-watcher", "Failed to trigger manual AI watcher run", error, requestContext);
+    return jsonError(
+      typeof error?.message === "string" ? error.message : "Failed to trigger the AI watcher.",
       500,
       "INTERNAL_ERROR"
     );

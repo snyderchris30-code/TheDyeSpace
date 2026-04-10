@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import AsyncStateCard from "@/app/AsyncStateCard";
 import { createClient } from "@/lib/supabase/client";
+import { hasAdminAccess } from "@/lib/admin-actions";
 
 type ModerationReport = {
   id: string;
@@ -136,6 +137,14 @@ function formatConfidence(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
+function formatRunTrigger(metadata: Record<string, unknown>) {
+  const trigger = typeof metadata.trigger === "string" ? metadata.trigger : "";
+  if (trigger === "pg_cron") return "Scheduled 30-minute run";
+  if (trigger === "admin_dashboard") return "Manual dashboard test";
+  if (trigger) return trigger.replace(/_/g, " ");
+  return "Unknown trigger";
+}
+
 export default function AdminReportsClient() {
   const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(true);
@@ -149,6 +158,7 @@ export default function AdminReportsClient() {
   const [status, setStatus] = useState<StatusState | null>(null);
   const [busyReportId, setBusyReportId] = useState<string | null>(null);
   const [busyFlagId, setBusyFlagId] = useState<string | null>(null);
+  const [triggeringWatcher, setTriggeringWatcher] = useState(false);
 
   const loadReports = useCallback(async () => {
     setLoading(true);
@@ -179,7 +189,7 @@ export default function AdminReportsClient() {
         throw new Error(profileError.message || "Could not verify your admin access.");
       }
 
-      const admin = profile?.role === "admin";
+      const admin = hasAdminAccess(userId, profile?.role ?? null);
       setIsAdmin(admin);
 
       if (!admin) {
@@ -334,6 +344,37 @@ export default function AdminReportsClient() {
     }
   }, []);
 
+  const triggerWatcherTest = useCallback(async () => {
+    setTriggeringWatcher(true);
+    setStatus(null);
+    setWatcherError(null);
+
+    try {
+      const response = await fetch("/api/admin/ai-watcher", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notifyAdmin: true }),
+      });
+      const body = await parseApiResponse(response);
+      if (!response.ok) {
+        throw new Error(body?.error || "Failed to run the AI watcher test.");
+      }
+
+      await loadReports();
+      setStatus({
+        type: "success",
+        text: typeof body?.message === "string" ? body.message : "AI watcher test run completed.",
+      });
+    } catch (triggerError: any) {
+      setStatus({
+        type: "error",
+        text: typeof triggerError?.message === "string" ? triggerError.message : "Failed to run the AI watcher test.",
+      });
+    } finally {
+      setTriggeringWatcher(false);
+    }
+  }, [loadReports]);
+
   const openFlagCount = watcherFlags.filter((flag) => flag.status === "open").length;
   const lastRun = recentRuns[0] || null;
 
@@ -367,17 +408,28 @@ export default function AdminReportsClient() {
             <div>
               <p className="text-xs uppercase tracking-[0.35em] text-emerald-200/70">AI Watcher</p>
               <h2 className="mt-2 text-2xl font-bold text-emerald-50">Automated Signals</h2>
-              <p className="mt-2 text-sm text-emerald-100/75">Every 120 minutes the bot reviews new posts, comments, reactions, and profiles, then stores a daily admin summary.</p>
+              <p className="mt-2 text-sm text-emerald-100/75">Every 30 minutes the bot reviews new posts, comments, reactions, and profiles, then stores a daily admin summary.</p>
             </div>
-            {lastRun ? (
-              <div className="rounded-2xl border border-emerald-300/20 bg-black/25 px-4 py-3 text-sm text-emerald-100/85">
-                <div className="font-semibold text-emerald-50">Last run: {new Date(lastRun.startedAt).toLocaleString()}</div>
-                <div className="mt-1">Status: {lastRun.status}</div>
-                <div>Scanned {lastRun.scannedPosts} posts, {lastRun.scannedComments} comments, {lastRun.scannedReactions} reactions, {lastRun.scannedProfiles} profiles</div>
-                <div>Flagged {lastRun.flaggedCount} items{lastRun.provider ? ` using ${lastRun.provider}${lastRun.model ? ` / ${lastRun.model}` : ""}` : ""}</div>
-                {lastRun.errorMessage ? <div className="mt-1 text-rose-200">{lastRun.errorMessage}</div> : null}
-              </div>
-            ) : null}
+            <div className="flex flex-col items-stretch gap-3">
+              <button
+                type="button"
+                className="rounded-full border border-emerald-300/35 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-50 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => void triggerWatcherTest()}
+                disabled={triggeringWatcher}
+              >
+                {triggeringWatcher ? "Running AI watcher..." : "Run AI Watcher Test"}
+              </button>
+              {lastRun ? (
+                <div className="rounded-2xl border border-emerald-300/20 bg-black/25 px-4 py-3 text-sm text-emerald-100/85">
+                  <div className="font-semibold text-emerald-50">Last run: {new Date(lastRun.startedAt).toLocaleString()}</div>
+                  <div className="mt-1">Status: {lastRun.status}</div>
+                  <div>Trigger: {formatRunTrigger(lastRun.metadata)}</div>
+                  <div>Scanned {lastRun.scannedPosts} posts, {lastRun.scannedComments} comments, {lastRun.scannedReactions} reactions, {lastRun.scannedProfiles} profiles</div>
+                  <div>Flagged {lastRun.flaggedCount} items{lastRun.provider ? ` using ${lastRun.provider}${lastRun.model ? ` / ${lastRun.model}` : ""}` : ""}</div>
+                  {lastRun.errorMessage ? <div className="mt-1 text-rose-200">{lastRun.errorMessage}</div> : null}
+                </div>
+              ) : null}
+            </div>
           </div>
 
           {watcherError ? (

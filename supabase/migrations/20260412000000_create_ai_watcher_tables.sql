@@ -1,7 +1,26 @@
 create extension if not exists pgcrypto;
-create extension if not exists pg_cron;
-create extension if not exists pg_net;
-create extension if not exists vault;
+
+do $$
+begin
+  begin
+    create extension if not exists pg_cron;
+  exception when others then
+    raise notice 'pg_cron extension is unavailable in this environment. AI watcher scheduling will need an external cron trigger. %', sqlerrm;
+  end;
+
+  begin
+    create extension if not exists pg_net;
+  exception when others then
+    raise notice 'pg_net extension is unavailable in this environment. AI watcher scheduling will need an external cron trigger. %', sqlerrm;
+  end;
+
+  begin
+    create extension if not exists vault;
+  exception when others then
+    raise notice 'vault extension is unavailable in this environment. AI watcher scheduling will need an external cron trigger. %', sqlerrm;
+  end;
+end;
+$$;
 
 create table if not exists public.moderation_flags (
   id uuid primary key default gen_random_uuid(),
@@ -124,7 +143,19 @@ declare
   existing_job record;
   project_url text;
   cron_token text;
+  has_cron boolean := false;
+  has_net boolean := false;
+  has_vault boolean := false;
 begin
+  select exists(select 1 from pg_extension where extname = 'pg_cron') into has_cron;
+  select exists(select 1 from pg_extension where extname = 'pg_net') into has_net;
+  select exists(select 1 from pg_extension where extname = 'vault') into has_vault;
+
+  if not has_cron or not has_net or not has_vault or to_regclass('cron.job') is null then
+    raise notice 'AI watcher cron was not scheduled. pg_cron, pg_net, or vault is unavailable in this environment.';
+    return;
+  end if;
+
   for existing_job in select jobid from cron.job where jobname = 'ai-watcher-bot-every-120-minutes' loop
     perform cron.unschedule(existing_job.jobid);
   end loop;

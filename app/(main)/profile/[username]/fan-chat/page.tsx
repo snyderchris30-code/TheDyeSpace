@@ -1,46 +1,108 @@
+"use client";
+
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import FanChatRoomClient from "./FanChatRoomClient";
 
-type Props = {
-  params: {
-    username: string;
-  };
+type FanChatProfile = {
+  id: string;
+  username: string | null;
+  display_name: string | null;
 };
 
-export default async function FanChatPage({ params: { username } }: Props) {
-  const supabase = await createSupabaseServerClient();
-  const { data: profileData } = await supabase
-    .from("profiles")
-    .select("id,username,display_name,verified_badge,member_number")
-    .eq("username", username)
-    .limit(1)
-    .maybeSingle();
+function resolveParamUsername(value: string | string[] | undefined) {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return decodeURIComponent(raw || "").trim().replace(/^@+/, "");
+}
 
-  if (!profileData || !profileData.verified_badge) {
-    return notFound();
-  }
+export default function FanChatPage() {
+  const params = useParams<{ username?: string | string[] }>();
+  const username = resolveParamUsername(params?.username);
+  const [profile, setProfile] = useState<FanChatProfile | null>(null);
+  const [allowed, setAllowed] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const { data: sessionData } = await supabase.auth.getSession();
-  const currentUserId = sessionData?.session?.user?.id ?? null;
-  const isSeller = currentUserId === profileData.id;
-  let allowed = false;
+  useEffect(() => {
+    let active = true;
 
-  if (isSeller) {
-    allowed = true;
-  } else if (currentUserId) {
-    const { data: followData } = await supabase
-      .from("user_follows")
-      .select("follower_id")
-      .eq("follower_id", currentUserId)
-      .eq("followed_id", profileData.id)
-      .limit(1);
-    allowed = Array.isArray(followData) && followData.length > 0;
-  }
+    async function loadFanChat() {
+      if (!username) {
+        if (active) {
+          setProfile(null);
+          setAllowed(false);
+          setLoading(false);
+        }
+        return;
+      }
 
-  const room = `fan_chat_${profileData.id}`;
-  const sellerName = profileData.display_name || profileData.username || "Verified Seller";
+      setLoading(true);
+      const supabase = createClient();
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("id,username,display_name")
+        .eq("username", username)
+        .limit(1)
+        .maybeSingle();
+
+      if (!active) {
+        return;
+      }
+
+      const resolvedProfile = (profileData as FanChatProfile | null) ?? null;
+      setProfile(resolvedProfile);
+
+      if (!resolvedProfile) {
+        setAllowed(false);
+        setLoading(false);
+        return;
+      }
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const currentUserId = sessionData?.session?.user?.id ?? null;
+
+      if (!active) {
+        return;
+      }
+
+      if (!currentUserId) {
+        setAllowed(false);
+        setLoading(false);
+        return;
+      }
+
+      if (currentUserId === resolvedProfile.id) {
+        setAllowed(true);
+        setLoading(false);
+        return;
+      }
+
+      const { data: followData } = await supabase
+        .from("user_follows")
+        .select("follower_id")
+        .eq("follower_id", currentUserId)
+        .eq("followed_id", resolvedProfile.id)
+        .limit(1);
+
+      if (active) {
+        setAllowed(Array.isArray(followData) && followData.length > 0);
+        setLoading(false);
+      }
+    }
+
+    void loadFanChat();
+
+    return () => {
+      active = false;
+    };
+  }, [username]);
+
+  const sellerName = profile?.username || username || profile?.display_name || "Seller";
+  const room = profile?.id ? `fan_chat_${profile.id}` : "fan_chat_pending";
+  const profileHref = username ? `/profile/${encodeURIComponent(username)}` : "/profile";
+  const shopHref = username ? `/profile/${encodeURIComponent(username)}/shop` : "/profile";
+  const sellerUsername = profile?.username || username || null;
 
   return (
     <div className="min-h-[70vh] px-4 py-8 sm:px-6 lg:px-8">
@@ -49,20 +111,18 @@ export default async function FanChatPage({ params: { username } }: Props) {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm uppercase tracking-[0.24em] text-cyan-300/70">Fan Chat</p>
-              <h1 className="mt-2 text-3xl font-extrabold text-white">{sellerName}'s Fan Chat</h1>
-              <p className="mt-2 max-w-2xl text-sm text-slate-300">
-                This is a private fan chat for the verified seller and their followers. Join the conversation, ask questions, and stay connected.
-              </p>
+              <h1 className="mt-2 text-3xl font-extrabold text-white">{sellerName}&apos;s Fan Chat</h1>
+              <p className="mt-2 max-w-2xl text-sm text-slate-300">Private fan chat.</p>
             </div>
             <div className="flex flex-wrap gap-3">
               <Link
-                href={`/profile/${encodeURIComponent(username)}`}
+                href={profileHref}
                 className="rounded-2xl border border-slate-600 bg-slate-900/80 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-800"
               >
                 Back to Profile
               </Link>
               <Link
-                href={`/profile/${encodeURIComponent(username)}/shop`}
+                href={shopHref}
                 className="rounded-2xl border border-cyan-300/60 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-400/15"
               >
                 View Shop
@@ -70,12 +130,19 @@ export default async function FanChatPage({ params: { username } }: Props) {
             </div>
           </div>
         </div>
-        <FanChatRoomClient
-          room={room}
-          allowed={allowed}
-          sellerDisplayName={sellerName}
-          sellerUsername={profileData.username}
-        />
+
+        {loading ? (
+          <div className="rounded-[1.75rem] border border-cyan-300/15 bg-slate-950/80 p-8 text-center text-slate-300 shadow-xl">
+            Loading fan chat...
+          </div>
+        ) : (
+          <FanChatRoomClient
+            room={room}
+            allowed={allowed}
+            sellerDisplayName={sellerName}
+            sellerUsername={sellerUsername}
+          />
+        )}
       </div>
     </div>
   );

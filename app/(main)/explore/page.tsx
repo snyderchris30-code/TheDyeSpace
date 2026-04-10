@@ -16,7 +16,7 @@ import InlineEmojiText from "@/app/InlineEmojiText";
 import PostAffiliateProducts from "@/app/PostAffiliateProducts";
 import UserIdentity from "@/app/UserIdentity";
 import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
-import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
+import { hasAdminAccess, runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import { Home, Users, BookOpen, PartyPopper, Tag, Ban } from "lucide-react";
 import { Heart, MessageCircle, Send } from "lucide-react";
 import EmojiPicker from "@/app/EmojiPicker";
@@ -206,9 +206,9 @@ export default function ExplorePage() {
           const profile = await fetchClientProfile<{ role?: string | null }>(supabase, nextUserId, "role", {
             ensureProfile: true,
           });
-          setViewerIsAdmin(profile?.role === "admin");
+          setViewerIsAdmin(hasAdminAccess(nextUserId, profile?.role ?? null));
         } catch {
-          setViewerIsAdmin(false);
+          setViewerIsAdmin(hasAdminAccess(nextUserId, null));
         }
       } else {
         setViewerIsAdmin(false);
@@ -229,10 +229,10 @@ export default function ExplorePage() {
           ensureProfile: true,
         })
           .then((profile) => {
-            setViewerIsAdmin(profile?.role === "admin");
+            setViewerIsAdmin(hasAdminAccess(nextSession.user.id, profile?.role ?? null));
           })
           .catch(() => {
-            setViewerIsAdmin(false);
+            setViewerIsAdmin(hasAdminAccess(nextSession.user.id, null));
           });
         return;
       }
@@ -490,6 +490,41 @@ export default function ExplorePage() {
     }
   }, []);
 
+  const handleDeletePost = useCallback(async (postId: string) => {
+    if (!confirm("Delete this post? This cannot be undone.")) {
+      return;
+    }
+
+    const response = await fetch(`/api/posts/manage?postId=${postId}`, { method: "DELETE" });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      setInteractionStatus(body?.error || "Could not delete post. Please try again.");
+      return;
+    }
+
+    setPosts((prev) => prev.filter((post) => post.id !== postId));
+  }, []);
+
+  const handleDeleteComment = useCallback(async (commentId: string, postId: string) => {
+    if (!confirm("Delete this comment?")) {
+      return;
+    }
+
+    const response = await fetch(`/api/posts/comments?commentId=${encodeURIComponent(commentId)}&postId=${encodeURIComponent(postId)}`, {
+      method: "DELETE",
+    });
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      setInteractionStatus(body?.error || "Could not delete comment. Please try again.");
+      return;
+    }
+
+    const body = await response.json().catch(() => ({}));
+    setInteractions((prev) => ({ ...prev, [postId]: body.interaction }));
+    updatePostCounters(postId, { comments_count: body.commentsCount ?? 0 });
+  }, [updatePostCounters]);
+
   const title = useMemo(() => {
     if (tab === "following") return "Following Feed";
     if (tab === "tutorial") return "Tutorial Posts";
@@ -685,6 +720,18 @@ export default function ExplorePage() {
                 <span>{new Date(post.created_at).toLocaleString()}</span>
                 <span>{totalPostReactions} reactions • {post.comments_count} comments</span>
               </div>
+              {(viewerIsAdmin || sessionUserId === post.user_id) ? (
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className="rounded-full border border-rose-300/25 bg-black/20 px-3 py-1 text-xs text-rose-300 transition hover:bg-rose-900/30"
+                    onClick={() => void handleDeletePost(post.id)}
+                  >
+                    Delete
+                  </button>
+                  {viewerIsAdmin ? <AdminActionMenu targetUserId={post.user_id} onAction={handleAdminAction} /> : null}
+                </div>
+              ) : null}
               {sessionUserId ? (
                 <div className="flex flex-wrap items-center gap-3">
                   <EmojiPicker
@@ -718,7 +765,6 @@ export default function ExplorePage() {
                     <span className="text-sm">{post.comments_count}</span>
                   </button>
                   <ReportPostButton postId={post.id} />
-                  {viewerIsAdmin && sessionUserId !== post.user_id ? <AdminActionMenu targetUserId={post.user_id} onAction={handleAdminAction} /> : null}
                 </div>
               ) : (
                 <p className="text-sm italic text-cyan-300/80">Sign in to interact with posts.</p>
@@ -762,17 +808,20 @@ export default function ExplorePage() {
                               )}
                             </div>
                             <div className={`min-w-0 flex-1 ${fontClass(comment.author.theme_settings?.font_style)}`} ref={(element) => applyPostThemeVars(element, comment.author.theme_settings)}>
-                              <UserIdentity
-                                displayName={comment.author.display_name || "DyeSpace User"}
-                                username={comment.author.username}
-                                verifiedBadge={comment.author.verified_badge}
-                                memberNumber={comment.author.member_number}
-                                timestampText={new Date(comment.created_at).toLocaleString()}
-                                className="min-w-0"
-                                nameClassName="font-semibold text-[color:var(--post-text)] hover:text-[color:var(--post-highlight)] hover:underline"
-                                usernameClassName="text-xs text-[color:var(--post-highlight)]/80 hover:text-[color:var(--post-highlight)] hover:underline"
-                                metaClassName="text-xs text-[color:var(--post-text)]/45"
-                              />
+                              <div className="flex items-start justify-between gap-3">
+                                <UserIdentity
+                                  displayName={comment.author.display_name || "DyeSpace User"}
+                                  username={comment.author.username}
+                                  verifiedBadge={comment.author.verified_badge}
+                                  memberNumber={comment.author.member_number}
+                                  timestampText={new Date(comment.created_at).toLocaleString()}
+                                  className="min-w-0"
+                                  nameClassName="font-semibold text-[color:var(--post-text)] hover:text-[color:var(--post-highlight)] hover:underline"
+                                  usernameClassName="text-xs text-[color:var(--post-highlight)]/80 hover:text-[color:var(--post-highlight)] hover:underline"
+                                  metaClassName="text-xs text-[color:var(--post-text)]/45"
+                                />
+                                {viewerIsAdmin ? <AdminActionMenu targetUserId={comment.author.id} onAction={handleAdminAction} label="Admin Tools" /> : null}
+                              </div>
                               <InlineEmojiText text={comment.content} className="mt-2 block whitespace-pre-wrap text-[color:var(--post-text)]/90" />
                               {(comment.reactions.length > 0 || sessionUserId) ? (
                                 <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -813,6 +862,17 @@ export default function ExplorePage() {
                                       }}
                                     />
                                   ) : null}
+                                </div>
+                              ) : null}
+                              {(sessionUserId === comment.author.id || viewerIsAdmin) ? (
+                                <div className="mt-2 flex gap-3">
+                                  <button
+                                    type="button"
+                                    className="text-xs text-rose-400 transition hover:underline"
+                                    onClick={() => void handleDeleteComment(comment.id, post.id)}
+                                  >
+                                    Delete
+                                  </button>
                                 </div>
                               ) : null}
                             </div>

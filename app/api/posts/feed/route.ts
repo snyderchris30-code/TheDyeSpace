@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { hasAdminAccess } from "@/lib/admin-actions";
 import type { ProfileAppearance } from "@/lib/profile-theme";
 import { normalizePostImageUrls } from "@/lib/post-media";
 
@@ -77,7 +78,7 @@ export async function GET(request: NextRequest) {
       .select("role")
       .eq("id", user.id)
       .maybeSingle();
-    viewerIsAdmin = viewerProfile?.role === "admin";
+    viewerIsAdmin = hasAdminAccess(user.id, viewerProfile?.role ?? null);
   }
 
   let query = supabase

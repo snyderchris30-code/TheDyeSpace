@@ -3,7 +3,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const ADMIN_USER_UID = "794077c7-ad51-47cc-8c25-20171edfb017";
-const LOOKBACK_MINUTES = 120;
+const LOOKBACK_MINUTES = 30;
 const MAX_POSTS = 15;
 const MAX_COMMENTS = 20;
 const MAX_REACTIONS = 15;
@@ -12,6 +12,9 @@ const AI_BATCH_SIZE = 20;
 const DEFAULT_CONFIDENCE_THRESHOLD = 0.68;
 const SAFE_IMAGE_ONLY_LABEL = "Image-only post; no text caption available.";
 const MODERATION_SIGNAL_REGEX = /(special dye|party favors?|plug|telegram|signal app|cashapp|venmo|bitcoin|crypto|grams?|overnight|vendor|official store|customer service|threat|kill yourself|white power|kkk|nazi|impersonat|fraud|scam)/i;
+const DRUG_SIGNAL_REGEX = /(special dye|party favors?|plug|grams?|overnight|vendor)/i;
+const SPAM_SIGNAL_REGEX = /(telegram|signal app|cashapp|venmo|bitcoin|crypto|official store|customer service|impersonat|fraud|scam)/i;
+const HATE_SIGNAL_REGEX = /(threat|kill yourself|white power|kkk|nazi)/i;
 
 type ModerationCategory =
   | "drug_or_illegal"
@@ -86,7 +89,7 @@ type DailyReportFlag = {
   status: string;
 };
 
-type AiProvider = "openai" | "grok";
+type AiProvider = "openai" | "grok" | "heuristic";
 
 type AiConfig = {
   provider: AiProvider;
@@ -113,6 +116,15 @@ type RunSummary = {
   scannedProfiles: number;
   candidateCount: number;
   flaggedCount: number;
+};
+
+type TriggerRequestBody = {
+  trigger?: unknown;
+  scheduled_at?: unknown;
+  requestedByUserId?: unknown;
+  notifyAdmin?: unknown;
+  notifyAdminUserId?: unknown;
+  note?: unknown;
 };
 
 function jsonResponse(status: number, body: Record<string, unknown>) {
@@ -278,7 +290,13 @@ function loadAiConfig(): AiConfig {
     : Deno.env.get("OPENAI_API_KEY")?.trim() || "";
 
   if (!apiKey) {
-    throw new Error(provider === "grok" ? "Missing XAI_API_KEY or GROK_API_KEY." : "Missing OPENAI_API_KEY.");
+    return {
+      provider: "heuristic",
+      model: "signal-regex-v1",
+      apiKey: "",
+      apiUrl: "",
+      confidenceThreshold: DEFAULT_CONFIDENCE_THRESHOLD,
+    };
   }
 
   const apiUrl = Deno.env.get("AI_WATCHER_API_URL")?.trim() || (provider === "grok" ? "https://api.x.ai/v1/chat/completions" : "https://api.openai.com/v1/chat/completions");
@@ -294,13 +312,13 @@ function loadAiConfig(): AiConfig {
   };
 }
 
-async function startRun(adminClient: ReturnType<typeof createAdminClient>) {
+async function startRun(adminClient: ReturnType<typeof createAdminClient>, metadata: Record<string, unknown>) {
   const { data, error } = await adminClient
     .from("moderation_watch_runs")
     .insert({
       started_at: nowIso(),
       status: "running",
-      metadata: { adminUserId: ADMIN_USER_UID },
+      metadata,
     })
     .select("id")
     .single<{ id: string }>();
@@ -310,6 +328,78 @@ async function startRun(adminClient: ReturnType<typeof createAdminClient>) {
   }
 
   return data.id;
+}
+
+async function parseTriggerRequestBody(request: Request): Promise<TriggerRequestBody> {
+  try {
+    const payload = await request.clone().json();
+    return payload && typeof payload === "object" ? payload as TriggerRequestBody : {};
+  } catch {
+    return {};
+  }
+}
+
+function normalizeTriggerSource(value: unknown) {
+  const trigger = typeof value === "string" ? value.trim() : "";
+  if (!trigger) {
+    return "manual";
+  }
+
+  return trigger.slice(0, 80);
+}
+
+function normalizeOptionalString(value: unknown, maxLength = 160) {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text) {
+    return null;
+  }
+
+  return text.slice(0, maxLength);
+}
+
+function buildAdminNotificationMessage(
+  triggerSource: string,
+  summary: RunSummary,
+  provider: string,
+  model: string,
+  dailyReportDate: string,
+  note?: string | null
+) {
+  const triggerLabel = triggerSource === "pg_cron"
+    ? "Scheduled AI watcher run"
+    : triggerSource === "admin_dashboard"
+      ? "Manual AI watcher test"
+      : "AI watcher run";
+
+  const baseMessage = `${triggerLabel} finished. Scanned ${summary.scannedPosts} posts, ${summary.scannedComments} comments, ${summary.scannedReactions} reactions, and ${summary.scannedProfiles} profiles. Flagged ${summary.flaggedCount} item${summary.flaggedCount === 1 ? "" : "s"} using ${provider}${model ? ` / ${model}` : ""}. Daily report: ${dailyReportDate}.`;
+
+  if (!note) {
+    return truncateText(baseMessage, 500) || baseMessage;
+  }
+
+  return truncateText(`${baseMessage} Note: ${note}`, 500) || baseMessage;
+}
+
+async function sendAdminNotification(
+  adminClient: ReturnType<typeof createAdminClient>,
+  userId: string,
+  message: string
+) {
+  const { error } = await adminClient
+    .from("notifications")
+    .insert({
+      user_id: userId,
+      actor_name: "AI Watcher Bot",
+      type: "comment",
+      message,
+    });
+
+  if (error) {
+    console.error("[ai-watcher] Failed to create admin notification", { userId, error });
+    return false;
+  }
+
+  return true;
 }
 
 async function finishRun(
@@ -735,7 +825,78 @@ function extractAssistantText(payload: Record<string, unknown>) {
     .join("");
 }
 
+function buildHeuristicReason(categories: ModerationCategory[]) {
+  if (categories.includes("drug_or_illegal")) {
+    return "Heuristic signal matched suspected drug-sale language.";
+  }
+
+  if (categories.includes("spam_scam_impersonation")) {
+    return "Heuristic signal matched spam, scam, or impersonation language.";
+  }
+
+  if (categories.includes("hate_or_harassment")) {
+    return "Heuristic signal matched hate, threat, or harassment language.";
+  }
+
+  return "Heuristic signal matched suspicious moderation keywords.";
+}
+
+function analyzeCandidatesHeuristically(candidates: CandidateItem[]) {
+  const flaggedCandidates: CandidateItem[] = [];
+
+  for (const candidate of candidates) {
+    const signalText = [candidate.promptText, candidate.excerpt, JSON.stringify(candidate.metadata)]
+      .filter(Boolean)
+      .join(" ");
+
+    const categories: ModerationCategory[] = [];
+    if (DRUG_SIGNAL_REGEX.test(signalText)) {
+      categories.push("drug_or_illegal");
+    }
+    if (SPAM_SIGNAL_REGEX.test(signalText)) {
+      categories.push("spam_scam_impersonation");
+    }
+    if (HATE_SIGNAL_REGEX.test(signalText)) {
+      categories.push("hate_or_harassment");
+    }
+    if (!categories.length && containsModerationSignal(signalText)) {
+      categories.push("community_suspicious");
+    }
+
+    if (!categories.length) {
+      continue;
+    }
+
+    const normalizedCategories = [...new Set(categories)];
+    const confidence = normalizedCategories.includes("hate_or_harassment")
+      ? 0.9
+      : normalizedCategories.includes("drug_or_illegal")
+        ? 0.84
+        : normalizedCategories.includes("spam_scam_impersonation")
+          ? 0.8
+          : 0.72;
+
+    candidate.metadata = {
+      ...candidate.metadata,
+      ai: {
+        provider: "heuristic",
+        model: "signal-regex-v1",
+        categories: normalizedCategories,
+        confidence,
+        reason: buildHeuristicReason(normalizedCategories),
+      },
+    };
+    flaggedCandidates.push(candidate);
+  }
+
+  return flaggedCandidates;
+}
+
 async function analyzeCandidatesWithAi(candidates: CandidateItem[], aiConfig: AiConfig) {
+  if (aiConfig.provider === "heuristic") {
+    return analyzeCandidatesHeuristically(candidates);
+  }
+
   const flaggedCandidates: CandidateItem[] = [];
   const candidateMap = new Map(candidates.map((candidate) => [candidate.candidateId, candidate]));
 
@@ -977,16 +1138,24 @@ async function createDailyReportIfNeeded(adminClient: ReturnType<typeof createAd
 
 function validateCronRequest(request: Request) {
   const expectedToken = Deno.env.get("AI_WATCHER_CRON_TOKEN")?.trim();
-  if (!expectedToken) {
-    throw new Error("Missing AI_WATCHER_CRON_TOKEN.");
-  }
-
   const providedToken = request.headers.get("x-ai-watcher-cron-token")?.trim();
-  if (!providedToken || providedToken !== expectedToken) {
-    return false;
+  if (expectedToken && providedToken === expectedToken) {
+    return true;
   }
 
-  return true;
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim();
+  const authHeader = request.headers.get("authorization")?.trim() || "";
+  const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/i);
+  const providedBearer = bearerMatch?.[1]?.trim();
+  if (serviceRoleKey && providedBearer === serviceRoleKey) {
+    return true;
+  }
+
+  if (!expectedToken && !serviceRoleKey) {
+    throw new Error("Missing AI_WATCHER_CRON_TOKEN and SUPABASE_SERVICE_ROLE_KEY.");
+  }
+
+  return false;
 }
 
 Deno.serve(async (request) => {
@@ -1005,8 +1174,24 @@ Deno.serve(async (request) => {
     });
   }
 
+  const requestBody = await parseTriggerRequestBody(request);
+  const triggerSource = normalizeTriggerSource(requestBody.trigger);
+  const requestedByUserId = normalizeOptionalString(requestBody.requestedByUserId, 64);
+  const notifyAdmin = requestBody.notifyAdmin === true;
+  const notifyAdminUserId = normalizeOptionalString(requestBody.notifyAdminUserId, 64) || ADMIN_USER_UID;
+  const note = normalizeOptionalString(requestBody.note, 120);
+  const scheduledAt = normalizeOptionalString(requestBody.scheduled_at, 80);
   const adminClient = createAdminClient();
-  const runId = await startRun(adminClient);
+  const runMetadata = {
+    adminUserId: ADMIN_USER_UID,
+    trigger: triggerSource,
+    requestedByUserId,
+    notifyAdmin,
+    notifyAdminUserId,
+    note,
+    scheduledAt,
+  };
+  const runId = await startRun(adminClient, runMetadata);
 
   try {
     const aiConfig = loadAiConfig();
@@ -1026,6 +1211,19 @@ Deno.serve(async (request) => {
       flaggedCount: flaggedCandidates.length,
     };
 
+    let notificationSent = false;
+    if (notifyAdmin) {
+      const notificationMessage = buildAdminNotificationMessage(
+        triggerSource,
+        summary,
+        aiConfig.provider,
+        aiConfig.model,
+        dailyReport.reportDate,
+        note
+      );
+      notificationSent = await sendAdminNotification(adminClient, notifyAdminUserId, notificationMessage);
+    }
+
     await finishRun(adminClient, runId, {
       completed_at: nowIso(),
       status: "success",
@@ -1037,18 +1235,22 @@ Deno.serve(async (request) => {
       scanned_profiles: summary.scannedProfiles,
       flagged_count: summary.flaggedCount,
       metadata: {
+        ...runMetadata,
         candidateCount: summary.candidateCount,
         dailyReportDate: dailyReport.reportDate,
         dailyReportCreated: dailyReport.created,
+        notificationSent,
       },
     });
 
     return jsonResponse(200, {
       ok: true,
       runId,
+      trigger: triggerSource,
       scanned: summary,
       dailyReportDate: dailyReport.reportDate,
       dailyReportCreated: dailyReport.created,
+      notificationSent,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "AI watcher run failed.";
@@ -1056,6 +1258,9 @@ Deno.serve(async (request) => {
       completed_at: nowIso(),
       status: message.includes("OPENAI_API_KEY") || message.includes("XAI_API_KEY") || message.includes("GROK_API_KEY") ? "skipped" : "error",
       error_message: message,
+      metadata: {
+        ...runMetadata,
+      },
     });
 
     console.error("[ai-watcher] Run failed", { runId, error });

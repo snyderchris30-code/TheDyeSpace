@@ -10,7 +10,7 @@ import AdminActionMenu from "@/app/AdminActionMenu";
 import UserIdentity from "@/app/UserIdentity";
 import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
 import { createClient } from "@/lib/supabase/client";
-import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
+import { hasAdminAccess, runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 
 type BeforeInstallPromptEvent = Event & {
   platform?: string;
@@ -81,12 +81,12 @@ export default function MainNavbar() {
           ensureProfile: true,
         });
         if (active) {
-          setIsAdmin(profileData?.role === "admin");
+          setIsAdmin(hasAdminAccess(user.id, profileData?.role ?? null));
         }
       } catch {
         // Keep fallback route when profile lookup fails.
         if (active) {
-          setIsAdmin(false);
+          setIsAdmin(hasAdminAccess(user.id, null));
         }
       }
     };
@@ -695,6 +695,22 @@ export default function MainNavbar() {
                   <Link href="/suggestions" className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Suggestions & Support</Link>
                   {isAdmin ? (
                     <>
+                      <div className="mx-2 my-2 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-500/5 px-3 py-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-fuchsia-200/80">Admin Tools</p>
+                        <p className="mt-1 text-xs text-fuchsia-100/70">Mute, shadow ban, verified badge, and delete actions are available on profiles, posts, and the user directory.</p>
+                        <button
+                          type="button"
+                          className="mt-3 flex w-full items-center gap-2 rounded-xl border border-fuchsia-300/25 px-3 py-2 text-left text-sm text-fuchsia-100 transition hover:bg-fuchsia-500/10"
+                          onClick={() => {
+                            setOpenDropdown("users");
+                            void loadUserCount();
+                            void loadUsersList();
+                          }}
+                        >
+                          <Users size={16} />
+                          Open User Directory Tools
+                        </button>
+                      </div>
                       <Link href="/admin/reports" className="block px-4 py-2 text-cyan-100 hover:bg-cyan-900/40 rounded">Moderation Queue</Link>
                       <Link href="/deleted-items" className="block px-4 py-2 text-amber-200 hover:bg-cyan-900/40 rounded">Deleted Items</Link>
                     </>

@@ -9,6 +9,7 @@ import { Loader2, Lock } from "lucide-react";
 import Link from "next/link";
 import { sanitizeUsernameInput } from "@/lib/profile-identity";
 import { APP_VERSION } from "@/lib/app-config";
+import { hasAdminAccess } from "@/lib/admin-actions";
 
 export default function SettingsPage() {
   return (
@@ -58,7 +59,7 @@ function SettingsContent() {
         .maybeSingle()
         .then(async ({ data: profile }) => {
           setUsername(sanitizeUsernameInput(profile?.username ?? ""));
-          const adminRole = profile?.role === "admin";
+          const adminRole = hasAdminAccess(user.id, profile?.role ?? null);
           setIsAdmin(adminRole);
 
           if (adminRole) {
