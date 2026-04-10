@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, RefreshCcw } from "lucide-react";
 
@@ -115,7 +114,7 @@ export default function CaptchaChallenge({ onStateChange, reloadKey = 0 }: Captc
                   aria-label={`CAPTCHA option ${index + 1}`}
                 >
                   <div className="relative aspect-square overflow-hidden rounded-[18px] bg-slate-900/80">
-                    <Image src={option.src} alt={`CAPTCHA option ${index + 1}`} fill className="object-cover" sizes="(max-width: 640px) 45vw, 160px" unoptimized />
+                    <img src={option.src} alt={`CAPTCHA option ${index + 1}`} className="h-full w-full object-cover" />
                   </div>
                   <div
                     className={[
