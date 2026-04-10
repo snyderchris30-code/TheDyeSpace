@@ -52,47 +52,69 @@ export default function LoginPage() {
     setLoading(true);
     setMessage(null);
 
-    if (!captchaState.token) {
-      setMessage("The vibe check is still loading. Try again in a second.");
-      setLoading(false);
-      return;
-    }
+    try {
+      if (!captchaState.token) {
+        setMessage("The vibe check is still loading. Try again in a second.");
+        return;
+      }
 
-    const captchaResponse = await fetch("/api/captcha", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: captchaState.token, selectedIds: captchaState.selectedIds }),
-    });
-    const captchaBody = await captchaResponse.json().catch(() => ({}));
-    if (!captchaResponse.ok || captchaBody?.ok !== true) {
-      setMessage("Not quite... try again");
-      setCaptchaReloadKey((current) => current + 1);
-      setLoading(false);
-      return;
-    }
-
-    const form = e.currentTarget;
-    const email = form.email.value;
-    const password = form.password.value;
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      setFailedAttempts((prev) => {
-        const next = prev + 1;
-        if (next >= 6) {
-          setLockedUntil(Date.now() + 60_000);
-        }
-        return next;
+      console.log("[CAPTCHA] login verify request", {
+        selectedIds: captchaState.selectedIds,
+        tokenLength: captchaState.token.length,
       });
-      setMessage(error.message);
-      setLoading(false);
-    } else {
+
+      const captchaResponse = await fetch("/api/captcha", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: captchaState.token, selectedIds: captchaState.selectedIds }),
+      });
+      const captchaBody = await captchaResponse.json().catch(() => ({}));
+
+      console.log("[CAPTCHA] login verify response", {
+        status: captchaResponse.status,
+        body: captchaBody,
+      });
+
+      if (!captchaResponse.ok || captchaBody?.ok !== true) {
+        const reason = captchaBody?.reason || "verification failed";
+        console.warn("[CAPTCHA] login verify failed", { reason, selectedIds: captchaState.selectedIds });
+        setMessage("Not quite... try again");
+        setCaptchaReloadKey((current) => current + 1);
+        return;
+      }
+
+      console.log("[CAPTCHA] login verify succeeded");
+
+      const form = e.currentTarget;
+      const email = form.email.value;
+      const password = form.password.value;
+      const supabase = createClient();
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      console.log("[LOGIN] auth response", { error });
+
+      if (error) {
+        setFailedAttempts((prev) => {
+          const next = prev + 1;
+          if (next >= 6) {
+            setLockedUntil(Date.now() + 60_000);
+          }
+          return next;
+        });
+        setMessage(error.message);
+        return;
+      }
+
       setFailedAttempts(0);
       setLockedUntil(null);
       await fetch("/api/profile/init", { method: "POST" }).catch(() => null);
       setMessage("Welcome back, cosmic soul!");
       router.push(redirect);
       router.refresh();
+    } catch (error) {
+      console.error("[LOGIN] unexpected error", error);
+      setMessage("Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
     }
   }
 

@@ -30,7 +30,13 @@ export async function POST(req: NextRequest) {
       ? body.selectedIds.filter((value): value is string => typeof value === "string")
       : [];
 
+    console.log("[CAPTCHA] verify request", {
+      tokenPresent: Boolean(token),
+      selectedCount: selectedIds.length,
+    });
+
     if (!token) {
+      console.warn("[CAPTCHA] verify missing token", requestContext);
       return NextResponse.json({ error: "CAPTCHA token is required." }, { status: 400 });
     }
 
@@ -41,12 +47,18 @@ export async function POST(req: NextRequest) {
         reason: verification.reason,
         selectedCount: selectedIds.length,
       });
+      console.log("[CAPTCHA] verify failed", {
+        reason: verification.reason,
+        selectedCount: selectedIds.length,
+      });
       return NextResponse.json({ ok: false, reason: verification.reason }, { status: 200 });
     }
 
+    console.log("[CAPTCHA] verify succeeded", { selectedCount: selectedIds.length });
     return NextResponse.json({ ok: true });
   } catch (error) {
     logError("captcha/verify", "Unexpected CAPTCHA verification failure", error, requestContext);
+    console.error("[CAPTCHA] verify exception", error);
     return NextResponse.json({ error: "Failed to verify CAPTCHA." }, { status: 500 });
   }
 }
