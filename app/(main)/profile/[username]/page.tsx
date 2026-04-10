@@ -718,6 +718,17 @@ export default function ProfileEditor() {
     void loadProfile();
   }, [loadProfile]);
 
+  useEffect(() => {
+    if (!profileUserId) {
+      setPosts([]);
+      setInteractions({});
+      setPostsLoading(false);
+      return;
+    }
+
+    void loadPosts(profileUserId);
+  }, [loadPosts, profileUserId]);
+
   const loadContactRequestState = useCallback(async () => {
     if (!session?.user?.id || !profileUserId || profileStatus?.verified_badge !== true) {
       setContactRequestStatus(null);
@@ -2146,7 +2157,6 @@ export default function ProfileEditor() {
                           text={stripCategoryTag(stripAffiliateProductTokens(post.content)) || "No description provided."}
                           className="mt-4 block whitespace-pre-wrap text-base leading-7 text-[color:var(--profile-text)]/92 sm:text-lg sm:leading-8"
                         />
-                        <PostAffiliateProducts content={post.content} className="mt-4" />
 
                         {post.image_urls && post.image_urls.length > 0 ? (
                           <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -2222,6 +2232,8 @@ export default function ProfileEditor() {
                             </button>
                           ) : null}
                         </div>
+
+                        <PostAffiliateProducts content={post.content} className="mt-4" />
 
                         {postInteraction.reactions.length > 0 ? (
                           <div className="mt-4 flex flex-wrap gap-2">

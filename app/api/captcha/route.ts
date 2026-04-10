@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   const limiter = applyRateLimit({
     key: `captcha:challenge:${ip}`,
     windowMs: 60_000,
-    max: 24,
+    max: 120,
     blockMs: 2 * 60_000,
   });
 
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
   const limiter = applyRateLimit({
     key: `captcha:verify:${ip}`,
     windowMs: 60_000,
-    max: 12,
+    max: 60,
     blockMs: 2 * 60_000,
   });
 

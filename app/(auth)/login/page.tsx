@@ -97,7 +97,11 @@ export default function LoginPage() {
       if (!captchaResponse || !captchaResponse.ok || captchaBody?.ok !== true) {
         const reason = captchaBody?.reason || "verification failed";
         console.warn("[CAPTCHA] login verify failed", { reason, selectedIds: captchaState.selectedIds });
-        setMessage(reason === "expired" ? "The CAPTCHA expired. Try again." : "Not quite... try again");
+        if (reason === "rate_limited") {
+          setMessage("Too many CAPTCHA attempts. Please wait a moment and try again.");
+          return;
+        }
+        setMessage(reason === "expired" || reason === "invalid" ? "The CAPTCHA expired. Try again." : "Not quite... try again");
         setCaptchaReloadKey((current) => current + 1);
         return;
       }

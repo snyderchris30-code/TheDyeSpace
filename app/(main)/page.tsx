@@ -609,7 +609,6 @@ export default function MainFeedPage() {
                   />
                 )}
               </button>
-              {editingPostId === post.id ? null : <PostAffiliateProducts content={displayContent} className="-mt-1" />}
               {editingPostId === post.id && (
                 <div className="mb-3 flex flex-col gap-2">
                   <textarea
@@ -720,6 +719,7 @@ export default function MainFeedPage() {
               </div>
               {/* Footer links removed from individual posts. Place in site footer or settings/help section only. */}
             </footer>
+            {editingPostId === post.id ? null : <PostAffiliateProducts content={displayContent} className="mt-3" />}
             {postInteraction.reactions.length > 0 && (
               <div className="mt-4 flex flex-wrap gap-2">
                 {postInteraction.reactions.map((reaction) => (

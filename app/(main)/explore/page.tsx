@@ -665,7 +665,6 @@ export default function ExplorePage() {
                   text={visibleContent || "No description provided."}
                   className="mb-3 block whitespace-pre-wrap text-sm leading-6 text-[color:var(--post-text)]/92 sm:text-base sm:leading-7"
                 />
-              <PostAffiliateProducts content={post.content} className="mb-4" />
               <div className="mb-3">
                 <UserIdentity
                   displayName={post.author_display_name || "DyeSpace User"}
@@ -769,6 +768,7 @@ export default function ExplorePage() {
               ) : (
                 <p className="text-sm italic text-cyan-300/80">Sign in to interact with posts.</p>
               )}
+              <PostAffiliateProducts content={post.content} className="mt-3" />
 
               {postInteraction.reactions.length > 0 ? (
                 <div className="mt-4 flex flex-wrap gap-2">

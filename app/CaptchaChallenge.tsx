@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, RefreshCcw } from "lucide-react";
 
 type CaptchaOption = {
@@ -44,8 +44,9 @@ export default function CaptchaChallenge({ onStateChange, reloadKey = 0 }: Captc
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const lastChallengeSignatureRef = useRef<string | null>(null);
 
-  const loadChallenge = useCallback(async () => {
+  const loadChallenge = useCallback(async (forceDifferent = false) => {
     setLoading(true);
     setError(null);
     setPrompt("Loading a fresh vibe check...");
@@ -56,17 +57,42 @@ export default function CaptchaChallenge({ onStateChange, reloadKey = 0 }: Captc
     onStateChange({ token: null, selectedIds: [] });
 
     try {
-      const cacheBust = Date.now();
-      const response = await fetch(`/api/captcha?cacheBust=${cacheBust}`, { cache: "no-store" });
-      const body = (await response.json().catch(() => ({}))) as Partial<CaptchaChallengeResponse> & { error?: string };
-      if (!response.ok || !body.prompt || !Array.isArray(body.options) || typeof body.token !== "string") {
-        throw new Error(body.error || "Could not load the stoner CAPTCHA.");
+      let nextPrompt = "";
+      let nextOptions: CaptchaOption[] = [];
+      let nextToken: string | null = null;
+      let lastErrorMessage = "Could not load the stoner CAPTCHA.";
+
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const cacheBust = `${Date.now()}-${attempt}`;
+        const response = await fetch(`/api/captcha?cacheBust=${cacheBust}`, { cache: "no-store" });
+        const body = (await response.json().catch(() => ({}))) as Partial<CaptchaChallengeResponse> & { error?: string };
+
+        if (!response.ok || !body.prompt || !Array.isArray(body.options) || typeof body.token !== "string") {
+          lastErrorMessage = body.error || "Could not load the stoner CAPTCHA.";
+          continue;
+        }
+
+        const signature = `${body.prompt}::${body.options.map((option) => option.id).sort().join("|")}`;
+        const sameAsPrevious = signature === lastChallengeSignatureRef.current;
+        if (forceDifferent && sameAsPrevious && attempt < 2) {
+          continue;
+        }
+
+        nextPrompt = body.prompt;
+        nextOptions = body.options;
+        nextToken = body.token;
+        lastChallengeSignatureRef.current = signature;
+        break;
       }
 
-      setPrompt(body.prompt);
-      setOptions(body.options);
-      setToken(body.token);
-      onStateChange({ token: body.token, selectedIds: [] });
+      if (!nextToken) {
+        throw new Error(lastErrorMessage);
+      }
+
+      setPrompt(nextPrompt);
+      setOptions(nextOptions);
+      setToken(nextToken);
+      onStateChange({ token: nextToken, selectedIds: [] });
     } catch (challengeError: any) {
       setError(typeof challengeError?.message === "string" ? challengeError.message : "Could not load the stoner CAPTCHA.");
     } finally {
@@ -79,7 +105,7 @@ export default function CaptchaChallenge({ onStateChange, reloadKey = 0 }: Captc
   }, []);
 
   useEffect(() => {
-    void loadChallenge();
+    void loadChallenge(true);
   }, [loadChallenge, reloadKey]);
 
   const toggleSelection = useCallback(
@@ -106,7 +132,7 @@ export default function CaptchaChallenge({ onStateChange, reloadKey = 0 }: Captc
         </div>
         <button
           type="button"
-          onClick={() => void loadChallenge()}
+          onClick={() => void loadChallenge(true)}
           className="inline-flex items-center gap-2 rounded-full border border-cyan-300/30 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:border-cyan-200/60 hover:bg-cyan-400/10"
           aria-label="Load a new CAPTCHA challenge"
         >

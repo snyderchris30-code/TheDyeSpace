@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { MessageCircle, Package2, Store } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 import { normalizeSellerProducts } from "@/lib/verified-seller";
+import { sanitizeUsernameInput } from "@/lib/profile-identity";
 import type { ProfileThemeSettings } from "@/types/database";
 
 type ShopProfile = {
@@ -42,7 +42,7 @@ function formatPrice(price?: string | null) {
 
 function resolveParamUsername(value: string | string[] | undefined) {
   const raw = Array.isArray(value) ? value[0] : value;
-  return decodeURIComponent(raw || "").trim().replace(/^@+/, "");
+  return sanitizeUsernameInput(decodeURIComponent(raw || "").trim());
 }
 
 export default function ShopPage() {
@@ -64,16 +64,14 @@ export default function ShopPage() {
       }
 
       setLoading(true);
-      const supabase = createClient();
-      const { data } = await supabase
-        .from("profiles")
-        .select("id,username,display_name,theme_settings")
-        .eq("username", username)
-        .limit(1)
-        .maybeSingle();
+      const response = await fetch(`/api/profile/lookup?username=${encodeURIComponent(username)}`, {
+        cache: "no-store",
+      });
+      const body = await response.json().catch(() => ({}));
+      const nextProfile = response.ok && body?.profile ? (body.profile as ShopProfile) : null;
 
       if (active) {
-        setProfile((data as ShopProfile | null) ?? null);
+        setProfile(nextProfile);
         setLoading(false);
       }
     }
