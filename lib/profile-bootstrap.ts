@@ -128,10 +128,12 @@ export function isOwnProfileRouteUsername(routeUsername: string, user: ProfileBo
 }
 
 export async function loadProfileByUsername(adminClient: any, username: string) {
+  const normalizedUsername = sanitizeUsernameInput(username);
+
   const { data, error } = await adminClient
     .from("profiles")
     .select(PROFILE_LOOKUP_SELECT)
-    .eq("username", username)
+    .eq("username", normalizedUsername)
     .limit(1)
     .maybeSingle();
 
@@ -139,7 +141,22 @@ export async function loadProfileByUsername(adminClient: any, username: string) 
     throw error;
   }
 
-  return data;
+  if (data) {
+    return data;
+  }
+
+  const { data: fallbackData, error: fallbackError } = await adminClient
+    .from("profiles")
+    .select(PROFILE_LOOKUP_SELECT)
+    .ilike("username", normalizedUsername)
+    .limit(1)
+    .maybeSingle();
+
+  if (fallbackError) {
+    throw fallbackError;
+  }
+
+  return fallbackData;
 }
 
 export async function ensureProfileForUser(

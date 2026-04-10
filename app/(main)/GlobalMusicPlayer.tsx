@@ -228,9 +228,13 @@ export default function GlobalMusicPlayer() {
     });
   }, [queue.length, setCurrentIndex]);
 
-  useEffect(() => {
+  const ensureYouTubeApiReady = useCallback(() => {
+    if (isApiReady) {
+      return;
+    }
+
     ensureYouTubeApi(() => setIsApiReady(true));
-  }, []);
+  }, [isApiReady]);
 
   useEffect(() => {
     const syncAuth = async () => {
@@ -299,7 +303,7 @@ export default function GlobalMusicPlayer() {
     };
 
     playerRef.current = new window.YT.Player(playerMountRef.current, {
-      host: "https://www.youtube.com",
+      host: "https://www.youtube-nocookie.com",
       width: "1",
       height: "1",
       playerVars,
@@ -422,7 +426,19 @@ export default function GlobalMusicPlayer() {
   }, [currentEntry, titleCache]);
 
   const handleTogglePlayback = useCallback(() => {
-    if (!playerRef.current || !currentEntry) {
+    if (!currentEntry) {
+      return;
+    }
+
+    if (!isApiReady) {
+      setStatus("Preparing the YouTube player...");
+      ensureYouTubeApiReady();
+      return;
+    }
+
+    if (!playerRef.current) {
+      setStatus("Preparing the YouTube player...");
+      ensureYouTubeApiReady();
       return;
     }
 
@@ -434,7 +450,7 @@ export default function GlobalMusicPlayer() {
 
     playerRef.current.playVideo?.();
     setIsPlaying(true);
-  }, [currentEntry, isPlaying, setIsPlaying]);
+  }, [currentEntry, ensureYouTubeApiReady, isApiReady, isPlaying, setIsPlaying]);
 
   const handlePrevious = useCallback(() => {
     if (!queue.length || !currentEntry) {

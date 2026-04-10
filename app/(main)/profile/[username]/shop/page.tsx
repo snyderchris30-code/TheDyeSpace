@@ -4,9 +4,17 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { MessageCircle, Package2, Store } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 import { normalizeSellerProducts } from "@/lib/verified-seller";
 import { sanitizeUsernameInput } from "@/lib/profile-identity";
 import type { ProfileThemeSettings } from "@/types/database";
+
+type ForSalePost = {
+  id: string;
+  content: string | null;
+  image_urls: string[] | null;
+  created_at: string;
+};
 
 type ShopProfile = {
   id: string;
@@ -50,6 +58,9 @@ export default function ShopPage() {
   const username = resolveParamUsername(params?.username);
   const [profile, setProfile] = useState<ShopProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [salePosts, setSalePosts] = useState<ForSalePost[]>([]);
+  const [postsLoading, setPostsLoading] = useState(false);
+  const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
     let active = true;
@@ -82,6 +93,43 @@ export default function ShopPage() {
       active = false;
     };
   }, [username]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadSalePosts() {
+      if (!profile?.id) {
+        return;
+      }
+
+      setPostsLoading(true);
+      const { data, error } = await supabase
+        .from("posts")
+        .select("id, content, image_urls, created_at")
+        .eq("user_id", profile.id)
+        .eq("is_for_sale", true)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false });
+
+      if (!active) {
+        return;
+      }
+
+      if (error) {
+        console.error("Failed to load for sale posts:", error);
+        setSalePosts([]);
+      } else {
+        setSalePosts((data || []) as ForSalePost[]);
+      }
+      setPostsLoading(false);
+    }
+
+    void loadSalePosts();
+
+    return () => {
+      active = false;
+    };
+  }, [profile?.id, supabase]);
 
   const sellerName = profile?.username || username || profile?.display_name || "Seller";
   const listings = useMemo(() => {
@@ -124,43 +172,84 @@ export default function ShopPage() {
           <div className="rounded-[1.75rem] border border-cyan-300/15 bg-slate-950/80 p-8 text-center text-slate-300 shadow-xl">
             Loading shop...
           </div>
-        ) : listings.length === 0 ? (
+        ) : listings.length === 0 && salePosts.length === 0 ? (
           <div className="rounded-[1.75rem] border border-cyan-300/15 bg-slate-950/80 p-10 text-center shadow-xl">
             <Package2 className="mx-auto h-10 w-10 text-cyan-300/70" />
-            <h2 className="mt-4 text-2xl font-semibold text-white">No products yet</h2>
-            <p className="mt-2 text-sm text-slate-300">This shop does not have any published products right now.</p>
+            <h2 className="mt-4 text-2xl font-semibold text-white">No listings yet</h2>
+            <p className="mt-2 text-sm text-slate-300">This shop does not have any published products or for-sale listings yet.</p>
           </div>
         ) : (
-          <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-            {listings.map((product) => {
-              const previewImage = getPreviewImage(product.photo_urls);
+          <div className="space-y-10">
+            {listings.length > 0 ? (
+              <section className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                {listings.map((product) => {
+                  const previewImage = getPreviewImage(product.photo_urls);
 
-              return (
-                <article
-                  key={product.id}
-                  className="overflow-hidden rounded-[1.75rem] border border-cyan-300/15 bg-slate-950/85 shadow-[0_20px_60px_rgba(0,0,0,0.28)]"
-                >
-                  <div className="flex h-56 items-center justify-center bg-slate-900">
-                    {previewImage ? (
-                      <img src={previewImage} alt={product.title} className="h-full w-full object-cover" loading="lazy" />
-                    ) : (
-                      <div className="px-6 text-center text-sm text-slate-400">No product photo</div>
-                    )}
+                  return (
+                    <article
+                      key={product.id}
+                      className="overflow-hidden rounded-[1.75rem] border border-cyan-300/15 bg-slate-950/85 shadow-[0_20px_60px_rgba(0,0,0,0.28)]"
+                    >
+                      <div className="flex h-56 items-center justify-center bg-slate-900">
+                        {previewImage ? (
+                          <img src={previewImage} alt={product.title} className="h-full w-full object-cover" loading="lazy" />
+                        ) : (
+                          <div className="px-6 text-center text-sm text-slate-400">No product photo</div>
+                        )}
+                      </div>
+                      <div className="space-y-3 p-5">
+                        <div className="flex items-start justify-between gap-3">
+                          <h2 className="text-lg font-semibold text-white">{product.title}</h2>
+                          <span className="rounded-full border border-cyan-300/30 bg-cyan-400/10 px-3 py-1 text-sm font-semibold text-cyan-100">
+                            {formatPrice(product.price)}
+                          </span>
+                        </div>
+                        <p className="text-sm leading-6 text-slate-300">
+                          {product.description || "No description provided for this product yet."}
+                        </p>
+                      </div>
+                    </article>
+                  );
+                })}
+              </section>
+            ) : null}
+
+            {salePosts.length > 0 ? (
+              <section className="rounded-[1.75rem] border border-cyan-300/15 bg-slate-950/85 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.28)]">
+                <div className="mb-6 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm uppercase tracking-[0.24em] text-cyan-300/70">For Sale Posts</p>
+                    <h2 className="mt-2 text-3xl font-bold text-white">Verified Seller Posts</h2>
                   </div>
-                  <div className="space-y-3 p-5">
-                    <div className="flex items-start justify-between gap-3">
-                      <h2 className="text-lg font-semibold text-white">{product.title}</h2>
-                      <span className="rounded-full border border-cyan-300/30 bg-cyan-400/10 px-3 py-1 text-sm font-semibold text-cyan-100">
-                        {formatPrice(product.price)}
-                      </span>
-                    </div>
-                    <p className="text-sm leading-6 text-slate-300">
-                      {product.description || "No description provided for this product yet."}
-                    </p>
-                  </div>
-                </article>
-              );
-            })}
+                  <span className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-3 py-2 text-sm text-cyan-100">
+                    {salePosts.length} listing{salePosts.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <div className="space-y-4">
+                  {salePosts.map((post) => (
+                    <article key={post.id} className="rounded-3xl border border-cyan-300/15 bg-black/20 p-5">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <p className="text-sm text-slate-300">{new Date(post.created_at).toLocaleDateString()}</p>
+                        <Link
+                          href={profileHref}
+                          className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-200 hover:text-white"
+                        >
+                          View Profile
+                        </Link>
+                      </div>
+                      <p className="mt-3 text-sm leading-6 text-cyan-100/90">{post.content ? post.content.replace(/\[for_sale\]/i, "") : "No description provided."}</p>
+                      {post.image_urls && post.image_urls.length > 0 ? (
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                          {post.image_urls.slice(0, 2).map((imageUrl, index) => (
+                            <img key={index} src={imageUrl} alt={`Sale post image ${index + 1}`} className="h-32 w-full rounded-2xl object-cover" loading="lazy" />
+                          ))}
+                        </div>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              </section>
+            ) : null}
           </div>
         )}
       </div>
