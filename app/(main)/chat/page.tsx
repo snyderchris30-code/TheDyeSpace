@@ -33,6 +33,7 @@ export default function Page() {
       <div className="mt-6 mb-4 flex flex-wrap items-center gap-3">
         <Link
           href="/chat"
+          prefetch={false}
           className="rounded-full border border-cyan-300/40 bg-cyan-900/30 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-900/45"
         >
           The Dye Chat
@@ -40,6 +41,7 @@ export default function Page() {
         {canAccessRoom2 ? (
           <Link
             href="/chat/smoke-room-2"
+            prefetch={false}
             className="rounded-full border border-red-300/40 bg-red-900/30 px-4 py-2 text-sm font-semibold text-red-100 hover:bg-red-900/45"
           >
             The Smoke Lounge 2.0

@@ -472,6 +472,7 @@ export default function MainFeedPage() {
       <div className="mb-4">
         <Link
           href="/chat"
+          prefetch={false}
           className="inline-flex items-center gap-2 rounded-full border-4 border-red-600 bg-gradient-to-br from-red-700 via-red-500 to-red-700 px-8 py-4 text-2xl font-extrabold text-white shadow-lg hover:scale-105 hover:bg-red-700/90 transition-all"
           style={{ boxShadow: "0 0 32px 4px rgba(239,68,68,0.25)" }}
         >

@@ -15,6 +15,8 @@ export type ResolvedClientAuth = {
   errorMessage: string | null;
 };
 
+const inFlightProfileInitByUserId = new Map<string, Promise<unknown>>();
+
 function formatClientAuthError(error: unknown) {
   if (error instanceof Error) {
     return error.message;
@@ -116,25 +118,45 @@ export async function fetchClientProfile<T>(
     return profile;
   }
 
-  const response = await fetch("/api/profile/init", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-  });
+  let initPromise = inFlightProfileInitByUserId.get(userId);
+  if (!initPromise) {
+    initPromise = (async () => {
+      const response = await fetch("/api/profile/init", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
 
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    const initMessage = typeof body?.error === "string" ? body.error : "Failed to initialize profile.";
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        const initMessage = typeof body?.error === "string" ? body.error : "Failed to initialize profile.";
+        throw new Error(initMessage);
+      }
 
-    if (lastError instanceof Error) {
-      throw lastError;
-    }
+      return response.json().catch(() => ({}));
+    })();
 
-    throw new Error(initMessage);
+    inFlightProfileInitByUserId.set(userId, initPromise);
   }
 
-  const body = await response.json().catch(() => ({}));
-  if (body?.profile) {
-    return body.profile as T;
+  try {
+    const initResult = (await initPromise) as { profile?: T | null };
+    if (initResult?.profile) {
+      return initResult.profile;
+    }
+  } catch (initError) {
+    lastError = initError;
+    try {
+      profile = await loadProfile();
+      if (profile) {
+        return profile;
+      }
+    } catch {
+      // Keep the original init error if re-load also fails.
+    }
+  } finally {
+    if (inFlightProfileInitByUserId.get(userId) === initPromise) {
+      inFlightProfileInitByUserId.delete(userId);
+    }
   }
 
   try {

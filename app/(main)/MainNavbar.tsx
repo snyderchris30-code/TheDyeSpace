@@ -217,7 +217,7 @@ export default function MainNavbar() {
 
   // Theme system removed
 
-  // Throttle notification refetch to once every 10 seconds
+  // Throttle notification refetch to once every 30 seconds
   const [lastNotifFetch, setLastNotifFetch] = useState(0);
   const { data: notifications = [], refetch } = useQuery({
     queryKey: ["notifications", notificationUserId ?? "anonymous"],
@@ -251,7 +251,7 @@ export default function MainNavbar() {
       .channel(`public:navbar-notifications:${notificationUserId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${notificationUserId}` }, () => {
         const now = Date.now();
-        if (now - lastRealtimeNotificationRef.current < 3000) {
+        if (now - lastRealtimeNotificationRef.current < 15000) {
           return;
         }
         lastRealtimeNotificationRef.current = now;
@@ -267,7 +267,7 @@ export default function MainNavbar() {
   useEffect(() => {
     if (notifDrop && notificationUserId) {
       const now = Date.now();
-      if (now - lastNotifFetch > 10000) {
+      if (now - lastNotifFetch > 30000) {
         setLastNotifFetch(now);
         void refetch();
       }
@@ -608,7 +608,6 @@ export default function MainNavbar() {
                 className="group relative flex h-11 w-11 items-center justify-center rounded-xl border border-[#39ffcc]/20 bg-black/30 text-[#39ffcc] transition-all duration-200 hover:border-[#00f5ff]/45 hover:bg-[#00323c]/90 hover:text-[#00f5ff] hover:shadow-[0_0_18px_rgba(57,255,204,0.2)]"
                 onClick={() => {
                   setOpenDropdown((current) => (current === "notifications" ? null : "notifications"));
-                  if (!notifDrop) refetch();
                 }}
               >
                 <Bell size={18} />
@@ -703,12 +702,12 @@ export default function MainNavbar() {
                       <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M6 6l8 8M6 14L14 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                     </button>
                   </div>
-                  <Link href="/settings" className="flex items-center gap-2 px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded"><Settings size={16} /> Settings</Link>
+                  <Link href="/settings" prefetch={false} className="flex items-center gap-2 px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded"><Settings size={16} /> Settings</Link>
                   <button className="flex items-center gap-2 w-full px-4 py-2 text-red-400 hover:bg-cyan-900/40 rounded" onClick={() => alert('Delete account logic here!')}><Trash2 size={16} /> Delete Account</button>
-                  <Link href="/terms" className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Terms of Service</Link>
-                  <Link href="/privacy" className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Privacy Policy</Link>
-                  <Link href="/guidelines" className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Community Guidelines</Link>
-                  <Link href="/suggestions" className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Suggestions & Support</Link>
+                  <Link href="/terms" prefetch={false} className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Terms of Service</Link>
+                  <Link href="/privacy" prefetch={false} className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Privacy Policy</Link>
+                  <Link href="/guidelines" prefetch={false} className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Community Guidelines</Link>
+                  <Link href="/suggestions" prefetch={false} className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Suggestions & Support</Link>
                   {isAdmin ? (
                     <>
                       <div className="mx-2 my-2 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-500/5 px-3 py-3">
@@ -727,8 +726,8 @@ export default function MainNavbar() {
                           Open User Directory Tools
                         </button>
                       </div>
-                      <Link href="/admin/reports" className="block px-4 py-2 text-cyan-100 hover:bg-cyan-900/40 rounded">Moderation Queue</Link>
-                      <Link href="/deleted-items" className="block px-4 py-2 text-amber-200 hover:bg-cyan-900/40 rounded">Deleted Items</Link>
+                      <Link href="/admin/reports" prefetch={false} className="block px-4 py-2 text-cyan-100 hover:bg-cyan-900/40 rounded">Moderation Queue</Link>
+                      <Link href="/deleted-items" prefetch={false} className="block px-4 py-2 text-amber-200 hover:bg-cyan-900/40 rounded">Deleted Items</Link>
                     </>
                   ) : null}
                   {isLoggedIn ? (
@@ -736,7 +735,7 @@ export default function MainNavbar() {
                       <LogOut size={18} /> Logout
                     </button>
                   ) : (
-                    <Link href="/login" className="w-full block px-4 py-2 text-green-300 hover:bg-cyan-900/40 rounded flex items-center gap-2">
+                    <Link href="/login" prefetch={false} className="w-full block px-4 py-2 text-green-300 hover:bg-cyan-900/40 rounded flex items-center gap-2">
                       <User size={18} /> Sign In
                     </Link>
                   )}

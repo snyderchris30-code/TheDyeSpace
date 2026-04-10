@@ -180,7 +180,7 @@ export default function SignupPage() {
         </button>
         <p className="text-center text-sm mt-2">
           Already have an account?{' '}
-          <Link href="/login" className="underline text-pink-300 hover:text-yellow-300">Log in</Link>
+          <Link href="/login" prefetch={false} className="underline text-pink-300 hover:text-yellow-300">Log in</Link>
         </p>
         {message && (
           <div className="text-center text-pink-300 font-semibold mt-2 animate-pulse">{message}</div>

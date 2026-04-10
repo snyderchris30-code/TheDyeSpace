@@ -83,7 +83,7 @@ export default function ForgotPasswordPage() {
 
         <div className="text-center text-sm mt-4">
           Remember your password?{' '}
-          <Link href="/login" className="underline text-pink-300 hover:text-yellow-300">Log in</Link>
+          <Link href="/login" prefetch={false} className="underline text-pink-300 hover:text-yellow-300">Log in</Link>
         </div>
       </form>
     </div>

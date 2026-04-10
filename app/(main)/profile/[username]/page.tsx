@@ -679,6 +679,19 @@ export default function ProfileEditor() {
       }
 
       if (!viewedProfile) {
+        if (sessionUser?.id) {
+          await fetch("/api/profile/init", { method: "POST" }).catch(() => null);
+          const retryLookup = await fetchProfileSnapshotWithRetry(routeUsername);
+          if (retryLookup.profile) {
+            applyLoadedProfile(retryLookup.profile);
+            if (retryLookup.profile.id === sessionUser.id) {
+              setIsOwner(true);
+              setIsAdmin(hasAdminAccess(sessionUser.id, retryLookup.profile.role ?? null));
+            }
+            return;
+          }
+        }
+
         const message = "Profile not found. Couldn't load profile.";
         setLoadError({
           title: "Profile not found",

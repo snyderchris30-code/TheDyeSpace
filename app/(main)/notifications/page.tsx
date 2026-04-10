@@ -83,12 +83,29 @@ export default function NotificationsPage() {
 
   const loadNotificationStateThrottled = useCallback(() => {
     const now = Date.now();
-    if (now - lastRealtimeSyncRef.current < 3000) {
+    if (now - lastRealtimeSyncRef.current < 15000) {
       return;
     }
     lastRealtimeSyncRef.current = now;
     void loadNotificationState();
   }, [loadNotificationState]);
+
+  useEffect(() => {
+    if (!userId) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        return;
+      }
+      loadNotificationStateThrottled();
+    }, 60000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [loadNotificationStateThrottled, userId]);
 
   useEffect(() => {
     let isMounted = true;

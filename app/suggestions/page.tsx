@@ -196,7 +196,7 @@ export default function SuggestionsPage() {
                 Want to support in other ways?<br/>
                 Share the site with friends, invite fellow artists, and keep the feedback coming.
               </p>
-              <Link href="/explore" className="mt-4 inline-flex items-center text-cyan-200 underline decoration-cyan-400/50 underline-offset-4 transition hover:text-cyan-50">
+              <Link href="/explore" prefetch={false} className="mt-4 inline-flex items-center text-cyan-200 underline decoration-cyan-400/50 underline-offset-4 transition hover:text-cyan-50">
                 Explore the community feed
               </Link>
             </div>
