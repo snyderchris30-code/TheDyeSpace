@@ -18,13 +18,11 @@ export async function GET(req: NextRequest) {
     if (!username) {
       return NextResponse.json({ error: "Username is required." }, { status: 400 });
     }
-
-    const supabase = await createSupabaseServerClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-    const viewer = authError ? null : user;
+    let viewer: {
+      id: string;
+      email?: string | null;
+      user_metadata?: Record<string, unknown> | null;
+    } | null = null;
 
     let adminClient;
     try {
@@ -33,7 +31,7 @@ export async function GET(req: NextRequest) {
       logError("profile/lookup", "Missing service role configuration", error, {
         ...requestContext,
         username,
-        viewerUserId: viewer?.id ?? null,
+        viewerUserId: null,
       });
       return NextResponse.json({ error: "Server misconfiguration: service role key missing" }, { status: 500 });
     }
@@ -41,11 +39,20 @@ export async function GET(req: NextRequest) {
     logInfo("profile/lookup", "Profile fetch started", {
       ...requestContext,
       username,
-      viewerUserId: viewer?.id ?? null,
+      viewerUserId: null,
     });
 
     let profile = await loadProfileByUsername(adminClient, username);
     let createdProfile = false;
+
+    if (!profile) {
+      const supabase = await createSupabaseServerClient();
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+      viewer = authError ? null : user;
+    }
 
     if (!profile && viewer && isOwnProfileRouteUsername(username, viewer)) {
       const ensuredProfile = await ensureProfileForUser(adminClient, viewer, { username });

@@ -1,4 +1,3 @@
-import '../globals.css';
 import type { Metadata } from 'next';
 import { Audiowide, Bebas_Neue, Cormorant_Garamond, DM_Serif_Display, Inter, JetBrains_Mono, Orbitron, Playfair_Display, Space_Grotesk, Syne } from 'next/font/google';
 import MainLayoutClient from './MainLayoutClient';

@@ -222,7 +222,8 @@ function buildPlaylist(urls: string[]): PlaylistSong[] {
 }
 
 const PROFILE_LOAD_TIMEOUT_MS = 15000;
-const PROFILE_FETCH_TIMEOUT_MS = 8000;
+const PROFILE_FETCH_TIMEOUT_MS = 12000;
+const PROFILE_FETCH_MAX_ATTEMPTS = 2;
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = window.setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
@@ -487,6 +488,48 @@ export default function ProfileEditor() {
     return body;
   }, []);
 
+  const fetchProfileSnapshotWithRetry = useCallback(
+    async (username: string) => {
+      let lastError: unknown = null;
+
+      for (let attempt = 1; attempt <= PROFILE_FETCH_MAX_ATTEMPTS; attempt += 1) {
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), PROFILE_FETCH_TIMEOUT_MS);
+
+        try {
+          return await fetchProfileSnapshotByUsername(username, controller.signal);
+        } catch (error) {
+          lastError = error;
+
+          const timedOut = controller.signal.aborted || (error instanceof Error && error.name === "AbortError");
+          if (timedOut) {
+            console.warn("Profile fetch attempt timed out", {
+              username,
+              attempt,
+              maxAttempts: PROFILE_FETCH_MAX_ATTEMPTS,
+              timeoutMs: PROFILE_FETCH_TIMEOUT_MS,
+            });
+
+            if (attempt < PROFILE_FETCH_MAX_ATTEMPTS) {
+              continue;
+            }
+
+            const timeoutError = new Error("This profile did not respond in time. Retry to load it again.");
+            timeoutError.name = "ProfileLookupTimeoutError";
+            throw timeoutError;
+          }
+
+          throw error;
+        } finally {
+          window.clearTimeout(timeoutId);
+        }
+      }
+
+      throw lastError instanceof Error ? lastError : new Error("Could not load this profile right now.");
+    },
+    [fetchProfileSnapshotByUsername]
+  );
+
   const loadOwnRole = useCallback(
     async (userId: string) => {
       try {
@@ -604,36 +647,7 @@ export default function ProfileEditor() {
 
       setIsOwner(false);
       loadStage = "route-profile-fetch";
-      const controller = new AbortController();
-      const timeoutId = window.setTimeout(() => controller.abort(), PROFILE_FETCH_TIMEOUT_MS);
-
-      let lookup: ProfileLookupResponse;
-      try {
-        lookup = await fetchProfileSnapshotByUsername(routeUsername, controller.signal);
-      } catch (error) {
-        window.clearTimeout(timeoutId);
-        if (controller.signal.aborted) {
-          const timeoutMessage = "This profile did not respond in time. Retry to load it again.";
-          console.warn("Profile fetch timed out", {
-            username: routeUsername,
-            timeoutMs: PROFILE_FETCH_TIMEOUT_MS,
-          });
-          void reportProfileLoadError("profile-timeout", error, {
-            routeUsername,
-            timeoutMs: PROFILE_FETCH_TIMEOUT_MS,
-          });
-          setLoadError({
-            title: "Profile not available",
-            message: timeoutMessage,
-          });
-          setStatus({ type: "error", text: timeoutMessage });
-          return;
-        }
-
-        throw error;
-      }
-
-      window.clearTimeout(timeoutId);
+      const lookup = await fetchProfileSnapshotWithRetry(routeUsername);
       const viewedProfile = lookup.profile;
 
       if (lookup.meta?.createdProfile) {
@@ -665,8 +679,10 @@ export default function ProfileEditor() {
       void reportProfileLoadError("profile-load", error, { loadStage });
       const err = error as any;
       const message =
-        err?.name === "AbortError"
-          ? "Profile load timed out. Please refresh and try again."
+        err?.name === "AbortError" || err?.name === "ProfileLookupTimeoutError"
+          ? typeof err?.message === "string"
+            ? err.message
+            : "Profile load timed out. Please refresh and try again."
           : typeof err?.message === "string" ? err.message : "Unable to load this profile.";
       setLoadError({
         title: "Couldn't load profile",
@@ -676,7 +692,7 @@ export default function ProfileEditor() {
     } finally {
       setLoading(false);
     }
-  }, [applyLoadedProfile, fetchProfileSnapshotByUsername, loadOwnRole, reportProfileLoadError, routeUsername, supabase]);
+  }, [applyLoadedProfile, fetchProfileSnapshotWithRetry, loadOwnRole, reportProfileLoadError, routeUsername, supabase]);
 
   useEffect(() => {
     void loadProfile();

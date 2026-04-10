@@ -28,6 +28,7 @@ export default function LightboxModal({ images, initialIndex = 0, onClose }: Lig
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [swipeOffset, setSwipeOffset] = useState(0);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const gestureRef = useRef<GestureState | null>(null);
@@ -78,6 +79,10 @@ export default function LightboxModal({ images, initialIndex = 0, onClose }: Lig
     });
   }, [clampScale]);
 
+  const handleWheel = useCallback((event: WheelEvent) => {
+    adjustScale(event.deltaY < 0 ? 0.2 : -0.2);
+  }, [adjustScale]);
+
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -101,6 +106,18 @@ export default function LightboxModal({ images, initialIndex = 0, onClose }: Lig
       document.body.style.overflow = previousOverflow;
     };
   }, []);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) {
+      return;
+    }
+
+    viewport.addEventListener("wheel", handleWheel, { passive: true });
+    return () => {
+      viewport.removeEventListener("wheel", handleWheel);
+    };
+  }, [handleWheel]);
 
   useEffect(() => {
     scaleRef.current = scale;
@@ -319,6 +336,7 @@ export default function LightboxModal({ images, initialIndex = 0, onClose }: Lig
           </>
         ) : null}
         <div
+          ref={viewportRef}
           className="flex h-full w-full items-center justify-center overflow-hidden touch-none"
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
@@ -331,10 +349,6 @@ export default function LightboxModal({ images, initialIndex = 0, onClose }: Lig
               setScale(2);
               scaleRef.current = 2;
             }
-          }}
-          onWheel={(event) => {
-            event.preventDefault();
-            adjustScale(event.deltaY < 0 ? 0.2 : -0.2);
           }}
         >
           <Image
