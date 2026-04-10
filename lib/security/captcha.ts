@@ -31,31 +31,30 @@ export type CaptchaChallenge = {
   token: string;
 };
 
+function normalizeCaptchaFileName(fileName: string) {
+  return fileName.toLowerCase().replace(/\.[^.]+$/, "");
+}
+
 const CAPTCHA_QUESTIONS: CaptchaQuestion[] = [
-  {
-    key: "tie-dye",
-    prompt: "Click all the tie-dye items",
-    matches: (fileName) => fileName.startsWith("tie-dye-"),
-  },
   {
     key: "peace",
     prompt: "Select the peace signs",
-    matches: (fileName) => fileName.startsWith("peace-"),
+    matches: (fileName) => normalizeCaptchaFileName(fileName).startsWith("peace-"),
   },
   {
     key: "mushroom",
-    prompt: "Pick the trippy mushrooms",
-    matches: (fileName) => fileName.startsWith("mushroom-"),
+    prompt: "Select the trippy mushrooms",
+    matches: (fileName) => normalizeCaptchaFileName(fileName).startsWith("mushroom-"),
   },
   {
-    key: "groovy",
-    prompt: "Choose the groovy vibes",
-    matches: (fileName) => fileName.startsWith("psychedelic-") || fileName.startsWith("groovy-item-"),
+    key: "psychedelic",
+    prompt: "Choose the groovy psychedelic items",
+    matches: (fileName) => normalizeCaptchaFileName(fileName).startsWith("psychedelic-"),
   },
   {
     key: "leaves",
-    prompt: "Find the mellow leaves",
-    matches: (fileName) => fileName.startsWith("leaf-"),
+    prompt: "Pick the leaf patterns",
+    matches: (fileName) => normalizeCaptchaFileName(fileName).startsWith("leaf-"),
   },
 ];
 
