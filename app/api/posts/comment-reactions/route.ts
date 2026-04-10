@@ -11,7 +11,7 @@ import {
   normalizeThemeSettings,
   type ReactionEmoji,
 } from "@/lib/post-interactions";
-import { normalizeCustomEmojiUrl } from "@/lib/custom-emojis";
+import { normalizeCustomEmojiStorageValue } from "@/lib/custom-emojis";
 import { resolveProfileUsername } from "@/lib/profile-identity";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -62,10 +62,11 @@ export async function POST(req: NextRequest) {
   }
 
   const body = (await req.json().catch(() => ({}))) as CommentReactionBody;
-  const normalizedEmoji = normalizeCustomEmojiUrl(body.emoji);
+  const normalizedEmoji = normalizeCustomEmojiStorageValue(body.emoji);
   const allowedEmojiSet = await getCustomEmojiFileNameSet();
+  const normalizedEmojiFileName = normalizedEmoji?.replace(/^\/emojis\//i, "");
 
-  if (!body.postId || !body.commentId || !normalizedEmoji || !allowedEmojiSet.has(normalizedEmoji)) {
+  if (!body.postId || !body.commentId || !normalizedEmoji || !normalizedEmojiFileName || !allowedEmojiSet.has(normalizedEmojiFileName)) {
     // eslint-disable-next-line no-console
     console.error("[posts/comment-reactions] Invalid comment reaction emoji", {
       postId: body.postId,

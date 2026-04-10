@@ -11,7 +11,7 @@ import {
   normalizeThemeSettings,
   type ReactionEmoji,
 } from "@/lib/post-interactions";
-import { normalizeCustomEmojiUrl } from "@/lib/custom-emojis";
+import { normalizeCustomEmojiStorageValue } from "@/lib/custom-emojis";
 import { loadLegacyInteraction, loadRelationalInteraction } from "@/lib/post-interaction-loaders";
 import { getCustomEmojiFileNameSet } from "@/lib/custom-emoji-registry";
 
@@ -126,10 +126,11 @@ export async function POST(req: NextRequest) {
   }
 
   const body = (await req.json().catch(() => ({}))) as ReactionBody;
-  const normalizedEmoji = normalizeCustomEmojiUrl(body.emoji);
+  const normalizedEmoji = normalizeCustomEmojiStorageValue(body.emoji);
   const allowedEmojiSet = await getCustomEmojiFileNameSet();
+  const normalizedEmojiFileName = normalizedEmoji?.replace(/^\/emojis\//i, "");
 
-  if (!body.postId || !normalizedEmoji || !allowedEmojiSet.has(normalizedEmoji)) {
+  if (!body.postId || !normalizedEmoji || !normalizedEmojiFileName || !allowedEmojiSet.has(normalizedEmojiFileName)) {
     // eslint-disable-next-line no-console
     console.error("[posts/reactions] Invalid reaction emoji", {
       postId: body.postId,

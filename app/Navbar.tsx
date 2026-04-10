@@ -60,11 +60,11 @@ export default function Navbar({ user }: { user?: { avatar_url?: string } }) {
             {userCount} users
           </span>
         )}
-        <Link href="/" className="nav-link flex items-center gap-1 cosmic-headline"><Home size={20} />Home</Link>
-        <Link href="/explore" className="nav-link flex items-center gap-1 cosmic-headline"><Compass size={20} />Explore</Link>
-        <Link href="/create" className="nav-link flex items-center gap-1 cosmic-headline"><PlusSquare size={20} />Create</Link>
-        <Link href="/notifications" className="nav-link flex items-center gap-1 cosmic-headline"><Bell size={20} />Notifications</Link>
-        <Link href="/profile" className="nav-link flex items-center gap-1 cosmic-headline"><User size={20} />Profile</Link>
+        <Link href="/" prefetch={false} className="nav-link flex items-center gap-1 cosmic-headline"><Home size={20} />Home</Link>
+        <Link href="/explore" prefetch={false} className="nav-link flex items-center gap-1 cosmic-headline"><Compass size={20} />Explore</Link>
+        <Link href="/create" prefetch={false} className="nav-link flex items-center gap-1 cosmic-headline"><PlusSquare size={20} />Create</Link>
+        <Link href="/notifications" prefetch={false} className="nav-link flex items-center gap-1 cosmic-headline"><Bell size={20} />Notifications</Link>
+        <Link href="/profile" prefetch={false} className="nav-link flex items-center gap-1 cosmic-headline"><User size={20} />Profile</Link>
         {user?.avatar_url ? (
           <Image
             src={user.avatar_url}

@@ -54,6 +54,11 @@ export function normalizeCustomEmojiUrl(value: unknown) {
   return null;
 }
 
+export function normalizeCustomEmojiStorageValue(value: unknown) {
+  const normalized = normalizeCustomEmojiUrl(value);
+  return normalized ? `/emojis/${normalized}` : null;
+}
+
 export function buildCustomEmojiSrc(value: string) {
   const trimmedValue = value.trim();
   if (!trimmedValue) {
