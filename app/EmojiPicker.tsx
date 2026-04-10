@@ -1,6 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+// Utility to check admin (hardcoded UID)
+function isAdminUser() {
+  if (typeof window === "undefined") return false;
+  try {
+    const user = JSON.parse(localStorage.getItem("supabase.auth.token") || "{}")?.currentSession?.user;
+    return user?.id === "794077c7-ad51-47cc-8c25-20171edfb017";
+  } catch { return false; }
+}
 import { Heart, Smile } from "lucide-react";
 
 import CustomEmojiImage from "@/app/CustomEmojiImage";
@@ -103,32 +111,29 @@ export default function EmojiPicker({
 }: EmojiPickerProps) {
   const [open, setOpen] = useState(false);
   const [customEmojiAssets, setCustomEmojiAssets] = useState<CustomEmojiAsset[]>(cachedEmojiAssets || []);
+  const [hidden, setHidden] = useState<string[]>([]);
   const [recentlyUsed, setRecentlyUsed] = useState<string[]>([]);
   const [visibleEmojiCount, setVisibleEmojiCount] = useState(REACTION_BATCH_SIZE);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const isFloatingInlineReaction = mode === "reaction" && reactionLayout === "floating-inline";
 
   useEffect(() => {
-    if (!open) {
-      return;
-    }
-
+    if (!open) return;
     let active = true;
-
     if (mode === "reaction") {
       setRecentlyUsed(readStoredRecentlyUsedReactions());
       setVisibleEmojiCount(REACTION_BATCH_SIZE);
     }
-
     void loadEmojiAssets().then((assets) => {
-      if (active) {
-        setCustomEmojiAssets(assets);
-      }
+      if (active) setCustomEmojiAssets(assets);
     });
-
-    return () => {
-      active = false;
-    };
+    // Load hidden emojis for non-admins
+    if (!isAdminUser()) {
+      fetch("/api/emojis/hidden").then((res) => res.json()).then((h) => { if (active) setHidden(h); });
+    } else {
+      setHidden([]);
+    }
+    return () => { active = false; };
   }, [open]);
 
   useEffect(() => {
@@ -190,10 +195,12 @@ export default function EmojiPicker({
     }
   };
 
+  // Filter out hidden emojis for non-admins
+  const filteredEmojis = isAdminUser() ? customEmojiAssets : customEmojiAssets.filter((e) => !hidden.includes(e.id));
   const recentlyUsedAssets = recentlyUsed
-    .map((fileName) => customEmojiAssets.find((asset) => asset.fileName === fileName))
+    .map((fileName) => filteredEmojis.find((asset) => asset.fileName === fileName))
     .filter((asset): asset is CustomEmojiAsset => Boolean(asset));
-  const visibleCustomEmojiAssets = isFloatingInlineReaction ? customEmojiAssets.slice(0, visibleEmojiCount) : customEmojiAssets;
+  const visibleCustomEmojiAssets = isFloatingInlineReaction ? filteredEmojis.slice(0, visibleEmojiCount) : filteredEmojis;
   const canLoadMore = isFloatingInlineReaction && visibleCustomEmojiAssets.length < customEmojiAssets.length;
 
   return (

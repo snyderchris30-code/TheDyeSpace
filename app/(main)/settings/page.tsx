@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/client";
 import AsyncStateCard from "@/app/AsyncStateCard";
 import CustomEmojiImage from "@/app/CustomEmojiImage";
+import EmojiCategoryEditor from "@/app/EmojiCategoryEditor";
 import { useEffect, useMemo, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Lock } from "lucide-react";
@@ -234,6 +235,12 @@ function SettingsContent() {
               </div>
             ))}
           </div>
+
+          {/* Emoji Category Editor for admin only */}
+          <EmojiCategoryEditor
+            emojis={customEmojiUrls.map((url, i) => ({ id: url, name: url.split("/").pop() || url, url, fileName: url.split("/").pop() || url }))}
+            isAdmin={isAdmin}
+          />
         </section>
       ) : null}
     </div>
