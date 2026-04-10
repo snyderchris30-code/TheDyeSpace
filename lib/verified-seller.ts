@@ -1,4 +1,9 @@
+import type { SellerProduct } from "@/types/database";
+
 export const VERIFIED_SELLER_CONTACT_REQUEST_STATUSES = ["pending", "approved", "denied"] as const;
+
+const MAX_SELLER_PRODUCTS = 24;
+const MAX_SELLER_PRODUCT_PHOTOS = 6;
 
 export type VerifiedSellerContactRequestStatus = (typeof VERIFIED_SELLER_CONTACT_REQUEST_STATUSES)[number];
 
@@ -27,6 +32,95 @@ function normalizeOptionalString(value: unknown, maxLength: number) {
   }
 
   return trimmed.slice(0, maxLength);
+}
+
+function normalizeSellerPrice(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+    return value.toFixed(2);
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const normalized = trimmed.replace(/[^0-9.]/g, "");
+  if (!normalized) {
+    return null;
+  }
+
+  const parsed = Number.parseFloat(normalized);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+
+  return parsed.toFixed(2);
+}
+
+function normalizeSellerProductPhotos(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const uniqueUrls = new Set<string>();
+  for (const candidate of value) {
+    const url = normalizeOptionalString(candidate, 2048);
+    if (!url) {
+      continue;
+    }
+
+    uniqueUrls.add(url);
+    if (uniqueUrls.size >= MAX_SELLER_PRODUCT_PHOTOS) {
+      break;
+    }
+  }
+
+  return Array.from(uniqueUrls);
+}
+
+export function normalizeSellerProducts(value: unknown): SellerProduct[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const products: SellerProduct[] = [];
+  const usedIds = new Set<string>();
+
+  for (const [index, candidate] of value.entries()) {
+    if (!candidate || typeof candidate !== "object") {
+      continue;
+    }
+
+    const title = normalizeOptionalString((candidate as SellerProduct).title, 120);
+    if (!title) {
+      continue;
+    }
+
+    const rawId = normalizeOptionalString((candidate as SellerProduct).id, 80) || `seller-product-${index + 1}`;
+    let id = rawId;
+    while (usedIds.has(id)) {
+      id = `${rawId}-${products.length + 1}`;
+    }
+
+    usedIds.add(id);
+    products.push({
+      id,
+      title,
+      price: normalizeSellerPrice((candidate as SellerProduct).price),
+      description: normalizeOptionalString((candidate as SellerProduct).description, 1000),
+      photo_urls: normalizeSellerProductPhotos((candidate as SellerProduct).photo_urls),
+    });
+
+    if (products.length >= MAX_SELLER_PRODUCTS) {
+      break;
+    }
+  }
+
+  return products;
 }
 
 export function resolveSellerContactSettings(settings?: Partial<SellerContactSettings> | null) {

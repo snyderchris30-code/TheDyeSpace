@@ -12,7 +12,8 @@ import {
 } from "@/lib/profile-theme";
 import { resolveProfileUsername } from "@/lib/profile-identity";
 import { createRequestLogContext, logError, logInfo, logWarn } from "@/lib/server-logging";
-import { resolveSellerContactSettings } from "@/lib/verified-seller";
+import { normalizeSellerProducts, resolveSellerContactSettings } from "@/lib/verified-seller";
+import type { SellerProduct } from "@/types/database";
 import { normalizeMusicPlayerUrls, normalizeYoutubeVideoUrls } from "@/lib/youtube-media";
 
 const ADMIN_AUTO_FOLLOW_USER_ID = "794077c7-ad51-47cc-8c25-20171edfb017";
@@ -80,6 +81,7 @@ type SaveBody = {
   seller_contact_phone?: string | null;
   seller_contact_link?: string | null;
   seller_contact_message?: string | null;
+  shop_products?: SellerProduct[];
 };
 
 export async function POST(req: NextRequest) {
@@ -179,6 +181,11 @@ export async function POST(req: NextRequest) {
       : Array.isArray(existingThemeSettings.music_player_urls)
         ? normalizeMusicPlayerUrls(existingThemeSettings.music_player_urls)
         : [];
+    const nextShopProducts = body.shop_products
+      ? normalizeSellerProducts(body.shop_products)
+      : Array.isArray(existingThemeSettings.shop_products)
+        ? normalizeSellerProducts(existingThemeSettings.shop_products)
+        : [];
     const nextFontStyle = body.font_style
       ? normalizeFontStyle(body.font_style)
       : existingThemeSettings.font_style
@@ -217,6 +224,7 @@ export async function POST(req: NextRequest) {
       bioLength: typeof body.bio === "string" ? body.bio.length : null,
       youtubeUrlCount: nextYoutubeUrls.length,
       musicPlayerUrlCount: nextMusicPlayerUrls.length,
+      shopProductCount: nextShopProducts.length,
       fontStyle: nextFontStyle,
       verifiedSeller: existingProfile?.verified_badge === true,
     });
@@ -251,6 +259,7 @@ export async function POST(req: NextRequest) {
             seller_contact_phone: nextSellerSettings.seller_contact_phone,
             seller_contact_link: nextSellerSettings.seller_contact_link,
             seller_contact_message: nextSellerSettings.seller_contact_message,
+            shop_products: nextShopProducts,
           },
         },
         { onConflict: "id", ignoreDuplicates: false }

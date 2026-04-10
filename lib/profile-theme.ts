@@ -1,3 +1,5 @@
+import type { SellerProduct } from "@/types/database";
+
 export const DEFAULT_BACKGROUND_COLOR = "#07111f";
 export const DEFAULT_TEXT_COLOR = "#e9fcff";
 export const DEFAULT_HIGHLIGHT_COLOR = "#44f9cf";
@@ -34,6 +36,7 @@ export type ProfileAppearance = {
   seller_contact_phone?: string | null;
   seller_contact_link?: string | null;
   seller_contact_message?: string | null;
+  shop_products?: SellerProduct[] | null;
 };
 
 export type ProfilePalette = {

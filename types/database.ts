@@ -15,6 +15,15 @@ export interface ProfileThemeSettings {
   seller_contact_phone?: string | null;
   seller_contact_link?: string | null;
   seller_contact_message?: string | null;
+  shop_products?: SellerProduct[] | null;
+}
+
+export interface SellerProduct {
+  id: string;
+  title: string;
+  price?: string | null;
+  description?: string | null;
+  photo_urls?: string[] | null;
 }
 
 export interface Profile {

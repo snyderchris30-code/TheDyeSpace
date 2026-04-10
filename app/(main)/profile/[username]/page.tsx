@@ -36,10 +36,13 @@ import {
   type ProfileAppearance,
 } from "@/lib/profile-theme";
 import { resolveProfileUsername, sanitizeUsernameInput } from "@/lib/profile-identity";
-import { canAccessSmokeLounge, type VerifiedSellerContactRequestStatus } from "@/lib/verified-seller";
+import { canAccessSmokeLounge, normalizeSellerProducts, type VerifiedSellerContactRequestStatus } from "@/lib/verified-seller";
+import type { SellerProduct } from "@/types/database";
+import VerifiedSellerShopEditor from "./VerifiedSellerShopEditor";
 const LightboxModal = dynamic(() => import("../../../LightboxModal"), { ssr: false });
 
 const DEFAULT_BANNER_URL = "https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=1400&q=80";
+const MAX_SHOP_PRODUCT_PHOTOS = 6;
 const PROFILE_PALETTE_SWATCH_CLASS: Record<string, string> = {
   "Teal Aurora": "bg-[#061621]",
   "Blue Nova": "bg-[#0B1533]",
@@ -95,6 +98,7 @@ type FormState = {
   seller_contact_phone: string;
   seller_contact_link: string;
   seller_contact_message: string;
+  shop_products: SellerProduct[];
 };
 
 type SellerContactRequestSummary = {
@@ -151,6 +155,19 @@ function normalizeUsername(value: string) {
 function stripCategoryTag(content: string | null) {
   if (!content) return "";
   return content.replace(/^\[(tutorial|new_boot_goofin|sold|unavailable)\]\s*/i, "").trim();
+}
+
+function createEmptyShopProduct(): SellerProduct {
+  return {
+    id:
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `seller-product-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    title: "",
+    price: null,
+    description: null,
+    photo_urls: [],
+  };
 }
 
 type FeedCategory = "all" | "following" | "tutorial" | "new_boot_goofin" | "for_sale" | "sold_unavailable";
@@ -317,6 +334,7 @@ export default function ProfileEditor() {
     seller_contact_phone: "",
     seller_contact_link: "",
     seller_contact_message: "",
+    shop_products: [],
   });
   const [draft, setDraft] = useState<FormState>({
     display_name: "",
@@ -336,6 +354,7 @@ export default function ProfileEditor() {
     seller_contact_phone: "",
     seller_contact_link: "",
     seller_contact_message: "",
+    shop_products: [],
   });
   const [editing, setEditing] = useState(false);
   const [posts, setPosts] = useState<ProfilePost[]>([]);
@@ -415,6 +434,7 @@ export default function ProfileEditor() {
       seller_contact_phone: typeof appearance?.seller_contact_phone === "string" ? appearance.seller_contact_phone : "",
       seller_contact_link: typeof appearance?.seller_contact_link === "string" ? appearance.seller_contact_link : "",
       seller_contact_message: typeof appearance?.seller_contact_message === "string" ? appearance.seller_contact_message : "",
+      shop_products: normalizeSellerProducts(Array.isArray(appearance?.shop_products) ? appearance.shop_products : []),
     };
     setForm(nextForm);
     setDraft(nextForm);
@@ -779,6 +799,7 @@ export default function ProfileEditor() {
         seller_contact_phone: payloadState.seller_contact_phone || null,
         seller_contact_link: payloadState.seller_contact_link || null,
         seller_contact_message: payloadState.seller_contact_message || null,
+        shop_products: payloadState.shop_products,
       };
 
       const saveRes = await fetch("/api/profile/save", {
@@ -906,6 +927,133 @@ export default function ProfileEditor() {
     }
     e.target.value = "";
   };
+
+  const addShopProductToDraft = useCallback(() => {
+    setDraft((prev) => ({
+      ...prev,
+      shop_products: [...prev.shop_products, createEmptyShopProduct()],
+    }));
+  }, []);
+
+  const updateShopProductInDraft = useCallback(
+    (productId: string, field: "title" | "price" | "description", value: string) => {
+      setDraft((prev) => ({
+        ...prev,
+        shop_products: prev.shop_products.map((product) =>
+          product.id === productId
+            ? {
+                ...product,
+                [field]: field === "title" ? value : value || null,
+              }
+            : product
+        ),
+      }));
+    },
+    []
+  );
+
+  const removeShopProductFromDraft = useCallback((productId: string) => {
+    setDraft((prev) => ({
+      ...prev,
+      shop_products: prev.shop_products.filter((product) => product.id !== productId),
+    }));
+  }, []);
+
+  const removeShopProductPhoto = useCallback((productId: string, photoUrl: string) => {
+    setDraft((prev) => ({
+      ...prev,
+      shop_products: prev.shop_products.map((product) =>
+        product.id === productId
+          ? {
+              ...product,
+              photo_urls: (product.photo_urls || []).filter((url) => url !== photoUrl),
+            }
+          : product
+      ),
+    }));
+  }, []);
+
+  const handleShopProductPhotosUpload = useCallback(
+    async (productId: string, event: React.ChangeEvent<HTMLInputElement>) => {
+      const input = event.currentTarget;
+      const files = Array.from(input.files || []);
+      input.value = "";
+
+      if (!files.length) {
+        return;
+      }
+
+      const userId = session?.user?.id || profileUserId;
+      if (!userId) {
+        setStatus({ type: "error", text: "Please sign in again before uploading product photos." });
+        return;
+      }
+
+      const currentProduct = draft.shop_products.find((product) => product.id === productId);
+      const existingPhotos = currentProduct?.photo_urls || [];
+      const remainingSlots = Math.max(0, MAX_SHOP_PRODUCT_PHOTOS - existingPhotos.length);
+
+      if (remainingSlots <= 0) {
+        setStatus({ type: "error", text: `Each product can have up to ${MAX_SHOP_PRODUCT_PHOTOS} photos.` });
+        return;
+      }
+
+      const selectedFiles = files.slice(0, remainingSlots);
+      setIsUploading(true);
+      setStatus(null);
+
+      try {
+        await ensureProfileBuckets();
+
+        const uploadedUrls: string[] = [];
+        const uploadTimestamp = Date.now();
+
+        for (const [index, file] of selectedFiles.entries()) {
+          const fileExt = file.name.split(".").pop() || "png";
+          const fileName = `${userId}/shop-${productId}-${uploadTimestamp}-${index}.${fileExt}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from("posts")
+            .upload(fileName, file, { upsert: true, contentType: file.type || undefined });
+
+          if (uploadError) {
+            throw uploadError;
+          }
+
+          const {
+            data: { publicUrl },
+          } = supabase.storage.from("posts").getPublicUrl(fileName);
+
+          uploadedUrls.push(publicUrl);
+        }
+
+        setDraft((prev) => ({
+          ...prev,
+          shop_products: prev.shop_products.map((product) =>
+            product.id === productId
+              ? {
+                  ...product,
+                  photo_urls: [...(product.photo_urls || []), ...uploadedUrls],
+                }
+              : product
+          ),
+        }));
+
+        setStatus({
+          type: "success",
+          text: `${uploadedUrls.length} product photo${uploadedUrls.length === 1 ? "" : "s"} uploaded.`,
+        });
+      } catch (error: any) {
+        setStatus({
+          type: "error",
+          text: typeof error?.message === "string" ? error.message : "Failed to upload your product photos.",
+        });
+      } finally {
+        setIsUploading(false);
+      }
+    },
+    [draft.shop_products, ensureProfileBuckets, profileUserId, session?.user?.id, supabase.storage]
+  );
 
   const openEditor = () => {
     setDraft(form);
@@ -2405,6 +2553,16 @@ export default function ProfileEditor() {
                         </label>
                       </div>
                     </div>
+
+                    <VerifiedSellerShopEditor
+                      products={draft.shop_products}
+                      isUploading={isUploading}
+                      onAddProduct={addShopProductToDraft}
+                      onDeleteProduct={removeShopProductFromDraft}
+                      onProductFieldChange={updateShopProductInDraft}
+                      onProductPhotosUpload={handleShopProductPhotosUpload}
+                      onRemoveProductPhoto={removeShopProductPhoto}
+                    />
                   </>
                 ) : null}
 
