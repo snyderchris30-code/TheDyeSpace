@@ -242,7 +242,6 @@ export default function MainNavbar() {
     const channel = supabase
       .channel(`public:navbar-notifications:${notificationUserId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${notificationUserId}` }, () => {
-        queryClient.invalidateQueries({ queryKey: ["notifications", notificationUserId] });
         void refetch();
       })
       .subscribe();
@@ -321,8 +320,7 @@ export default function MainNavbar() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ markAll: true }),
     });
-    refetch();
-    queryClient.invalidateQueries({ queryKey: ["notifications", notificationUserId] });
+    void refetch();
   };
 
   const handleCopyShareLink = async (url: string) => {

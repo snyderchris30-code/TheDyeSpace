@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 
+console.log('[NEXT.CONFIG] TheDyeSpace project loaded:', process.env.VERCEL_URL || process.env.NEXT_PUBLIC_VERCEL_URL || 'localhost');
 const buildDate = new Date().toISOString().slice(0, 10);
 const buildSeed = process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_RUN_ID || String(Date.now());
 

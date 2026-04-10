@@ -1,25 +1,11 @@
 'use client';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { APP_VERSION } from '@/lib/app-config';
 import { MusicPlayerProvider } from './MusicPlayerContext';
 
 function FreshDataRuntime() {
-  const pathname = usePathname();
-  const router = useRouter();
-  const firstPathRef = useRef(true);
-
-  useEffect(() => {
-    if (firstPathRef.current) {
-      firstPathRef.current = false;
-      return;
-    }
-
-    router.refresh();
-  }, [pathname, router]);
-
   useEffect(() => {
     const originalFetch = window.fetch.bind(window);
 
@@ -66,11 +52,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 0,
+            staleTime: 1000 * 30,
             gcTime: 1000 * 60 * 5,
-            refetchOnMount: 'always',
+            refetchOnMount: false,
             refetchOnReconnect: true,
-            refetchOnWindowFocus: true,
+            refetchOnWindowFocus: false,
             retry: 1,
           },
         },

@@ -1,4 +1,22 @@
+
 "use client";
+// --- Spotify helpers ---
+const SPOTIFY_PLAYLIST_REGEX = /https?:\/\/(open\.)?spotify\.com\/playlist\/([a-zA-Z0-9]+)(\?.*)?/;
+async function fetchSpotifyPlaylistMeta(playlistUrl: string) {
+  // Use Spotify oEmbed (no auth required)
+  try {
+    const res = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(playlistUrl)}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return {
+      title: data.title,
+      thumbnail: data.thumbnail_url,
+      url: data.url,
+    };
+  } catch {
+    return null;
+  }
+}
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Music2, Pause, Play, Plus, SkipBack, SkipForward, X } from "lucide-react";
@@ -14,6 +32,16 @@ import {
 import { DEFAULT_PUBLIC_MUSIC_TITLE, DEFAULT_PUBLIC_MUSIC_URL } from "@/lib/app-config";
 import { useRouter } from "next/navigation";
 import { useMusicPlayerContext } from "@/app/MusicPlayerContext";
+
+type SpotifyQueueEntry = {
+  rawUrl: string;
+  kind: "spotify";
+  key: string;
+  playlistId: string;
+  titleHint: string;
+};
+
+type PlayerQueueEntry = MusicQueueEntry | SpotifyQueueEntry;
 
 declare global {
   interface Window {
@@ -61,7 +89,7 @@ export default function GlobalMusicPlayer() {
   const playerRef = useRef<any>(null);
   const readyRef = useRef(false);
   const loadedEntryKeyRef = useRef<string | null>(null);
-  const currentEntryRef = useRef<MusicQueueEntry | null>(null);
+  const currentEntryRef = useRef<PlayerQueueEntry | null>(null);
   const queueLengthRef = useRef(0);
   const lastSessionUserIdRef = useRef<string | null>(null);
   const [session, setSession] = useState<any>(null);
@@ -80,6 +108,11 @@ export default function GlobalMusicPlayer() {
     setIsVisible,
   } = useMusicPlayerContext();
   const [isManagerOpen, setIsManagerOpen] = useState(false);
+  const [isEditorMode, setIsEditorMode] = useState(false);
+  const [editorInput, setEditorInput] = useState("");
+  const [editorUrls, setEditorUrls] = useState<string[]>([]);
+  const [editorSaving, setEditorSaving] = useState(false);
+  const [spotifyInput, setSpotifyInput] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [currentTitle, setCurrentTitle] = useState(DEFAULT_PUBLIC_MUSIC_TITLE);
   const [titleCache, setTitleCache] = useState<Record<string, string>>({});
@@ -95,7 +128,24 @@ export default function GlobalMusicPlayer() {
     return defaultPublicUrl ? [defaultPublicUrl, ...dedupedUserUrls] : dedupedUserUrls;
   }, [defaultPublicUrl, hasCustomSongs, musicUrls]);
 
-  const queue = useMemo(() => buildMusicQueue(mergedUrls), [mergedUrls]);
+  // --- Music queue with Spotify support ---
+  const queue = useMemo<PlayerQueueEntry[]>(() => {
+    // Add Spotify playlists as special entries
+    const urls = mergedUrls;
+    return urls.map((url, idx) => {
+      const spotifyMatch = SPOTIFY_PLAYLIST_REGEX.exec(url);
+      if (spotifyMatch) {
+        return {
+          rawUrl: url,
+          kind: "spotify",
+          key: `spotify:${spotifyMatch[2]}`,
+          playlistId: spotifyMatch[2],
+          titleHint: `Spotify Playlist ${idx + 1}`,
+        };
+      }
+      return buildMusicQueue([url])[0];
+    }).filter((entry): entry is PlayerQueueEntry => Boolean(entry));
+  }, [mergedUrls]);
   const currentEntry = queue[currentIndex] ?? null;
 
   useEffect(() => {
@@ -416,13 +466,51 @@ export default function GlobalMusicPlayer() {
     setIsPlaying(true);
   }, [currentEntry, queue.length, setCurrentIndex, setIsPlaying]);
 
+
   const handleOpenMusicEditor = () => {
     if (!session?.user) {
       setStatus("Sign in to add your own songs.");
       return;
     }
+    setEditorInput("");
+    setEditorUrls([...musicUrls]);
+    setIsEditorMode(true);
+    setStatus(null);
+  };
 
-    router.push("/music");
+  const handleEditorAdd = () => {
+    const rawItems = editorInput
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (!rawItems.length) {
+      setStatus("Paste at least one YouTube video or playlist URL.");
+      return;
+    }
+    const nextUrls = normalizeMusicPlayerUrls([...editorUrls, ...rawItems]);
+    if (!nextUrls.length) {
+      setStatus("Only valid YouTube video or playlist URLs can be added.");
+      return;
+    }
+    setEditorUrls(nextUrls);
+    setEditorInput("");
+    setStatus(null);
+  };
+
+  const handleEditorRemove = (url: string) => {
+    setEditorUrls((prev) => prev.filter((item) => item !== url));
+  };
+
+  const handleEditorSave = async () => {
+    setEditorSaving(true);
+    await persistPlaylist(editorUrls, "Playlist saved.");
+    setIsEditorMode(false);
+    setEditorSaving(false);
+  };
+
+  const handleEditorCancel = () => {
+    setIsEditorMode(false);
+    setStatus(null);
   };
 
   const removeSong = async (url: string) => {
@@ -442,7 +530,20 @@ export default function GlobalMusicPlayer() {
     }
   };
 
-  const currentLabel = currentEntry ? titleCache[currentEntry.key] || currentTitle || currentEntry.titleHint : "Nothing playing";
+  const [spotifyMeta, setSpotifyMeta] = useState<any>(null);
+  useEffect(() => {
+    if (currentEntry?.kind === "spotify" && currentEntry.rawUrl) {
+      fetchSpotifyPlaylistMeta(currentEntry.rawUrl).then(setSpotifyMeta);
+    } else {
+      setSpotifyMeta(null);
+    }
+  }, [currentEntry]);
+
+  const currentLabel = currentEntry
+    ? currentEntry.kind === "spotify"
+      ? spotifyMeta?.title || currentEntry.titleHint
+      : titleCache[currentEntry.key] || currentTitle || currentEntry.titleHint
+    : "Nothing playing";
 
   if (session?.user && !isVisible) {
     return null;
@@ -478,6 +579,28 @@ export default function GlobalMusicPlayer() {
               </button>
             </div>
           </div>
+
+          {/* --- Spotify Playlist Display --- */}
+          {currentEntry?.kind === "spotify" && spotifyMeta ? (
+            <div className="flex flex-col items-center gap-3 px-4 py-6">
+              <img
+                src={spotifyMeta.thumbnail}
+                alt={spotifyMeta.title}
+                className="mb-2 h-32 w-32 rounded-xl border border-green-300/40 bg-[#191414] object-cover shadow-lg"
+              />
+              <div className="text-center">
+                <p className="text-lg font-bold text-green-200">{spotifyMeta.title}</p>
+              </div>
+              <a
+                href={currentEntry.rawUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-block rounded-full border border-green-400 bg-green-600/80 px-6 py-2 text-base font-semibold text-white shadow hover:bg-green-700/90"
+              >
+                Open in Spotify
+              </a>
+            </div>
+          ) : null}
 
           {!isMinimized ? (
             <div className="space-y-4 px-4 py-4">
@@ -527,18 +650,107 @@ export default function GlobalMusicPlayer() {
                 </div>
               </div>
 
-              <div className="rounded-[1.35rem] border border-cyan-300/20 bg-black/20 p-3">
-                <label className="mb-2 block text-[11px] uppercase tracking-[0.24em] text-cyan-300/75">Music Player Editor</label>
-                <button
-                  type="button"
-                  className="inline-flex items-center justify-center gap-2 rounded-full border border-cyan-300/35 bg-cyan-300/15 px-4 py-2 text-sm font-semibold text-cyan-50 hover:bg-cyan-300/25"
-                  onClick={handleOpenMusicEditor}
-                >
-                  <Plus className="h-4 w-4" />
-                  Add Songs
-                </button>
-                <p className="mt-2 text-[11px] text-cyan-100/65">Manage your YouTube videos and playlists in the editor. This player uses the official YouTube embed API and keeps playback running while you scroll, switch pages, or hide this panel.</p>
-              </div>
+
+              {!isEditorMode ? (
+                <div className="rounded-[1.35rem] border border-cyan-300/20 bg-black/20 p-3">
+                  <label className="mb-2 block text-[11px] uppercase tracking-[0.24em] text-cyan-300/75">Music Player Editor</label>
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center gap-2 rounded-full border border-cyan-300/35 bg-cyan-300/15 px-4 py-2 text-sm font-semibold text-cyan-50 hover:bg-cyan-300/25"
+                    onClick={handleOpenMusicEditor}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add Songs
+                  </button>
+                  <p className="mt-2 text-[11px] text-cyan-100/65">Manage your YouTube or Spotify playlists in the editor. This player uses the official YouTube embed API and keeps playback running while you scroll, switch pages, or hide this panel.</p>
+                </div>
+              ) : (
+                <div className="rounded-[1.35rem] border border-cyan-300/20 bg-black/20 p-4">
+                  <label className="mb-2 block text-xs uppercase tracking-[0.24em] text-cyan-300/75">Add YouTube Links</label>
+                  <textarea
+                    className="min-h-20 w-full rounded-2xl border border-cyan-300/25 bg-black/35 px-4 py-3 text-cyan-50 outline-none transition focus:border-cyan-300/55"
+                    placeholder="Paste YouTube video or playlist URLs, one per line"
+                    value={editorInput}
+                    onChange={(e) => setEditorInput(e.target.value)}
+                  />
+                  <label className="mb-2 mt-4 block text-xs uppercase tracking-[0.24em] text-green-300/75">Paste Spotify Playlist Link</label>
+                  <input
+                    className="w-full rounded-2xl border border-green-300/25 bg-black/35 px-4 py-2 text-green-100 outline-none transition focus:border-green-300/55"
+                    placeholder="https://open.spotify.com/playlist/..."
+                    value={spotifyInput}
+                    onChange={(e) => setSpotifyInput(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="mt-2 rounded-full border border-cyan-300/35 bg-cyan-300/15 px-4 py-2 text-sm font-semibold text-cyan-50 hover:bg-cyan-300/25 disabled:opacity-60"
+                    onClick={() => {
+                      const rawItems = editorInput
+                        .split(/\r?\n/)
+                        .map((line) => line.trim())
+                        .filter(Boolean);
+                      let nextUrls = normalizeMusicPlayerUrls([...editorUrls, ...rawItems]);
+                      if (spotifyInput.trim()) {
+                        const match = SPOTIFY_PLAYLIST_REGEX.exec(spotifyInput.trim());
+                        if (match) {
+                          nextUrls = [...nextUrls, match[0]];
+                        } else {
+                          setStatus("Invalid Spotify playlist link.");
+                          return;
+                        }
+                      }
+                      if (!nextUrls.length) {
+                        setStatus("Only valid YouTube or Spotify playlist URLs can be added.");
+                        return;
+                      }
+                      setEditorUrls(nextUrls);
+                      setEditorInput("");
+                      setSpotifyInput("");
+                      setStatus(null);
+                    }}
+                    disabled={editorSaving}
+                  >
+                    Add
+                  </button>
+                  <div className="mt-4 space-y-2">
+                    <p className="text-sm font-semibold text-cyan-50">Your Playlist</p>
+                    {editorUrls.length === 0 ? (
+                      <p className="text-sm text-cyan-100/70">No songs saved yet.</p>
+                    ) : (
+                      editorUrls.map((url) => (
+                        <div key={url} className="flex items-center justify-between gap-3 rounded-xl border border-cyan-300/15 bg-black/25 px-3 py-2">
+                          <p className="truncate text-sm text-cyan-100">{url}</p>
+                          <button
+                            type="button"
+                            className="rounded-full border border-rose-300/40 bg-rose-500/10 px-3 py-1 text-xs font-semibold text-rose-100 hover:bg-rose-500/20"
+                            onClick={() => handleEditorRemove(url)}
+                            disabled={editorSaving}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="mt-4 flex gap-2">
+                    <button
+                      type="button"
+                      className="rounded-full border border-cyan-300/35 bg-cyan-300/15 px-4 py-2 text-sm font-semibold text-cyan-50 hover:bg-cyan-300/25 disabled:opacity-60"
+                      onClick={handleEditorSave}
+                      disabled={editorSaving}
+                    >
+                      {editorSaving ? "Saving..." : "Save Playlist"}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-full border border-white/20 bg-white/5 px-4 py-2 text-sm font-semibold text-white/85 hover:bg-white/10"
+                      onClick={handleEditorCancel}
+                      disabled={editorSaving}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {status ? <p className="text-xs text-cyan-200/80">{status}</p> : null}
 

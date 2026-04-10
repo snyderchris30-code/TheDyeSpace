@@ -1,3 +1,24 @@
+// --- DOMAIN REDIRECT AND LOGGING ---
+const CURRENT_DOMAINS = [
+  'www.thedyespace.com',
+  'thedyespace.com',
+  'www.thedyespace.app',
+  'thedyespace.app',
+];
+
+export function logProjectAndRedirect(request: NextRequest) {
+  const host = request.headers.get('host');
+  console.log('[PROXY] Host:', host, '| URL:', request.nextUrl.href);
+
+  // If not on the current domain, redirect to www.thedyespace.com
+  if (host && !CURRENT_DOMAINS.includes(host)) {
+    const url = request.nextUrl.clone();
+    url.hostname = 'www.thedyespace.com';
+    url.protocol = 'https:';
+    return NextResponse.redirect(url, 308);
+  }
+  return null;
+}
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
@@ -16,7 +37,15 @@ function isProtectedPath(pathname: string) {
 }
 
 export async function proxy(request: NextRequest) {
+  // Log and redirect if needed
+  const redirectResponse = logProjectAndRedirect(request);
+  if (redirectResponse) return redirectResponse;
   const pathname = request.nextUrl.pathname;
+
+  // Only run Supabase auth checks on routes that actually need auth-aware behavior.
+  if (!isProtectedPath(pathname) && !REDIRECT_IF_AUTH_ROUTES.has(pathname)) {
+    return NextResponse.next();
+  }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -77,5 +106,7 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: [
+    '/((?!api|_next/static|_next/image|favicon.ico|manifest.json|sw.js|robots.txt|sitemap.xml|icons|emojis|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map|txt|xml|woff2?|ttf)$).*)',
+  ],
 };

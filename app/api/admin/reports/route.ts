@@ -274,7 +274,6 @@ export async function GET(req: NextRequest) {
     );
   }
 }
-
 export async function PATCH(req: NextRequest) {
   const requestContext = createRequestLogContext(req, "admin/reports");
   try {

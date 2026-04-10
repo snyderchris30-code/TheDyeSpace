@@ -232,7 +232,15 @@ export default function AdminReportsClient() {
       setWatcherFlags([]);
       setDailyReports([]);
       setRecentRuns([]);
-      setError(typeof loadError?.message === "string" ? loadError.message : "Failed to load moderation reports.");
+      let message = "Failed to load moderation reports.";
+      if (typeof loadError?.message === "string") {
+        if (loadError.message.includes("Failed to fetch")) {
+          message = "Could not connect to the moderation API. Please check your network connection or try again later.";
+        } else {
+          message = loadError.message;
+        }
+      }
+      setError(message);
     } finally {
       setLoading(false);
     }
