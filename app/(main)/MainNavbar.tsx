@@ -211,6 +211,8 @@ export default function MainNavbar() {
 
   // Theme system removed
 
+  // Throttle notification refetch to once every 10 seconds
+  const [lastNotifFetch, setLastNotifFetch] = useState(0);
   const { data: notifications = [], refetch } = useQuery({
     queryKey: ["notifications", notificationUserId ?? "anonymous"],
     queryFn: fetchNotifications,
@@ -253,9 +255,13 @@ export default function MainNavbar() {
 
   useEffect(() => {
     if (notifDrop && notificationUserId) {
-      void refetch();
+      const now = Date.now();
+      if (now - lastNotifFetch > 10000) {
+        setLastNotifFetch(now);
+        void refetch();
+      }
     }
-  }, [notifDrop, notificationUserId, refetch]);
+  }, [notifDrop, notificationUserId, refetch, lastNotifFetch]);
 
   useEffect(() => {
     if (!isLoggedIn || typeof window === "undefined") return;

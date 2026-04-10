@@ -22,11 +22,13 @@ export function logProjectAndRedirect(request: NextRequest) {
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
+import { applyRateLimit, getClientIp, hasSuspiciousInput } from '@/lib/security/request-guards';
 
 const REDIRECT_IF_AUTH_ROUTES = new Set(['/signup']);
 const PUBLIC_ROUTES = new Set(['/login', '/forgot-password', '/reset-password']);
 const PROTECTED_ROUTE_PREFIXES = ['/create', '/notifications'];
 const PROTECTED_EXACT_ROUTES = new Set<string>(['/profile']);
+const BLOCKED_ATTACK_PATHS = new Set(['/xmlrpc.php', '/wp-admin', '/wp-login.php']);
 
 function isProtectedPath(pathname: string) {
   if (PROTECTED_EXACT_ROUTES.has(pathname)) {
@@ -37,10 +39,58 @@ function isProtectedPath(pathname: string) {
 }
 
 export async function proxy(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+  const ip = getClientIp(request);
+
+  if (BLOCKED_ATTACK_PATHS.has(pathname) || pathname.startsWith('/wp-admin/')) {
+    return new NextResponse('Not found', { status: 404 });
+  }
+
+  const suspiciousSource = `${pathname}${request.nextUrl.search || ''}`;
+  if (hasSuspiciousInput(suspiciousSource)) {
+    const response = NextResponse.json({ error: 'Suspicious request blocked.' }, { status: 403 });
+    // Best effort: invalidate Supabase session cookies on suspicious activity.
+    for (const cookie of request.cookies.getAll()) {
+      if (cookie.name.startsWith('sb-')) {
+        response.cookies.set(cookie.name, '', { maxAge: 0, path: '/' });
+      }
+    }
+    console.warn('[proxy] Suspicious request blocked', { pathname, ip });
+    return response;
+  }
+
+  if (
+    pathname === '/login' ||
+    pathname === '/signup' ||
+    pathname === '/api/posts/create' ||
+    pathname === '/api/posts/comments' ||
+    pathname === '/api/profile/init'
+  ) {
+    const limiter = applyRateLimit({
+      key: `proxy:${pathname}:${ip}`,
+      windowMs: 60_000,
+      max: pathname.startsWith('/api/') ? 12 : 15,
+      blockMs: 5 * 60_000,
+    });
+
+    if (!limiter.allowed) {
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json(
+          { error: 'Too many requests. Please slow down.' },
+          { status: 429, headers: { 'Retry-After': String(limiter.retryAfterSeconds) } }
+        );
+      }
+
+      return new NextResponse('Too many requests', {
+        status: 429,
+        headers: { 'Retry-After': String(limiter.retryAfterSeconds) },
+      });
+    }
+  }
+
   // Log and redirect if needed
   const redirectResponse = logProjectAndRedirect(request);
   if (redirectResponse) return redirectResponse;
-  const pathname = request.nextUrl.pathname;
 
   // Only run Supabase auth checks on routes that actually need auth-aware behavior.
   if (!isProtectedPath(pathname) && !REDIRECT_IF_AUTH_ROUTES.has(pathname)) {
@@ -108,5 +158,8 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     '/((?!api|_next/static|_next/image|favicon.ico|manifest.json|sw.js|robots.txt|sitemap.xml|icons|emojis|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map|txt|xml|woff2?|ttf)$).*)',
+    '/api/posts/create',
+    '/api/posts/comments',
+    '/api/profile/init',
   ],
 };

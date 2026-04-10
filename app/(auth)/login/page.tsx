@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import CaptchaChallenge from "@/app/CaptchaChallenge";
 
 async function handleSignOut() {
   const supabase = createClient();
@@ -15,6 +16,10 @@ async function handleSignOut() {
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+  const [captchaState, setCaptchaState] = useState<{ token: string | null; selectedIds: string[] }>({ token: null, selectedIds: [] });
+  const [captchaReloadKey, setCaptchaReloadKey] = useState(0);
   const [redirect] = useState(() => {
     if (typeof window === "undefined") return "/";
     const params = new URLSearchParams(window.location.search);
@@ -38,17 +43,52 @@ export default function LoginPage() {
 
   async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
+    if (lockedUntil && Date.now() < lockedUntil) {
+      setMessage("Too many failed attempts. Please wait a minute and try again.");
+      return;
+    }
+
     setLoading(true);
     setMessage(null);
+
+    if (!captchaState.token) {
+      setMessage("The vibe check is still loading. Try again in a second.");
+      setLoading(false);
+      return;
+    }
+
+    const captchaResponse = await fetch("/api/captcha", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: captchaState.token, selectedIds: captchaState.selectedIds }),
+    });
+    const captchaBody = await captchaResponse.json().catch(() => ({}));
+    if (!captchaResponse.ok || captchaBody?.ok !== true) {
+      setMessage("Not quite... try again");
+      setCaptchaReloadKey((current) => current + 1);
+      setLoading(false);
+      return;
+    }
+
     const form = e.currentTarget;
     const email = form.email.value;
     const password = form.password.value;
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
+      setFailedAttempts((prev) => {
+        const next = prev + 1;
+        if (next >= 6) {
+          setLockedUntil(Date.now() + 60_000);
+        }
+        return next;
+      });
       setMessage(error.message);
       setLoading(false);
     } else {
+      setFailedAttempts(0);
+      setLockedUntil(null);
       await fetch("/api/profile/init", { method: "POST" }).catch(() => null);
       setMessage("Welcome back, cosmic soul!");
       router.push(redirect);
@@ -78,6 +118,7 @@ export default function LoginPage() {
           minLength={6}
           className="px-4 py-2 rounded bg-purple-950/60 border border-purple-700 text-white focus:outline-none focus:ring-2 focus:ring-pink-400"
         />
+        <CaptchaChallenge onStateChange={setCaptchaState} reloadKey={captchaReloadKey} />
         <button
           type="submit"
           disabled={loading}

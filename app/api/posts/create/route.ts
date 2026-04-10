@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createAdminClient, loadProfileStatus, isMuted } from "@/lib/admin-utils";
 import { normalizePostImageUrls } from "@/lib/post-media";
 import { createRequestLogContext, logError, logInfo, logWarn } from "@/lib/server-logging";
+import { applyRateLimit, getClientIp, hasSuspiciousInput, sanitizeUserText } from "@/lib/security/request-guards";
 
 type CreatePostBody = {
   content?: string;
@@ -13,6 +14,13 @@ type CreatePostBody = {
 export async function POST(req: NextRequest) {
   const requestContext = createRequestLogContext(req, "posts/create");
   try {
+    const ip = getClientIp(req);
+    const ipLimit = applyRateLimit({ key: `api:posts:create:ip:${ip}`, windowMs: 60_000, max: 12, blockMs: 5 * 60_000 });
+    if (!ipLimit.allowed) {
+      logWarn("posts/create", "Rate limit exceeded by IP", { ...requestContext, ip });
+      return NextResponse.json({ error: "Too many requests. Please wait and try again." }, { status: 429 });
+    }
+
     const supabase = await createSupabaseServerClient();
     const {
       data: { user },
@@ -28,7 +36,19 @@ export async function POST(req: NextRequest) {
     }
 
     const body = (await req.json().catch(() => ({}))) as CreatePostBody;
-    const content = body.content?.trim();
+    const rawContent = typeof body.content === "string" ? body.content : "";
+    const userLimit = applyRateLimit({ key: `api:posts:create:user:${user.id}`, windowMs: 60_000, max: 12, blockMs: 5 * 60_000 });
+    if (!userLimit.allowed) {
+      logWarn("posts/create", "Rate limit exceeded by user", { ...requestContext, userId: user.id });
+      return NextResponse.json({ error: "Too many requests. Please wait and try again." }, { status: 429 });
+    }
+
+    if (hasSuspiciousInput(rawContent)) {
+      logWarn("posts/create", "Suspicious post content blocked", { ...requestContext, userId: user.id, ip });
+      return NextResponse.json({ error: "Suspicious content was blocked." }, { status: 400 });
+    }
+
+    const content = sanitizeUserText(rawContent, 2000);
     const imageUrls = normalizePostImageUrls(body.image_urls);
 
     if (!content) {

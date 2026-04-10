@@ -4,11 +4,19 @@ import { createAdminClient } from "@/lib/admin-utils";
 import { ensureProfileForUser } from "@/lib/profile-bootstrap";
 import { createRequestLogContext, logError, logInfo, logWarn } from "@/lib/server-logging";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { applyRateLimit, getClientIp, hasSuspiciousInput } from "@/lib/security/request-guards";
 
 export async function POST(req: Request) {
   const requestContext = createRequestLogContext(req, "profile/init");
 
   try {
+    const ip = getClientIp(req);
+    const ipLimit = applyRateLimit({ key: `api:profile:init:ip:${ip}`, windowMs: 60_000, max: 12, blockMs: 5 * 60_000 });
+    if (!ipLimit.allowed) {
+      logWarn("profile/init", "Rate limit exceeded by IP", { ...requestContext, ip });
+      return NextResponse.json({ error: "Too many requests. Please wait and try again." }, { status: 429 });
+    }
+
     const supabase = await createSupabaseServerClient();
     const {
       data: { user },
@@ -35,6 +43,20 @@ export async function POST(req: Request) {
     }
 
     const requestPayload = await req.json().catch(() => ({} as any));
+    if (
+      (typeof requestPayload.username === "string" && hasSuspiciousInput(requestPayload.username)) ||
+      (typeof requestPayload.display_name === "string" && hasSuspiciousInput(requestPayload.display_name))
+    ) {
+      logWarn("profile/init", "Suspicious profile init payload blocked", { ...requestContext, userId: user.id, ip });
+      return NextResponse.json({ error: "Suspicious content was blocked." }, { status: 400 });
+    }
+
+    const userLimit = applyRateLimit({ key: `api:profile:init:user:${user.id}`, windowMs: 60_000, max: 12, blockMs: 5 * 60_000 });
+    if (!userLimit.allowed) {
+      logWarn("profile/init", "Rate limit exceeded by user", { ...requestContext, userId: user.id, ip });
+      return NextResponse.json({ error: "Too many requests. Please wait and try again." }, { status: 429 });
+    }
+
     logInfo("profile/init", "Initializing profile", {
       ...requestContext,
       userId: user.id,

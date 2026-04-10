@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { resolveProfileUsername } from "@/lib/profile-identity";
 import { createAdminClient, loadProfileStatus, isMuted, userIsAdmin } from "@/lib/admin-utils";
+import { applyRateLimit, getClientIp, hasSuspiciousInput, sanitizeUserText } from "@/lib/security/request-guards";
 import {
   getStoredCommentReactions,
   getStoredPostComments,
@@ -195,6 +196,12 @@ async function createMentionNotifications(
 }
 
 export async function POST(req: NextRequest) {
+  const ip = getClientIp(req);
+  const ipLimit = applyRateLimit({ key: `api:comments:create:ip:${ip}`, windowMs: 60_000, max: 15, blockMs: 5 * 60_000 });
+  if (!ipLimit.allowed) {
+    return NextResponse.json({ error: "Too many requests. Please wait and try again." }, { status: 429 });
+  }
+
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -206,7 +213,18 @@ export async function POST(req: NextRequest) {
   }
 
   const body = (await req.json().catch(() => ({}))) as CommentBody;
-  const content = body.content?.trim();
+  const rawContent = typeof body.content === "string" ? body.content : "";
+
+  const userLimit = applyRateLimit({ key: `api:comments:create:user:${user.id}`, windowMs: 60_000, max: 15, blockMs: 5 * 60_000 });
+  if (!userLimit.allowed) {
+    return NextResponse.json({ error: "Too many requests. Please wait and try again." }, { status: 429 });
+  }
+
+  if (hasSuspiciousInput(rawContent)) {
+    return NextResponse.json({ error: "Suspicious content was blocked." }, { status: 400 });
+  }
+
+  const content = sanitizeUserText(rawContent, 1200);
 
   if (!body.postId || !content) {
     return NextResponse.json({ error: "Post ID and comment content are required." }, { status: 400 });

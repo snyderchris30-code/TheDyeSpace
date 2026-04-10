@@ -135,6 +135,8 @@ export default function EmojiCategoryEditor({
         <label className="block mb-1 text-cyan-200">Assign Emoji to Category</label>
         <select
           className="rounded px-2 py-1 text-black"
+          aria-label="Select emoji"
+          title="Select emoji"
           value={selectedEmoji || ""}
           onChange={(e) => setSelectedEmoji(e.target.value)}
         >
@@ -147,6 +149,8 @@ export default function EmojiCategoryEditor({
         </select>
         <select
           className="rounded px-2 py-1 text-black ml-2"
+          aria-label="Select category"
+          title="Select category"
           value={selectedCategory || ""}
           onChange={(e) => setSelectedCategory(e.target.value)}
         >

@@ -1,6 +1,5 @@
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/admin-utils";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type NotificationRow = {
@@ -102,23 +101,10 @@ function getNotificationDbClient(
   requestId: string,
   purpose: "read" | "write"
 ) {
-  try {
-    return {
-      client: createAdminClient(),
-      clientType: "service_role" as const,
-    };
-  } catch (error) {
-    console.error("[notifications] Failed to initialize service role client", {
-      requestId,
-      purpose,
-      error: serializeError(error),
-    });
-
-    return {
-      client: sessionClient,
-      clientType: "session_fallback" as const,
-    };
-  }
+  return {
+    client: sessionClient,
+    clientType: "session" as const,
+  };
 }
 
 async function getRequestContext(req: NextRequest, requestId: string): Promise<RequestContext> {
