@@ -182,6 +182,8 @@ export default function CaptchaChallenge({ onStateChange, reloadKey = 0 }: Captc
                         src={option.src}
                         alt={`CAPTCHA option ${index + 1}`}
                         className="h-full w-full object-cover"
+                        loading="lazy"
+                        decoding="async"
                         onError={() => markFailed(option.id)}
                       />
                     )}

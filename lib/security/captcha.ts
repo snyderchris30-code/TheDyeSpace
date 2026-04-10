@@ -105,12 +105,25 @@ function decryptPayload(token: string): CaptchaPayload | null {
   }
 }
 
+let cachedCaptchaFiles: string[] | null = null;
+let cachedCaptchaFilesAt = 0;
+const CAPTCHA_FILE_CACHE_MS = 30_000;
+
 async function listCaptchaFiles() {
+  const now = Date.now();
+  if (cachedCaptchaFiles && now - cachedCaptchaFilesAt < CAPTCHA_FILE_CACHE_MS) {
+    return cachedCaptchaFiles;
+  }
+
   const entries = await fs.readdir(CAPTCHA_DIRECTORY, { withFileTypes: true });
-  return entries
+  const files = entries
     .filter((entry) => entry.isFile() && CAPTCHA_FILE_PATTERN.test(entry.name))
     .map((entry) => entry.name)
     .sort((left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" }));
+
+  cachedCaptchaFiles = files;
+  cachedCaptchaFilesAt = now;
+  return files;
 }
 
 export async function createCaptchaChallenge(): Promise<CaptchaChallenge> {

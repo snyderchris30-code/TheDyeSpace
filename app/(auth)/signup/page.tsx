@@ -83,12 +83,13 @@ export default function SignupPage() {
 
       if (!captchaResponse || !captchaResponse.ok || captchaBody?.ok !== true) {
         const reason = captchaBody?.reason || "verification failed";
-        console.warn("[CAPTCHA] signup verify failed", { reason, selectedIds: captchaState.selectedIds });
+        const message = captchaBody?.message || (reason === "expired" || reason === "invalid" ? "The CAPTCHA expired. Try again." : "Not quite... try again");
+        console.warn("[CAPTCHA] signup verify failed", { reason, selectedIds: captchaState.selectedIds, message });
         if (reason === "rate_limited") {
           setMessage("Too many CAPTCHA attempts. Please wait a moment and try again.");
           return;
         }
-        setMessage(reason === "expired" || reason === "invalid" ? "The CAPTCHA expired. Try again." : "Not quite... try again");
+        setMessage(message);
         setCaptchaReloadKey((current) => current + 1);
         return;
       }

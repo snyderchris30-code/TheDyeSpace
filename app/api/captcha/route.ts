@@ -79,10 +79,18 @@ export async function POST(req: NextRequest) {
         reason: verification.reason,
         selectedCount: selectedIds.length,
       });
-        return NextResponse.json({ ok: false, reason: verification.reason }, { status: 200 });
+      const messages: Record<string, string> = {
+        invalid: "CAPTCHA invalid. Please try again.",
+        expired: "The CAPTCHA expired. Try again.",
+        incorrect: "Not quite. Please try again.",
+      };
+      return NextResponse.json(
+        { ok: false, reason: verification.reason, message: messages[verification.reason] || "CAPTCHA verification failed." },
+        { status: 200 }
+      );
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, message: "Correct!" });
   } catch (error) {
     logError("captcha/verify", "Unexpected CAPTCHA verification failure", error, requestContext);
     console.error("[CAPTCHA] verify exception", error);
