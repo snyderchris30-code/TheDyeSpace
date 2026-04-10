@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, RefreshCcw } from "lucide-react";
 
@@ -135,12 +134,10 @@ export default function CaptchaChallenge({ onStateChange, reloadKey = 0 }: Captc
                         {option.id}
                       </div>
                     ) : (
-                      <Image
+                      <img
                         src={option.src}
                         alt={`CAPTCHA option ${index + 1}`}
-                        fill
-                        className="object-cover"
-                        unoptimized={/\.svg$/i.test(option.src)}
+                        className="h-full w-full object-cover"
                         onError={() => markFailed(option.id)}
                       />
                     )}
