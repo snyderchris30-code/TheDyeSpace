@@ -47,12 +47,15 @@ function getInitials(name: string) {
 
 export default async function ShopPage({ params: { username } }: Props) {
   const supabase = await createSupabaseServerClient();
-  const { data: profileData } = await supabase
-    .from("profiles")
-    .select("id,username,display_name,verified_badge,member_number,avatar_url,theme_settings")
-    .eq("username", username)
-    .limit(1)
-    .maybeSingle();
+  const [{ data: profileData }, { data: sessionData }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("id,username,display_name,verified_badge,member_number,avatar_url,theme_settings")
+      .eq("username", username)
+      .limit(1)
+      .maybeSingle(),
+    supabase.auth.getSession(),
+  ]);
 
   if (!profileData || !profileData.verified_badge) {
     return notFound();
@@ -65,6 +68,7 @@ export default async function ShopPage({ params: { username } }: Props) {
   const sellerBackground = typeof sellerThemeSettings.seller_background_url === "string" ? sellerThemeSettings.seller_background_url : null;
   const fanChatHref = `/profile/${encodeURIComponent(username)}/fan-chat`;
   const profileHref = `/profile/${encodeURIComponent(username)}`;
+  const isOwner = sessionData?.session?.user?.id === profileData.id;
 
   return (
     <div className="min-h-[70vh] px-4 py-8 sm:px-6 lg:px-8">
@@ -104,11 +108,11 @@ export default async function ShopPage({ params: { username } }: Props) {
               <div>
                 <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/35 bg-cyan-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-cyan-100">
                   <ShieldCheck className="h-4 w-4" />
-                  Verified Seller Catalog
+                  Verified Seller Shop
                 </div>
                 <h1 className="mt-4 text-3xl font-black tracking-tight text-white sm:text-4xl">{sellerName}&apos;s Shop</h1>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-200/90">
-                  Explore separate product entries with pricing, descriptions, and gallery photos. Reach out through fan chat to ask questions or reserve an item.
+                  Browse a polished catalog of available products from this verified seller.
                 </p>
                 <div className="mt-4 flex flex-wrap gap-3 text-xs text-cyan-100/80">
                   {profileData.member_number != null ? (
@@ -125,7 +129,7 @@ export default async function ShopPage({ params: { username } }: Props) {
                 className="inline-flex items-center gap-2 rounded-2xl border border-cyan-300/45 bg-cyan-400/15 px-5 py-3 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-400/25"
               >
                 <MessageCircle className="h-4 w-4" />
-                Message Seller
+                Open Fan Chat
               </Link>
               <Link
                 href={profileHref}
@@ -141,15 +145,24 @@ export default async function ShopPage({ params: { username } }: Props) {
         {listings.length === 0 ? (
           <div className="rounded-[1.9rem] border border-cyan-300/15 bg-[linear-gradient(180deg,rgba(8,16,30,0.94),rgba(7,12,24,0.96))] p-10 text-center shadow-2xl">
             <Package2 className="mx-auto h-10 w-10 text-cyan-300/70" />
-            <p className="mt-4 text-2xl font-semibold text-white">This catalog is coming together.</p>
-            <p className="mt-2 text-sm text-slate-300">No products have been published here yet. Check back soon or reach out in fan chat.</p>
-            <Link
-              href={fanChatHref}
-              className="mt-6 inline-flex items-center gap-2 rounded-full border border-cyan-300/40 bg-cyan-400/10 px-5 py-2.5 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-400/20"
-            >
-              <MessageCircle className="h-4 w-4" />
-              Open Fan Chat
-            </Link>
+            <h2 className="mt-4 text-3xl font-semibold text-white">No products listed yet.</h2>
+            <p className="mt-3 text-sm text-slate-300">This seller hasn&apos;t added any products yet. Check back later or send a message in fan chat.</p>
+            <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row sm:justify-center">
+              <Link
+                href={profileHref}
+                className="inline-flex items-center justify-center rounded-full border border-cyan-300/40 bg-cyan-400/10 px-5 py-3 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-400/20"
+              >
+                Back to Profile
+              </Link>
+              {isOwner ? (
+                <Link
+                  href={`${profileHref}?edit=1`}
+                  className="inline-flex items-center justify-center rounded-full bg-cyan-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300"
+                >
+                  Add Product
+                </Link>
+              ) : null}
+            </div>
           </div>
         ) : (
           <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
@@ -162,17 +175,17 @@ export default async function ShopPage({ params: { username } }: Props) {
                   key={product.id}
                   className="overflow-hidden rounded-[1.85rem] border border-cyan-300/15 bg-[linear-gradient(180deg,rgba(8,16,30,0.94),rgba(7,12,24,0.98))] shadow-[0_24px_80px_rgba(0,0,0,0.35)]"
                 >
-                  <div className="relative h-64 overflow-hidden bg-[linear-gradient(160deg,rgba(4,14,18,0.95),rgba(6,27,32,0.92),rgba(12,49,44,0.8))]">
+                  <div className="relative h-64 overflow-hidden bg-slate-950">
                     {previewImage ? (
                       <img src={previewImage} alt={product.title} className="h-full w-full object-cover" loading="lazy" />
                     ) : (
                       <div className="flex h-full flex-col items-center justify-center px-8 text-center text-cyan-100/70">
                         <Package2 className="mb-3 h-10 w-10 text-cyan-300/70" />
-                        Main product photo coming soon
+                        Product image coming soon
                       </div>
                     )}
                     <div className="absolute left-4 top-4 rounded-full border border-cyan-300/40 bg-slate-950/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-cyan-100">
-                      Catalog Item
+                      Product
                     </div>
                   </div>
 
@@ -180,7 +193,7 @@ export default async function ShopPage({ params: { username } }: Props) {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <h2 className="text-xl font-semibold text-white">{product.title}</h2>
-                        <p className="mt-1 text-sm text-slate-300">Direct from {sellerName}</p>
+                        <p className="mt-1 text-sm text-slate-300">From {sellerName}</p>
                       </div>
                       <div className="shrink-0 rounded-full border border-cyan-300/35 bg-cyan-400/10 px-3 py-1.5 text-sm font-semibold text-cyan-100">
                         {formatPrice(product.price)}
@@ -188,7 +201,7 @@ export default async function ShopPage({ params: { username } }: Props) {
                     </div>
 
                     <p className="min-h-[4.5rem] text-sm leading-6 text-slate-200/90">
-                      {product.description || "Reach out to the seller for availability, sizing, and customization details."}
+                      {product.description || "Message the seller for details on availability, sizing, and shipping."}
                     </p>
 
                     {galleryPhotos.length > 0 ? (

@@ -2,7 +2,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import FanChatRoomClient from "./FanChatRoomClient";
-import { type Database } from "@/types/database";
 
 type Props = {
   params: {
@@ -50,9 +49,9 @@ export default async function FanChatPage({ params: { username } }: Props) {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm uppercase tracking-[0.24em] text-cyan-300/70">Fan Chat</p>
-              <h1 className="mt-2 text-3xl font-extrabold text-white">{sellerName}'s Fan Chat Group</h1>
+              <h1 className="mt-2 text-3xl font-extrabold text-white">{sellerName}'s Fan Chat</h1>
               <p className="mt-2 max-w-2xl text-sm text-slate-300">
-                This chat room is private to the verified seller and users who follow them. Join the conversation, ask questions, and stay connected.
+                This is a private fan chat for the verified seller and their followers. Join the conversation, ask questions, and stay connected.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
