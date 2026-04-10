@@ -19,9 +19,21 @@ type CaptchaChallengeProps = {
   reloadKey?: number;
 };
 
-function getImagePlaceholderColor(id: string) {
+function getImagePlaceholderColorClass(id: string) {
+  const classes = [
+    "bg-emerald-700",
+    "bg-cyan-700",
+    "bg-sky-700",
+    "bg-violet-700",
+    "bg-fuchsia-700",
+    "bg-rose-700",
+    "bg-amber-700",
+    "bg-lime-700",
+    "bg-orange-700",
+    "bg-slate-700",
+  ];
   const hash = [...id].reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  return `hsl(${hash % 360} 64% 32%)`;
+  return classes[hash % classes.length];
 }
 
 export default function CaptchaChallenge({ onStateChange, reloadKey = 0 }: CaptchaChallengeProps) {
@@ -132,8 +144,10 @@ export default function CaptchaChallenge({ onStateChange, reloadKey = 0 }: Captc
                   <div className="relative aspect-square overflow-hidden rounded-[18px] bg-slate-900/80">
                     {failed ? (
                       <div
-                        className="flex h-full w-full items-center justify-center px-3 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-white"
-                        style={{ backgroundColor: getImagePlaceholderColor(option.id) }}
+                        className={[
+                          "flex h-full w-full items-center justify-center px-3 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-white",
+                          getImagePlaceholderColorClass(option.id),
+                        ].join(" ")}
                       >
                         {option.id}
                       </div>
