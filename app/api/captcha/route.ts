@@ -8,7 +8,13 @@ export async function GET(req: NextRequest) {
 
   try {
     const challenge = await createCaptchaChallenge();
-    return NextResponse.json(challenge, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json(challenge, {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        Pragma: "no-cache",
+        Expires: "0",
+      },
+    });
   } catch (error) {
     logError("captcha/challenge", "Failed to create challenge", error, requestContext);
     return NextResponse.json({ error: "Failed to create CAPTCHA challenge." }, { status: 500 });

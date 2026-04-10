@@ -36,12 +36,16 @@ export default function CaptchaChallenge({ onStateChange, reloadKey = 0 }: Captc
   const loadChallenge = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setPrompt("Loading a fresh vibe check...");
+    setOptions([]);
+    setToken(null);
     setSelectedIds([]);
     setFailedIds(new Set());
     onStateChange({ token: null, selectedIds: [] });
 
     try {
-      const response = await fetch("/api/captcha", { cache: "no-store" });
+      const cacheBust = Date.now();
+      const response = await fetch(`/api/captcha?cacheBust=${cacheBust}`, { cache: "no-store" });
       const body = (await response.json().catch(() => ({}))) as Partial<CaptchaChallengeResponse> & { error?: string };
       if (!response.ok || !body.prompt || !Array.isArray(body.options) || typeof body.token !== "string") {
         throw new Error(body.error || "Could not load the stoner CAPTCHA.");

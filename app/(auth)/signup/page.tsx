@@ -28,6 +28,22 @@ export default function SignupPage() {
   );
   const router = useRouter();
 
+  async function fetchJsonWithTimeout(url: string, init: RequestInit, timeoutMs = 8000) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(url, { ...init, signal: controller.signal });
+      const body = await response.json().catch(() => ({}));
+      return { response, body };
+    } catch (error) {
+      console.error("[FETCH] timeout or error", url, error);
+      return { response: null, body: {} };
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  }
+
   async function handleSignup(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
@@ -50,22 +66,25 @@ export default function SignupPage() {
         tokenLength: captchaState.token.length,
       });
 
-      const captchaResponse = await fetch("/api/captcha", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: captchaState.token, selectedIds: captchaState.selectedIds }),
-      });
-      const captchaBody = await captchaResponse.json().catch(() => ({}));
+      const { response: captchaResponse, body: captchaBody } = await fetchJsonWithTimeout(
+        "/api/captcha",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: captchaState.token, selectedIds: captchaState.selectedIds }),
+        },
+        8000
+      );
 
       console.log("[CAPTCHA] signup verify response", {
-        status: captchaResponse.status,
+        status: captchaResponse?.status,
         body: captchaBody,
       });
 
-      if (!captchaResponse.ok || captchaBody?.ok !== true) {
+      if (!captchaResponse || !captchaResponse.ok || captchaBody?.ok !== true) {
         const reason = captchaBody?.reason || "verification failed";
         console.warn("[CAPTCHA] signup verify failed", { reason, selectedIds: captchaState.selectedIds });
-        setMessage("Not quite... try again");
+        setMessage(reason === "expired" ? "The CAPTCHA expired. Try again." : "Not quite... try again");
         setCaptchaReloadKey((current) => current + 1);
         return;
       }
@@ -94,10 +113,16 @@ export default function SignupPage() {
       setFailedAttempts(0);
       setLockedUntil(null);
       if (data?.session && data?.user) {
-        const initRes = await fetch("/api/profile/init", { method: "POST" });
-        const initBody = await initRes.json().catch(() => ({}));
-        const initializedUsername = typeof initBody?.profile?.username === "string" ? initBody.profile.username : null;
         setMessage("Welcome to TheDyeSpace!");
+
+        const initResponse = await Promise.race([
+          fetch("/api/profile/init", { method: "POST" }).catch(() => null),
+          new Promise<Response | null>((resolve) => window.setTimeout(() => resolve(null), 2500)),
+        ]);
+
+        const initBody = initResponse ? await initResponse.json().catch(() => ({})) : {};
+        const initializedUsername = typeof initBody?.profile?.username === "string" ? initBody.profile.username : null;
+
         if (initializedUsername) {
           setTimeout(() => router.push(`/profile/${encodeURIComponent(initializedUsername)}?edit=1&welcome=1`), 800);
         } else {

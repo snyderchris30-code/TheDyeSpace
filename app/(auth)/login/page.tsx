@@ -41,6 +41,22 @@ export default function LoginPage() {
   );
   const router = useRouter();
 
+  async function fetchJsonWithTimeout(url: string, init: RequestInit, timeoutMs = 8000) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(url, { ...init, signal: controller.signal });
+      const body = await response.json().catch(() => ({}));
+      return { response, body };
+    } catch (error) {
+      console.error("[FETCH] timeout or error", url, error);
+      return { response: null, body: {} };
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  }
+
   async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
@@ -63,22 +79,25 @@ export default function LoginPage() {
         tokenLength: captchaState.token.length,
       });
 
-      const captchaResponse = await fetch("/api/captcha", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: captchaState.token, selectedIds: captchaState.selectedIds }),
-      });
-      const captchaBody = await captchaResponse.json().catch(() => ({}));
+      const { response: captchaResponse, body: captchaBody } = await fetchJsonWithTimeout(
+        "/api/captcha",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: captchaState.token, selectedIds: captchaState.selectedIds }),
+        },
+        8000
+      );
 
       console.log("[CAPTCHA] login verify response", {
-        status: captchaResponse.status,
+        status: captchaResponse?.status,
         body: captchaBody,
       });
 
-      if (!captchaResponse.ok || captchaBody?.ok !== true) {
+      if (!captchaResponse || !captchaResponse.ok || captchaBody?.ok !== true) {
         const reason = captchaBody?.reason || "verification failed";
         console.warn("[CAPTCHA] login verify failed", { reason, selectedIds: captchaState.selectedIds });
-        setMessage("Not quite... try again");
+        setMessage(reason === "expired" ? "The CAPTCHA expired. Try again." : "Not quite... try again");
         setCaptchaReloadKey((current) => current + 1);
         return;
       }
@@ -106,7 +125,7 @@ export default function LoginPage() {
 
       setFailedAttempts(0);
       setLockedUntil(null);
-      await fetch("/api/profile/init", { method: "POST" }).catch(() => null);
+      void fetch("/api/profile/init", { method: "POST" }).catch(() => null);
       setMessage("Welcome back, cosmic soul!");
       router.push(redirect);
       router.refresh();
