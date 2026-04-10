@@ -31,6 +31,7 @@ export default function NotificationsPage() {
   const supabase = useMemo(() => createClient(), []);
   const auth = useMemo(() => supabase.auth, [supabase]);
   const lastAuthUserIdRef = useRef<string | null>(null);
+  const lastRealtimeSyncRef = useRef(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [pendingContactRequests, setPendingContactRequests] = useState<PendingContactRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,6 +80,15 @@ export default function NotificationsPage() {
   const loadNotificationState = useCallback(async () => {
     await Promise.all([fetchNotifications(), fetchPendingContactRequests()]);
   }, [fetchNotifications, fetchPendingContactRequests]);
+
+  const loadNotificationStateThrottled = useCallback(() => {
+    const now = Date.now();
+    if (now - lastRealtimeSyncRef.current < 3000) {
+      return;
+    }
+    lastRealtimeSyncRef.current = now;
+    void loadNotificationState();
+  }, [loadNotificationState]);
 
   useEffect(() => {
     let isMounted = true;
@@ -150,20 +160,20 @@ export default function NotificationsPage() {
     const channel = supabase
       .channel(`public:notifications-page:${userId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` }, () => {
-        void loadNotificationState();
+        loadNotificationStateThrottled();
       })
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "verified_seller_contact_requests", filter: `seller_user_id=eq.${userId}` },
         () => {
-          void loadNotificationState();
+          loadNotificationStateThrottled();
         }
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "verified_seller_contact_requests", filter: `requester_user_id=eq.${userId}` },
         () => {
-          void loadNotificationState();
+          loadNotificationStateThrottled();
         }
       )
       .subscribe();
@@ -171,7 +181,7 @@ export default function NotificationsPage() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [loadNotificationState, supabase, userId]);
+  }, [loadNotificationStateThrottled, supabase, userId]);
 
   const markAsRead = async (notifId: string) => {
     if (!userId) return;

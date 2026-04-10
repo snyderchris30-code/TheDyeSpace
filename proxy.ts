@@ -1,24 +1,3 @@
-// --- DOMAIN REDIRECT AND LOGGING ---
-const CURRENT_DOMAINS = [
-  'www.thedyespace.com',
-  'thedyespace.com',
-  'www.thedyespace.app',
-  'thedyespace.app',
-];
-
-export function logProjectAndRedirect(request: NextRequest) {
-  const host = request.headers.get('host');
-  console.log('[PROXY] Host:', host, '| URL:', request.nextUrl.href);
-
-  // If not on the current domain, redirect to www.thedyespace.com
-  if (host && !CURRENT_DOMAINS.includes(host)) {
-    const url = request.nextUrl.clone();
-    url.hostname = 'www.thedyespace.com';
-    url.protocol = 'https:';
-    return NextResponse.redirect(url, 308);
-  }
-  return null;
-}
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
@@ -28,7 +7,7 @@ const REDIRECT_IF_AUTH_ROUTES = new Set(['/signup']);
 const PUBLIC_ROUTES = new Set(['/login', '/forgot-password', '/reset-password']);
 const PROTECTED_ROUTE_PREFIXES = ['/create', '/notifications'];
 const PROTECTED_EXACT_ROUTES = new Set<string>(['/profile']);
-const BLOCKED_ATTACK_PATHS = new Set(['/xmlrpc.php', '/wp-admin', '/wp-login.php']);
+const BLOCKED_ATTACK_PATHS = new Set(['/xmlrpc.php', '/wp-admin', '/wp-login.php', '/wp-json', '/.env', '/phpinfo.php']);
 
 function isProtectedPath(pathname: string) {
   if (PROTECTED_EXACT_ROUTES.has(pathname)) {
@@ -42,7 +21,7 @@ export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const ip = getClientIp(request);
 
-  if (BLOCKED_ATTACK_PATHS.has(pathname) || pathname.startsWith('/wp-admin/')) {
+  if (BLOCKED_ATTACK_PATHS.has(pathname) || pathname.startsWith('/wp-admin/') || pathname.startsWith('/wp-json/')) {
     return new NextResponse('Not found', { status: 404 });
   }
 
@@ -62,6 +41,7 @@ export async function proxy(request: NextRequest) {
   if (
     pathname === '/login' ||
     pathname === '/signup' ||
+    pathname === '/api/captcha' ||
     pathname === '/api/posts/create' ||
     pathname === '/api/posts/comments' ||
     pathname === '/api/profile/init'
@@ -69,7 +49,7 @@ export async function proxy(request: NextRequest) {
     const limiter = applyRateLimit({
       key: `proxy:${pathname}:${ip}`,
       windowMs: 60_000,
-      max: pathname.startsWith('/api/') ? 12 : 15,
+      max: pathname === '/api/captcha' ? 20 : pathname.startsWith('/api/') ? 12 : 15,
       blockMs: 5 * 60_000,
     });
 
@@ -87,10 +67,6 @@ export async function proxy(request: NextRequest) {
       });
     }
   }
-
-  // Log and redirect if needed
-  const redirectResponse = logProjectAndRedirect(request);
-  if (redirectResponse) return redirectResponse;
 
   // Only run Supabase auth checks on routes that actually need auth-aware behavior.
   if (!isProtectedPath(pathname) && !REDIRECT_IF_AUTH_ROUTES.has(pathname)) {
@@ -161,5 +137,6 @@ export const config = {
     '/api/posts/create',
     '/api/posts/comments',
     '/api/profile/init',
+    '/api/captcha',
   ],
 };

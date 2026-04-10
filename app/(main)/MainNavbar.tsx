@@ -45,6 +45,8 @@ export default function MainNavbar() {
   const seenNotificationIdsRef = React.useRef<Set<string>>(new Set());
   const hasPrimedNotificationIdsRef = React.useRef(false);
   const lastSessionUserIdRef = React.useRef<string | null>(null);
+  const lastUserCountRefreshRef = React.useRef(0);
+  const lastRealtimeNotificationRef = React.useRef(0);
   const shareLinks = [
     { label: "www.thedyespace.com", url: "https://www.thedyespace.com" },
     { label: "www.thedyespace.app", url: "https://www.thedyespace.app" },
@@ -168,14 +170,18 @@ export default function MainNavbar() {
     const channel = supabase
       .channel("public:profiles:navbar-count")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "profiles" }, () => {
-        if (active) {
-          void loadUserCount();
-        }
+        if (!active) return;
+        const now = Date.now();
+        if (now - lastUserCountRefreshRef.current < 5000) return;
+        lastUserCountRefreshRef.current = now;
+        void loadUserCount();
       })
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "profiles" }, () => {
-        if (active) {
-          void loadUserCount();
-        }
+        if (!active) return;
+        const now = Date.now();
+        if (now - lastUserCountRefreshRef.current < 5000) return;
+        lastUserCountRefreshRef.current = now;
+        void loadUserCount();
       })
       .subscribe();
 
@@ -244,6 +250,11 @@ export default function MainNavbar() {
     const channel = supabase
       .channel(`public:navbar-notifications:${notificationUserId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${notificationUserId}` }, () => {
+        const now = Date.now();
+        if (now - lastRealtimeNotificationRef.current < 3000) {
+          return;
+        }
+        lastRealtimeNotificationRef.current = now;
         void refetch();
       })
       .subscribe();
@@ -251,7 +262,7 @@ export default function MainNavbar() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [notificationUserId, queryClient, refetch]);
+  }, [notificationUserId, refetch]);
 
   useEffect(() => {
     if (notifDrop && notificationUserId) {
@@ -384,6 +395,7 @@ export default function MainNavbar() {
   }) => (
     <Link
       href={href}
+      prefetch={false}
       aria-label={label}
       title={label}
       className={`group relative flex h-11 w-11 items-center justify-center rounded-xl border transition-all duration-200 ${
@@ -493,7 +505,7 @@ export default function MainNavbar() {
   return (
     <nav className={`navbar mt-2 mb-4 relative isolate overflow-visible ${NAV_LAYER_CLASS} sm:mb-6 flex flex-wrap items-center justify-between`}>
       <div className="flex items-center gap-2 overflow-visible">
-        <Link href="/" className="navbar-logo text-2xl tracking-wide select-none text-[#00f5ff] drop-shadow-[0_0_12px_rgba(0,245,255,0.45)] sm:text-4xl sm:tracking-widest hover:text-[#39ffcc]">
+        <Link href="/" prefetch={false} className="navbar-logo text-2xl tracking-wide select-none text-[#00f5ff] drop-shadow-[0_0_12px_rgba(0,245,255,0.45)] sm:text-4xl sm:tracking-widest hover:text-[#39ffcc]">
           TheDyeSpace
         </Link>
         {userCount !== null && (

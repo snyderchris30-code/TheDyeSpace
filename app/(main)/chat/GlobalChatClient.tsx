@@ -53,6 +53,7 @@ export default function GlobalChat() {
   const [adminActionStatus, setAdminActionStatus] = useState<string | null>(null);
   const [viewerProfile, setViewerProfile] = useState<ProfileFlags | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const refreshTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
@@ -127,6 +128,17 @@ export default function GlobalChat() {
   useEffect(() => {
     let subscription: any;
     const supabase = createClient();
+
+    const scheduleRefresh = () => {
+      if (refreshTimerRef.current !== null) {
+        return;
+      }
+      refreshTimerRef.current = window.setTimeout(() => {
+        refreshTimerRef.current = null;
+        void fetchMessages();
+      }, 750);
+    };
+
     // Initial realtime hydration belongs in this effect; the fetch itself resolves asynchronously.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchMessages();
@@ -138,7 +150,7 @@ export default function GlobalChat() {
         (payload) => {
           const next = payload.new as ChatMessage;
           if (next.room && next.room !== MAIN_ROOM) return;
-          void fetchMessages();
+          scheduleRefresh();
         }
       )
       .on(
@@ -147,18 +159,22 @@ export default function GlobalChat() {
         (payload) => {
           const next = payload.new as ChatMessage;
           if (next.room && next.room !== MAIN_ROOM) return;
-          void fetchMessages();
+          scheduleRefresh();
         }
       )
       .on(
         "postgres_changes",
         { event: "DELETE", schema: "public", table: "chat_messages" },
         () => {
-          void fetchMessages();
+          scheduleRefresh();
         }
       )
       .subscribe();
     return () => {
+      if (refreshTimerRef.current !== null) {
+        window.clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
       supabase.removeChannel(subscription);
     };
   }, [fetchMessages]);

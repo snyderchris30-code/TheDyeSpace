@@ -1,10 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { createCaptchaChallenge, verifyCaptchaSelection } from "@/lib/security/captcha";
+import { applyRateLimit, getClientIp } from "@/lib/security/request-guards";
 import { createRequestLogContext, logError, logWarn } from "@/lib/server-logging";
 
 export async function GET(req: NextRequest) {
   const requestContext = createRequestLogContext(req, "captcha/challenge");
+  const ip = getClientIp(req);
+
+  const limiter = applyRateLimit({
+    key: `captcha:challenge:${ip}`,
+    windowMs: 60_000,
+    max: 24,
+    blockMs: 2 * 60_000,
+  });
+
+  if (!limiter.allowed) {
+    return NextResponse.json(
+      { error: "Too many CAPTCHA refresh requests. Please wait a moment." },
+      { status: 429, headers: { "Retry-After": String(limiter.retryAfterSeconds) } }
+    );
+  }
 
   try {
     const challenge = await createCaptchaChallenge();
@@ -28,6 +44,21 @@ type VerifyBody = {
 
 export async function POST(req: NextRequest) {
   const requestContext = createRequestLogContext(req, "captcha/verify");
+  const ip = getClientIp(req);
+
+  const limiter = applyRateLimit({
+    key: `captcha:verify:${ip}`,
+    windowMs: 60_000,
+    max: 12,
+    blockMs: 2 * 60_000,
+  });
+
+  if (!limiter.allowed) {
+    return NextResponse.json(
+      { ok: false, reason: "rate_limited", error: "Too many CAPTCHA attempts. Please wait." },
+      { status: 429, headers: { "Retry-After": String(limiter.retryAfterSeconds) } }
+    );
+  }
 
   try {
     const body = (await req.json().catch(() => ({}))) as VerifyBody;
@@ -35,11 +66,6 @@ export async function POST(req: NextRequest) {
     const selectedIds = Array.isArray(body.selectedIds)
       ? body.selectedIds.filter((value): value is string => typeof value === "string")
       : [];
-
-    console.log("[CAPTCHA] verify request", {
-      tokenPresent: Boolean(token),
-      selectedCount: selectedIds.length,
-    });
 
     if (!token) {
       console.warn("[CAPTCHA] verify missing token", requestContext);
@@ -53,14 +79,9 @@ export async function POST(req: NextRequest) {
         reason: verification.reason,
         selectedCount: selectedIds.length,
       });
-      console.log("[CAPTCHA] verify failed", {
-        reason: verification.reason,
-        selectedCount: selectedIds.length,
-      });
-      return NextResponse.json({ ok: false, reason: verification.reason }, { status: 200 });
+        return NextResponse.json({ ok: false, reason: verification.reason }, { status: 200 });
     }
 
-    console.log("[CAPTCHA] verify succeeded", { selectedCount: selectedIds.length });
     return NextResponse.json({ ok: true });
   } catch (error) {
     logError("captcha/verify", "Unexpected CAPTCHA verification failure", error, requestContext);
