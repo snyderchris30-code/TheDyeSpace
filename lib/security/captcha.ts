@@ -3,7 +3,7 @@ import { promises as fs } from "fs";
 import path from "path";
 
 const CAPTCHA_DIRECTORY = path.join(process.cwd(), "public", "captcha");
-const CAPTCHA_FILE_PATTERN = /\.(svg|png|jpg|jpeg|webp|gif)$/i;
+const CAPTCHA_FILE_PATTERN = /\.(svg|png|jpe?g|gif|webp)$/i;
 const CHALLENGE_SIZE = 6;
 const MIN_CORRECT_OPTIONS = 2;
 const MAX_CORRECT_OPTIONS = 3;
@@ -134,7 +134,7 @@ export async function createCaptchaChallenge(): Promise<CaptchaChallenge> {
     const incorrect = shuffle(distractors).slice(0, CHALLENGE_SIZE - correct.length);
     const options = shuffle([...correct, ...incorrect]).map((fileName) => ({
       id: fileName,
-      src: `/captcha/${fileName}`,
+      src: `/captcha/${encodeURIComponent(fileName)}`,
     }));
 
     return {

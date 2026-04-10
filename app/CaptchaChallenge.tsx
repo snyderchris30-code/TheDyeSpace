@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, RefreshCcw } from "lucide-react";
 
@@ -19,18 +20,25 @@ type CaptchaChallengeProps = {
   reloadKey?: number;
 };
 
+function getImagePlaceholderColor(id: string) {
+  const hash = [...id].reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  return `hsl(${hash % 360} 64% 32%)`;
+}
+
 export default function CaptchaChallenge({ onStateChange, reloadKey = 0 }: CaptchaChallengeProps) {
   const [loading, setLoading] = useState(true);
   const [prompt, setPrompt] = useState("");
   const [options, setOptions] = useState<CaptchaOption[]>([]);
   const [token, setToken] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
   const loadChallenge = useCallback(async () => {
     setLoading(true);
     setError(null);
     setSelectedIds([]);
+    setFailedIds(new Set());
     onStateChange({ token: null, selectedIds: [] });
 
     try {
@@ -50,6 +58,10 @@ export default function CaptchaChallenge({ onStateChange, reloadKey = 0 }: Captc
       setLoading(false);
     }
   }, [onStateChange]);
+
+  const markFailed = useCallback((optionId: string) => {
+    setFailedIds((previous) => new Set(previous).add(optionId));
+  }, []);
 
   useEffect(() => {
     void loadChallenge();
@@ -99,6 +111,7 @@ export default function CaptchaChallenge({ onStateChange, reloadKey = 0 }: Captc
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {options.map((option, index) => {
               const active = selectedIds.includes(option.id);
+              const failed = failedIds.has(option.id);
               return (
                 <button
                   key={option.id}
@@ -114,7 +127,23 @@ export default function CaptchaChallenge({ onStateChange, reloadKey = 0 }: Captc
                   aria-label={`CAPTCHA option ${index + 1}`}
                 >
                   <div className="relative aspect-square overflow-hidden rounded-[18px] bg-slate-900/80">
-                    <img src={option.src} alt={`CAPTCHA option ${index + 1}`} className="h-full w-full object-cover" />
+                    {failed ? (
+                      <div
+                        className="flex h-full w-full items-center justify-center px-3 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-white"
+                        style={{ backgroundColor: getImagePlaceholderColor(option.id) }}
+                      >
+                        {option.id}
+                      </div>
+                    ) : (
+                      <Image
+                        src={option.src}
+                        alt={`CAPTCHA option ${index + 1}`}
+                        fill
+                        className="object-cover"
+                        unoptimized={/\.svg$/i.test(option.src)}
+                        onError={() => markFailed(option.id)}
+                      />
+                    )}
                   </div>
                   <div
                     className={[
