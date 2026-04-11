@@ -27,6 +27,7 @@ export default function SignupPage() {
       : null
   );
   const router = useRouter();
+  const isCaptchaReady = Boolean(captchaState.token && captchaState.selectedIds.length > 0);
 
   async function fetchJsonWithTimeout(url: string, init: RequestInit, timeoutMs = 8000) {
     const controller = new AbortController();
@@ -61,54 +62,56 @@ export default function SignupPage() {
       return;
     }
 
-    let captchaBody: any = null;
+    if (!captchaState.selectedIds.length) {
+      setMessage("Select the matching CAPTCHA images before signing up.");
+      setLoading(false);
+      return;
+    }
+
     try {
-      console.log("CAPTCHA submit - selected indices:", captchaState.selectedIds);
+      console.log("Stoned CAPTCHA submit - selected images:", captchaState.selectedIds);
 
       const verifyResult = await fetchJsonWithTimeout(
         "/api/captcha",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token: captchaState.token, selectedIds: captchaState.selectedIds }),
+          body: JSON.stringify({ token: captchaState.token, selectedImages: captchaState.selectedIds }),
         },
         8000
       );
 
-      captchaBody = verifyResult.body;
       console.log("[CAPTCHA] signup verify response", {
         status: verifyResult.response?.status,
         body: verifyResult.body,
       });
+      const captchaSuccess = verifyResult.response?.ok === true && verifyResult.body?.success === true;
+      console.log(`Verification result: ${captchaSuccess ? "success" : "failure"}`);
 
-      if (!verifyResult.response) {
+      if (!captchaSuccess) {
         setMessage("Not quite... try again");
         setCaptchaReloadKey((current) => current + 1);
-        setLoading(false);
-        return;
-      }
-
-      const captchaSuccess = verifyResult.body?.success === true || verifyResult.body?.ok === true;
-      if (!verifyResult.response.ok || !captchaSuccess) {
-        setMessage("Not quite... try again");
-        setCaptchaReloadKey((current) => current + 1);
-        setLoading(false);
         return;
       }
     } catch (error) {
       console.error("[CAPTCHA] signup verify exception", error);
       setMessage("Not quite... try again");
       setCaptchaReloadKey((current) => current + 1);
-      setLoading(false);
       return;
     }
 
     try {
-      console.log("[CAPTCHA] signup verify succeeded", { response: captchaBody });
+      console.log("CAPTCHA success - proceeding with signup");
+      console.log("Signup attempt started");
 
       const form = e.currentTarget;
-      const email = form.email.value;
-      const password = form.password.value;
+      const formData = new FormData(form);
+      const email = String(formData.get("email") || "").trim();
+      const password = String(formData.get("password") || "");
+      if (!email || !password) {
+        setMessage("Unable to complete signup. Please try again.");
+        return;
+      }
       const supabase = createClient();
       const { data, error } = await supabase.auth.signUp({ email, password });
       console.log("[SIGNUP] auth response", { data, error });
@@ -189,8 +192,8 @@ export default function SignupPage() {
         <CaptchaChallenge onStateChange={setCaptchaState} reloadKey={captchaReloadKey} />
         <button
           type="submit"
-          disabled={loading}
-          className="bg-gradient-to-tr from-purple-700 via-pink-600 to-yellow-400 text-white font-bold py-2 rounded shadow-lg hover:scale-105 transition-transform flex items-center justify-center"
+          disabled={loading || !isCaptchaReady}
+          className="bg-gradient-to-tr from-purple-700 via-pink-600 to-yellow-400 text-white font-bold py-2 rounded shadow-lg hover:scale-105 transition-transform flex items-center justify-center disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading ? <Loader2 className="animate-spin mr-2" /> : null}
           Sign Up

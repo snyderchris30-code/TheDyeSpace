@@ -40,6 +40,7 @@ export default function LoginPage() {
       : null
   );
   const router = useRouter();
+  const isCaptchaReady = Boolean(captchaState.token && captchaState.selectedIds.length > 0);
 
   async function fetchJsonWithTimeout(url: string, init: RequestInit, timeoutMs = 8000) {
     const controller = new AbortController();
@@ -74,54 +75,54 @@ export default function LoginPage() {
       return;
     }
 
-    let captchaBody: any = null;
+    if (!captchaState.selectedIds.length) {
+      setMessage("Select the matching CAPTCHA images before logging in.");
+      setLoading(false);
+      return;
+    }
+
+    console.log("Login attempt started");
+
+    const form = e.currentTarget;
+    const formData = new FormData(form);
+    const email = String(formData.get("email") || "").trim();
+    const password = String(formData.get("password") || "");
+
+    if (!email || !password) {
+      setMessage("Please enter both your email and password.");
+      setLoading(false);
+      return;
+    }
+
     try {
-      console.log("CAPTCHA submit - selected indices:", captchaState.selectedIds);
+      console.log("Stoned CAPTCHA submit - selected images:", captchaState.selectedIds);
 
       const verifyResult = await fetchJsonWithTimeout(
         "/api/captcha",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token: captchaState.token, selectedIds: captchaState.selectedIds }),
+          body: JSON.stringify({ token: captchaState.token, selectedImages: captchaState.selectedIds }),
         },
         8000
       );
 
-      captchaBody = verifyResult.body;
+      const captchaSuccess = verifyResult.response?.ok === true && verifyResult.body?.success === true;
       console.log("[CAPTCHA] login verify response", {
         status: verifyResult.response?.status,
         body: verifyResult.body,
+        captchaSuccess,
       });
+      console.log(`Verification result: ${captchaSuccess ? "success" : "failure"}`);
 
-      if (!verifyResult.response) {
+      if (!captchaSuccess) {
         setMessage("Not quite... try again");
         setCaptchaReloadKey((current) => current + 1);
-        setLoading(false);
         return;
       }
 
-      const captchaSuccess = verifyResult.body?.success === true || verifyResult.body?.ok === true;
-      if (!verifyResult.response.ok || !captchaSuccess) {
-        setMessage("Not quite... try again");
-        setCaptchaReloadKey((current) => current + 1);
-        setLoading(false);
-        return;
-      }
-    } catch (error) {
-      console.error("[CAPTCHA] login verify exception", error);
-      setMessage("Not quite... try again");
-      setCaptchaReloadKey((current) => current + 1);
-      setLoading(false);
-      return;
-    }
+      console.log("CAPTCHA success - proceeding with login");
 
-    try {
-      console.log("[CAPTCHA] login verify succeeded", { response: captchaBody });
-
-      const form = e.currentTarget;
-      const email = form.email.value;
-      const password = form.password.value;
       const supabase = createClient();
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       console.log("[LOGIN] auth response", { error });
@@ -143,7 +144,6 @@ export default function LoginPage() {
       void fetch("/api/profile/init", { method: "POST" }).catch(() => null);
       setMessage("Welcome back, cosmic soul!");
       router.push(redirect);
-      router.refresh();
     } catch (error) {
       console.error("[LOGIN] unexpected error", error);
       setMessage("Unable to complete login. Please try again.");
@@ -183,8 +183,8 @@ export default function LoginPage() {
         <CaptchaChallenge onStateChange={setCaptchaState} reloadKey={captchaReloadKey} />
         <button
           type="submit"
-          disabled={loading}
-          className="bg-gradient-to-tr from-purple-700 via-pink-600 to-yellow-400 text-white font-bold py-2 rounded shadow-lg hover:scale-105 transition-transform flex items-center justify-center"
+          disabled={loading || !isCaptchaReady}
+          className="bg-gradient-to-tr from-purple-700 via-pink-600 to-yellow-400 text-white font-bold py-2 rounded shadow-lg hover:scale-105 transition-transform flex items-center justify-center disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading ? <Loader2 className="animate-spin mr-2" /> : null}
           Log In
@@ -193,14 +193,13 @@ export default function LoginPage() {
           New here?{' '}
           <Link href="/signup" className="underline text-pink-300 hover:text-yellow-300">Sign up</Link>
         </p>
-        <p className="text-center text-sm">
-          <Link href="/forgot-password" className="underline text-cyan-300 hover:text-yellow-300">Forgot password?</Link>
-        </p>
         {message && (
           <div className="text-center text-pink-300 font-semibold mt-2 animate-pulse">{message}</div>
         )}
-        {/* Sign Out (Clear Session) button removed */}
       </form>
+      <div className="mt-4 text-center text-sm">
+        <Link href="/forgot-password" className="underline text-cyan-300 hover:text-yellow-300">Forgot password?</Link>
+      </div>
     </div>
   );
 }

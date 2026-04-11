@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, RefreshCcw } from "lucide-react";
 
 type CaptchaOption = {
@@ -19,93 +19,44 @@ type CaptchaChallengeProps = {
   reloadKey?: number;
 };
 
-function getImagePlaceholderColorClass(id: string) {
-  const classes = [
-    "bg-emerald-700",
-    "bg-cyan-700",
-    "bg-sky-700",
-    "bg-violet-700",
-    "bg-fuchsia-700",
-    "bg-rose-700",
-    "bg-amber-700",
-    "bg-lime-700",
-    "bg-orange-700",
-    "bg-slate-700",
-  ];
-  const hash = [...id].reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  return classes[hash % classes.length];
-}
-
 export default function CaptchaChallenge({ onStateChange, reloadKey = 0 }: CaptchaChallengeProps) {
   const [loading, setLoading] = useState(true);
   const [prompt, setPrompt] = useState("");
   const [options, setOptions] = useState<CaptchaOption[]>([]);
   const [token, setToken] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
-  const lastChallengeSignatureRef = useRef<string | null>(null);
 
-  const loadChallenge = useCallback(async (forceDifferent = false) => {
+  const loadChallenge = useCallback(async () => {
     setLoading(true);
     setError(null);
-    setPrompt("Loading a fresh vibe check...");
+    setPrompt("Loading the Stoned CAPTCHA...");
     setOptions([]);
     setToken(null);
     setSelectedIds([]);
-    setFailedIds(new Set());
     onStateChange({ token: null, selectedIds: [] });
 
     try {
-      let nextPrompt = "";
-      let nextOptions: CaptchaOption[] = [];
-      let nextToken: string | null = null;
-      let lastErrorMessage = "Could not load the stoner CAPTCHA.";
+      const response = await fetch(`/api/captcha?cacheBust=${Date.now()}`, { cache: "no-store" });
+      const body = (await response.json().catch(() => ({}))) as Partial<CaptchaChallengeResponse> & { error?: string };
 
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        const cacheBust = `${Date.now()}-${attempt}`;
-        const response = await fetch(`/api/captcha?cacheBust=${cacheBust}`, { cache: "no-store" });
-        const body = (await response.json().catch(() => ({}))) as Partial<CaptchaChallengeResponse> & { error?: string };
-
-        if (!response.ok || !body.prompt || !Array.isArray(body.options) || typeof body.token !== "string") {
-          lastErrorMessage = body.error || "Could not load the stoner CAPTCHA.";
-          continue;
-        }
-
-        const signature = `${body.prompt}::${body.options.map((option) => option.id).sort().join("|")}`;
-        const sameAsPrevious = signature === lastChallengeSignatureRef.current;
-        if (forceDifferent && sameAsPrevious && attempt < 2) {
-          continue;
-        }
-
-        nextPrompt = body.prompt;
-        nextOptions = body.options;
-        nextToken = body.token;
-        lastChallengeSignatureRef.current = signature;
-        break;
+      if (!response.ok || !body.prompt || !Array.isArray(body.options) || typeof body.token !== "string") {
+        throw new Error(body.error || "Could not load the Stoned CAPTCHA.");
       }
 
-      if (!nextToken) {
-        throw new Error(lastErrorMessage);
-      }
-
-      setPrompt(nextPrompt);
-      setOptions(nextOptions);
-      setToken(nextToken);
-      onStateChange({ token: nextToken, selectedIds: [] });
+      setPrompt(body.prompt);
+      setOptions(body.options);
+      setToken(body.token);
+      onStateChange({ token: body.token, selectedIds: [] });
     } catch (challengeError: any) {
-      setError(typeof challengeError?.message === "string" ? challengeError.message : "Could not load the stoner CAPTCHA.");
+      setError(typeof challengeError?.message === "string" ? challengeError.message : "Could not load the Stoned CAPTCHA.");
     } finally {
       setLoading(false);
     }
   }, [onStateChange]);
 
-  const markFailed = useCallback((optionId: string) => {
-    setFailedIds((previous) => new Set(previous).add(optionId));
-  }, []);
-
   useEffect(() => {
-    void loadChallenge(true);
+    void loadChallenge();
   }, [loadChallenge, reloadKey]);
 
   const toggleSelection = useCallback(
@@ -127,14 +78,15 @@ export default function CaptchaChallenge({ onStateChange, reloadKey = 0 }: Captc
     <div className="rounded-2xl border border-cyan-300/25 bg-slate-950/55 p-4 shadow-xl">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-200/75">Stoner CAPTCHA</p>
-          <h2 className="mt-1 text-sm font-semibold text-cyan-50 sm:text-base">{loading ? "Loading the vibe check..." : prompt}</h2>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-200/75">Stoned CAPTCHA</p>
+          <h2 className="mt-1 text-sm font-semibold text-cyan-50 sm:text-base">Cosmic Vibe Check</h2>
+          <p className="mt-1 text-xs text-cyan-100/80">{loading ? "Loading challenge..." : prompt}</p>
         </div>
         <button
           type="button"
-          onClick={() => void loadChallenge(true)}
+          onClick={() => void loadChallenge()}
           className="inline-flex items-center gap-2 rounded-full border border-cyan-300/30 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:border-cyan-200/60 hover:bg-cyan-400/10"
-          aria-label="Load a new CAPTCHA challenge"
+          aria-label="Load a new Stoned CAPTCHA challenge"
         >
           <RefreshCcw className="h-3.5 w-3.5" />
           New set
@@ -152,7 +104,6 @@ export default function CaptchaChallenge({ onStateChange, reloadKey = 0 }: Captc
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {options.map((option, index) => {
               const active = selectedIds.includes(option.id);
-              const failed = failedIds.has(option.id);
               return (
                 <button
                   key={option.id}
@@ -168,25 +119,13 @@ export default function CaptchaChallenge({ onStateChange, reloadKey = 0 }: Captc
                   aria-label={`CAPTCHA option ${index + 1}`}
                 >
                   <div className="relative aspect-square overflow-hidden rounded-[18px] bg-slate-900/80">
-                    {failed ? (
-                      <div
-                        className={[
-                          "flex h-full w-full items-center justify-center px-3 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-white",
-                          getImagePlaceholderColorClass(option.id),
-                        ].join(" ")}
-                      >
-                        {option.id}
-                      </div>
-                    ) : (
-                      <img
-                        src={option.src}
-                        alt={`CAPTCHA option ${index + 1}`}
-                        className="h-full w-full object-cover"
-                        loading="lazy"
-                        decoding="async"
-                        onError={() => markFailed(option.id)}
-                      />
-                    )}
+                    <img
+                      src={option.src}
+                      alt={`CAPTCHA option ${index + 1}`}
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                      decoding="async"
+                    />
                   </div>
                   <div
                     className={[

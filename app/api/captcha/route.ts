@@ -1,8 +1,69 @@
+import { promises as fs } from "fs";
+import path from "path";
 import { NextRequest, NextResponse } from "next/server";
 
-import { createCaptchaChallenge, verifyCaptchaSelection } from "@/lib/security/captcha";
 import { applyRateLimit, getClientIp } from "@/lib/security/request-guards";
 import { createRequestLogContext, logError, logWarn } from "@/lib/server-logging";
+
+type CaptchaQuestion = {
+  prompt: string;
+  prefixes: string[];
+};
+
+type CaptchaTokenPayload = {
+  correct: string[];
+  expiresAt: number;
+};
+
+type VerifyBody = {
+  token?: string;
+  selectedImages?: string[];
+};
+
+const CAPTCHA_DIR = path.join(process.cwd(), "public", "captcha");
+const CAPTCHA_TTL_MS = 10 * 60 * 1000;
+const QUESTION_BANK: CaptchaQuestion[] = [
+  { prompt: "Select the peace signs", prefixes: ["peace-"] },
+  { prompt: "Pick the trippy mushrooms", prefixes: ["mushroom-"] },
+  { prompt: "Choose the groovy items", prefixes: ["groovy-item-", "psychedelic-"] },
+];
+
+function shuffle<T>(items: T[]) {
+  const next = [...items];
+  for (let i = next.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [next[i], next[j]] = [next[j], next[i]];
+  }
+  return next;
+}
+
+function normalizeName(name: string) {
+  return path.basename(name).toLowerCase();
+}
+
+async function listCaptchaJpgFiles() {
+  const entries = await fs.readdir(CAPTCHA_DIR, { withFileTypes: true });
+  return entries
+    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".jpg"))
+    .map((entry) => entry.name)
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true }));
+}
+
+function encodeToken(payload: CaptchaTokenPayload) {
+  return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+}
+
+function decodeToken(token: string): CaptchaTokenPayload | null {
+  try {
+    const parsed = JSON.parse(Buffer.from(token, "base64url").toString("utf8")) as CaptchaTokenPayload;
+    if (!Array.isArray(parsed.correct) || typeof parsed.expiresAt !== "number") {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
 
 export async function GET(req: NextRequest) {
   const requestContext = createRequestLogContext(req, "captcha/challenge");
@@ -23,29 +84,52 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const challenge = await createCaptchaChallenge();
-    return NextResponse.json(challenge, {
-      headers: {
-        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-        Pragma: "no-cache",
-        Expires: "0",
-      },
+    const allFiles = await listCaptchaJpgFiles();
+    const question = shuffle(QUESTION_BANK).find((item) => {
+      const matchingCount = allFiles.filter((file) => item.prefixes.some((prefix) => file.toLowerCase().startsWith(prefix))).length;
+      return matchingCount >= 2 && allFiles.length - matchingCount >= 3;
     });
+
+    if (!question) {
+      throw new Error("No valid Stoned CAPTCHA question could be generated.");
+    }
+
+    const matching = allFiles.filter((file) => question.prefixes.some((prefix) => file.toLowerCase().startsWith(prefix)));
+    const nonMatching = allFiles.filter((file) => !question.prefixes.some((prefix) => file.toLowerCase().startsWith(prefix)));
+
+    const correct = shuffle(matching).slice(0, Math.min(3, Math.max(2, matching.length)));
+    const distractors = shuffle(nonMatching).slice(0, 6 - correct.length);
+    const options = shuffle([...correct, ...distractors]).slice(0, 6);
+
+    return NextResponse.json(
+      {
+        prompt: question.prompt,
+        options: options.map((fileName) => ({
+          id: fileName,
+          src: `/captcha/${encodeURIComponent(fileName)}`,
+        })),
+        token: encodeToken({
+          correct: correct.map(normalizeName).sort(),
+          expiresAt: Date.now() + CAPTCHA_TTL_MS,
+        }),
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      }
+    );
   } catch (error) {
     logError("captcha/challenge", "Failed to create challenge", error, requestContext);
-    return NextResponse.json({ error: "Failed to create CAPTCHA challenge." }, { status: 500 });
+    return NextResponse.json({ error: "Failed to create Stoned CAPTCHA challenge." }, { status: 500 });
   }
 }
-
-type VerifyBody = {
-  token?: string;
-  selectedIds?: string[];
-};
 
 export async function POST(req: NextRequest) {
   const requestContext = createRequestLogContext(req, "captcha/verify");
   const ip = getClientIp(req);
-  console.info("[CAPTCHA] verify started", { ...requestContext, ip });
 
   const limiter = applyRateLimit({
     key: `captcha:verify:${ip}`,
@@ -56,7 +140,7 @@ export async function POST(req: NextRequest) {
 
   if (!limiter.allowed) {
     return NextResponse.json(
-      { ok: false, reason: "rate_limited", error: "Too many CAPTCHA attempts. Please wait." },
+      { success: false, error: "Too many CAPTCHA attempts. Please wait." },
       { status: 429, headers: { "Retry-After": String(limiter.retryAfterSeconds) } }
     );
   }
@@ -64,70 +148,46 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => ({}))) as VerifyBody;
     const token = typeof body.token === "string" ? body.token : "";
-    const selectedIds = Array.isArray(body.selectedIds)
-      ? body.selectedIds.filter((value): value is string => typeof value === "string")
+    const selectedImages = Array.isArray(body.selectedImages)
+      ? body.selectedImages.filter((value): value is string => typeof value === "string")
       : [];
 
-    console.info("[CAPTCHA] Selected images", {
-      ...requestContext,
-      selectedIds,
-      selectedCount: selectedIds.length,
-    });
+    const normalizedSelected = [...new Set(selectedImages.map(normalizeName).filter(Boolean))].sort();
 
     if (!token) {
-      console.warn("[CAPTCHA] verify missing token", requestContext);
-      return NextResponse.json({ error: "CAPTCHA token is required." }, { status: 400 });
+      return NextResponse.json({ success: false, message: "Not quite... try again" }, { status: 200 });
     }
 
-    const verification = verifyCaptchaSelection(token, selectedIds);
-    console.info("[CAPTCHA] verify challenge", {
-      ...requestContext,
-      questionKey: verification.questionKey,
-      questionPrompt: verification.questionPrompt,
-      correctIds: verification.normalizedCorrect,
-      correctCount: verification.normalizedCorrect.length,
-    });
-
-    if (!verification.ok) {
+    const payload = decodeToken(token);
+    if (!payload) {
       logWarn("captcha/verify", "CAPTCHA verification failed", {
         ...requestContext,
-        reason: verification.reason,
-        selectedCount: selectedIds.length,
+        reason: "invalid",
+        selectedCount: normalizedSelected.length,
       });
-      console.info("[CAPTCHA] Result: failure", {
-        ...requestContext,
-        reason: verification.reason,
-        selectedIds: verification.normalizedSelected,
-        correctIds: verification.normalizedCorrect,
-      });
-      const messages: Record<string, string> = {
-        invalid: "CAPTCHA invalid. Please try again.",
-        expired: "The CAPTCHA expired. Try again.",
-        incorrect: "Not quite. Please try again.",
-      };
-      return NextResponse.json(
-        {
-          success: false,
-          ok: false,
-          reason: verification.reason,
-          message: messages[verification.reason] || "CAPTCHA verification failed.",
-        },
-        { status: 200 }
-      );
+      console.info("Verification result: failure");
+      return NextResponse.json({ success: false, message: "Not quite... try again" }, { status: 200 });
     }
 
-    console.info("[CAPTCHA] Result: success", {
-      ...requestContext,
-      questionKey: verification.questionKey,
-      questionPrompt: verification.questionPrompt,
-      selectedIds: verification.normalizedSelected,
-      correctIds: verification.normalizedCorrect,
-    });
+    if (payload.expiresAt < Date.now()) {
+      logWarn("captcha/verify", "CAPTCHA verification failed", {
+        ...requestContext,
+        reason: "expired",
+        selectedCount: normalizedSelected.length,
+      });
+      console.info("Verification result: failure");
+      return NextResponse.json({ success: false, message: "Not quite... try again" }, { status: 200 });
+    }
 
-    return NextResponse.json({ success: true, ok: true, message: "Correct!" });
+    const normalizedCorrect = [...new Set(payload.correct.map(normalizeName).filter(Boolean))].sort();
+    const isMatch =
+      normalizedSelected.length === normalizedCorrect.length &&
+      normalizedSelected.every((value, index) => value === normalizedCorrect[index]);
+
+    console.info(`Verification result: ${isMatch ? "success" : "failure"}`);
+    return NextResponse.json({ success: isMatch, message: isMatch ? "Correct!" : "Not quite... try again" }, { status: 200 });
   } catch (error) {
     logError("captcha/verify", "Unexpected CAPTCHA verification failure", error, requestContext);
-    console.error("[CAPTCHA] verify exception", error);
-    return NextResponse.json({ error: "Failed to verify CAPTCHA." }, { status: 500 });
+    return NextResponse.json({ success: false, message: "Not quite... try again" }, { status: 200 });
   }
 }
