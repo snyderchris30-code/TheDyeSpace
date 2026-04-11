@@ -69,6 +69,17 @@ export default function LoginPage() {
     setLoading(true);
     setMessage(null);
 
+    const form = e.currentTarget;
+    const formData = new FormData(form);
+    const email = String(formData.get("email") || "").trim();
+    const password = String(formData.get("password") || "");
+
+    if (!email || !password) {
+      setMessage("Please enter both your email and password.");
+      setLoading(false);
+      return;
+    }
+
     if (!captchaState.token) {
       setMessage("The vibe check is still loading. Try again in a second.");
       setLoading(false);
@@ -77,19 +88,6 @@ export default function LoginPage() {
 
     if (!captchaState.selectedIds.length) {
       setMessage("Select the matching CAPTCHA images before logging in.");
-      setLoading(false);
-      return;
-    }
-
-    console.log("Login attempt started");
-
-    const form = e.currentTarget;
-    const formData = new FormData(form);
-    const email = String(formData.get("email") || "").trim();
-    const password = String(formData.get("password") || "");
-
-    if (!email || !password) {
-      setMessage("Please enter both your email and password.");
       setLoading(false);
       return;
     }
@@ -118,11 +116,12 @@ export default function LoginPage() {
       if (!captchaSuccess) {
         setMessage("Not quite... try again");
         setCaptchaReloadKey((current) => current + 1);
+        setLoading(false);
         return;
       }
 
-      console.log("CAPTCHA success - proceeding with login");
-
+      // --- FIX: CAPTCHA success, now trigger login with current email/password ---
+      console.log(`CAPTCHA success - attempting login with email: ${email}`);
       const supabase = createClient();
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       console.log("[LOGIN] auth response", { error });
@@ -136,6 +135,7 @@ export default function LoginPage() {
           return next;
         });
         setMessage(error.message);
+        setLoading(false);
         return;
       }
 
@@ -147,7 +147,6 @@ export default function LoginPage() {
     } catch (error) {
       console.error("[LOGIN] unexpected error", error);
       setMessage("Unable to complete login. Please try again.");
-    } finally {
       setLoading(false);
     }
   }
