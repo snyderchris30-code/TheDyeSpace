@@ -16,6 +16,8 @@ type CaptchaQuestion = {
 };
 
 type CaptchaPayload = {
+  questionKey: string;
+  questionPrompt: string;
   correctIds: string[];
   expiresAt: number;
 };
@@ -154,7 +156,12 @@ export async function createCaptchaChallenge(): Promise<CaptchaChallenge> {
     return {
       prompt: question.prompt,
       options,
-      token: encryptPayload({ correctIds: correct.sort(), expiresAt: Date.now() + CHALLENGE_TTL_MS }),
+      token: encryptPayload({
+        questionKey: question.key,
+        questionPrompt: question.prompt,
+        correctIds: correct.sort(),
+        expiresAt: Date.now() + CHALLENGE_TTL_MS,
+      }),
     };
   }
 
@@ -167,11 +174,15 @@ function normalizeCaptchaSelectionId(value: string) {
     return "";
   }
 
+  let decoded: string;
   try {
-    return decodeURIComponent(trimmed).toLowerCase();
+    decoded = decodeURIComponent(trimmed);
   } catch {
-    return trimmed.toLowerCase();
+    decoded = trimmed;
   }
+
+  const basename = path.basename(decoded);
+  return basename.toLowerCase();
 }
 
 export function verifyCaptchaSelection(token: string, selectedIds: string[]) {
@@ -180,6 +191,8 @@ export function verifyCaptchaSelection(token: string, selectedIds: string[]) {
     return {
       ok: false,
       reason: "invalid" as CaptchaVerifyReason,
+      questionKey: "unknown",
+      questionPrompt: "unknown",
       normalizedSelected: [],
       normalizedCorrect: [],
     };
@@ -189,6 +202,8 @@ export function verifyCaptchaSelection(token: string, selectedIds: string[]) {
     return {
       ok: false,
       reason: "expired" as CaptchaVerifyReason,
+      questionKey: payload.questionKey,
+      questionPrompt: payload.questionPrompt,
       normalizedSelected: [...new Set(selectedIds.map(normalizeCaptchaSelectionId).filter(Boolean))].sort(),
       normalizedCorrect: [...new Set(payload.correctIds.map(normalizeCaptchaSelectionId).filter(Boolean))].sort(),
     };
@@ -202,7 +217,10 @@ export function verifyCaptchaSelection(token: string, selectedIds: string[]) {
 
   return {
     ok: matchesExactly,
+    success: matchesExactly,
     reason: matchesExactly ? ("valid" as CaptchaVerifyReason) : ("incorrect" as CaptchaVerifyReason),
+    questionKey: payload.questionKey,
+    questionPrompt: payload.questionPrompt,
     normalizedSelected,
     normalizedCorrect,
   };

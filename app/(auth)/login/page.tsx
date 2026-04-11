@@ -74,10 +74,7 @@ export default function LoginPage() {
         return;
       }
 
-      console.log("[CAPTCHA] login verify request", {
-        selectedIds: captchaState.selectedIds,
-        tokenLength: captchaState.token.length,
-      });
+      console.log("CAPTCHA submit - selected indices:", captchaState.selectedIds);
 
       const { response: captchaResponse, body: captchaBody } = await fetchJsonWithTimeout(
         "/api/captcha",
@@ -99,10 +96,10 @@ export default function LoginPage() {
         return;
       }
 
-      if (!captchaResponse.ok || captchaBody?.ok !== true) {
+      if (!captchaResponse.ok || captchaBody?.success !== true) {
         const reason = captchaBody?.reason || "verification failed";
         const message = captchaBody?.message || (reason === "expired" || reason === "invalid" ? "The CAPTCHA expired. Try again." : "Not quite... try again");
-        console.warn("[CAPTCHA] login verify failed", { reason, selectedIds: captchaState.selectedIds, message });
+        console.warn("[CAPTCHA] login verify failed", { reason, selectedIds: captchaState.selectedIds, message, response: captchaBody });
         if (reason === "rate_limited") {
           setMessage("Too many CAPTCHA attempts. Please wait a moment and try again.");
           return;

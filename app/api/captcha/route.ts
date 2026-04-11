@@ -80,8 +80,10 @@ export async function POST(req: NextRequest) {
     }
 
     const verification = verifyCaptchaSelection(token, selectedIds);
-    console.info("[CAPTCHA] Correct images", {
+    console.info("[CAPTCHA] verify challenge", {
       ...requestContext,
+      questionKey: verification.questionKey,
+      questionPrompt: verification.questionPrompt,
       correctIds: verification.normalizedCorrect,
       correctCount: verification.normalizedCorrect.length,
     });
@@ -105,6 +107,7 @@ export async function POST(req: NextRequest) {
       };
       return NextResponse.json(
         {
+          success: false,
           ok: false,
           reason: verification.reason,
           message: messages[verification.reason] || "CAPTCHA verification failed.",
@@ -115,11 +118,13 @@ export async function POST(req: NextRequest) {
 
     console.info("[CAPTCHA] Result: success", {
       ...requestContext,
+      questionKey: verification.questionKey,
+      questionPrompt: verification.questionPrompt,
       selectedIds: verification.normalizedSelected,
       correctIds: verification.normalizedCorrect,
     });
 
-    return NextResponse.json({ ok: true, message: "Correct!" });
+    return NextResponse.json({ success: true, ok: true, message: "Correct!" });
   } catch (error) {
     logError("captcha/verify", "Unexpected CAPTCHA verification failure", error, requestContext);
     console.error("[CAPTCHA] verify exception", error);
