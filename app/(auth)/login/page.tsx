@@ -68,15 +68,17 @@ export default function LoginPage() {
     setLoading(true);
     setMessage(null);
 
-    try {
-      if (!captchaState.token) {
-        setMessage("The vibe check is still loading. Try again in a second.");
-        return;
-      }
+    if (!captchaState.token) {
+      setMessage("The vibe check is still loading. Try again in a second.");
+      setLoading(false);
+      return;
+    }
 
+    let captchaBody: any = null;
+    try {
       console.log("CAPTCHA submit - selected indices:", captchaState.selectedIds);
 
-      const { response: captchaResponse, body: captchaBody } = await fetchJsonWithTimeout(
+      const verifyResult = await fetchJsonWithTimeout(
         "/api/captcha",
         {
           method: "POST",
@@ -86,32 +88,36 @@ export default function LoginPage() {
         8000
       );
 
+      captchaBody = verifyResult.body;
       console.log("[CAPTCHA] login verify response", {
-        status: captchaResponse?.status,
-        body: captchaBody,
+        status: verifyResult.response?.status,
+        body: verifyResult.body,
       });
 
-      if (!captchaResponse) {
-        console.warn("[CAPTCHA] login verify no response", { selectedIds: captchaState.selectedIds });
-        setMessage("Something went wrong. Please try again.");
-        return;
-      }
-
-      if (!captchaResponse.ok || captchaBody?.success !== true) {
-        const reason = captchaBody?.reason || "verification failed";
-        const message = captchaBody?.message || (reason === "expired" || reason === "invalid" ? "The CAPTCHA expired. Try again." : "Not quite... try again");
-        console.warn("[CAPTCHA] login verify failed", { reason, selectedIds: captchaState.selectedIds, message, response: captchaBody });
-        if (reason === "rate_limited") {
-          setMessage("Too many CAPTCHA attempts. Please wait a moment and try again.");
-          return;
-        }
-        setMessage(message);
+      if (!verifyResult.response) {
+        setMessage("Not quite... try again");
         setCaptchaReloadKey((current) => current + 1);
+        setLoading(false);
         return;
       }
 
-      console.log("[CAPTCHA] login verify succeeded", { response: captchaBody });
+      const captchaSuccess = verifyResult.body?.success === true || verifyResult.body?.ok === true;
+      if (!verifyResult.response.ok || !captchaSuccess) {
+        setMessage("Not quite... try again");
+        setCaptchaReloadKey((current) => current + 1);
+        setLoading(false);
+        return;
+      }
+    } catch (error) {
+      console.error("[CAPTCHA] login verify exception", error);
+      setMessage("Not quite... try again");
       setCaptchaReloadKey((current) => current + 1);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      console.log("[CAPTCHA] login verify succeeded", { response: captchaBody });
 
       const form = e.currentTarget;
       const email = form.email.value;
@@ -140,7 +146,7 @@ export default function LoginPage() {
       router.refresh();
     } catch (error) {
       console.error("[LOGIN] unexpected error", error);
-      setMessage("Something went wrong. Please try again.");
+      setMessage("Unable to complete login. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -153,16 +159,22 @@ export default function LoginPage() {
         className="bg-black/60 backdrop-blur-lg p-8 rounded-2xl shadow-2xl border border-purple-900 flex flex-col gap-4 w-full max-w-md"
       >
         <h1 className="glow-text text-3xl mb-2 text-center">Welcome to TheDyeSpace</h1>
+        <label htmlFor="login-email" className="sr-only">Email</label>
         <input
+          id="login-email"
           name="email"
           type="email"
+          autoComplete="email"
           placeholder="Enter your email"
           required
           className="px-4 py-2 rounded bg-purple-950/60 border border-purple-700 text-white focus:outline-none focus:ring-2 focus:ring-pink-400"
         />
+        <label htmlFor="login-password" className="sr-only">Password</label>
         <input
+          id="login-password"
           name="password"
           type="password"
+          autoComplete="current-password"
           placeholder="Enter your password"
           required
           minLength={6}
