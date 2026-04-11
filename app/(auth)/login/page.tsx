@@ -135,7 +135,7 @@ export default function LoginPage() {
       // Log attempt
       console.log("Attempting login with email:", email);
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      console.log("Supabase login response:", { data, error });
+      console.log("Supabase login response:", { data: !!data, error: error?.message });
 
       if (error) {
         setFailedAttempts((prev) => {
