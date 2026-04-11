@@ -115,7 +115,7 @@ export default function SignupPage() {
       const formData = new FormData(formElement);
       const email = String(formData.get("email") || "").trim();
       const password = String(formData.get("password") || "");
-      console.log("Signup form submitted with email:", email);
+      console.log("Signup attempt with email:", email);
       if (!email || !password) {
         setMessage("Please enter both email and password.");
         return;
@@ -132,18 +132,8 @@ export default function SignupPage() {
         console.warn("[SIGNUP] signOut before signup failed", e);
       }
 
-      console.log("[SIGNUP] calling signUp", {
-        email,
-        hasPassword: password.length > 0,
-        passwordLength: password.length,
-      });
       const { data, error } = await supabase.auth.signUp({ email, password });
-      console.log("[SIGNUP] full Supabase signUp response", { data, error });
-      console.log("[SIGNUP] signUp finished", {
-        hasUser: Boolean(data?.user),
-        hasSession: Boolean(data?.session),
-        errorMessage: error?.message ?? null,
-      });
+      console.log("Supabase signup response:", { data, error });
 
       if (error) {
         console.error("[SIGNUP] signUp failed with exact error message:", error.message);
@@ -154,34 +144,18 @@ export default function SignupPage() {
           }
           return next;
         });
-        setMessage(`Signup failed: ${error.message}`);
+        setMessage(`Unable to complete signup: ${error.message}`);
         return;
       }
 
       setFailedAttempts(0);
       setLockedUntil(null);
       if (data?.session && data?.user) {
-        setMessage("Welcome to TheDyeSpace!");
-
-        const initResponse = await Promise.race([
-          fetch("/api/profile/init", { method: "POST" }).catch(() => null),
-          new Promise<Response | null>((resolve) => window.setTimeout(() => resolve(null), 2500)),
-        ]);
-
-        const initBody = initResponse ? await initResponse.json().catch(() => ({})) : {};
-        const initializedUsername = typeof initBody?.profile?.username === "string" ? initBody.profile.username : null;
-
-        if (initializedUsername) {
-          setTimeout(() => router.push(`/profile/${encodeURIComponent(initializedUsername)}?edit=1&welcome=1`), 800);
-        } else {
-          setTimeout(() => router.push("/profile?edit=1&welcome=1"), 800);
-        }
+        setMessage("Signup successful! Redirecting...");
+        setTimeout(() => router.push(redirect || "/"), 800);
       } else {
-        setMessage("Check your email for a magic link. Verify to continue.");
-        if (data?.user) {
-          const signupRedirect = "/profile?edit=1&welcome=1";
-          setTimeout(() => router.push(`/login?redirect=${encodeURIComponent(signupRedirect)}&verify=true`), 1200);
-        }
+        setMessage("Signup successful! Please verify your email, then log in.");
+        setTimeout(() => router.push(`/login?redirect=${encodeURIComponent(redirect || "/")}&verify=true`), 1200);
       }
     } catch (error) {
       console.error("[SIGNUP] unexpected error", error);
