@@ -73,96 +73,108 @@ function formatDisplayName(profile?: ProfileRow) {
 }
 
 export async function GET(request: NextRequest) {
-  const before = request.nextUrl.searchParams.get("before");
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  try {
+    const before = request.nextUrl.searchParams.get("before");
+    const supabase = await createSupabaseServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-  const viewerId = user?.id ?? "anon";
-  const cacheKey = `${viewerId}:${before ?? "first"}`;
-  const now = Date.now();
-  const cached = feedCache.get(cacheKey);
-  if (cached && now - cached.createdAt < FEED_CACHE_TTL_MS) {
-    return NextResponse.json(cached.payload, {
-      headers: {
-        "Cache-Control": "private, max-age=0, s-maxage=10, stale-while-revalidate=20",
-      },
-    });
-  }
+    const viewerId = user?.id ?? "anon";
+    const cacheKey = `${viewerId}:${before ?? "first"}`;
+    const now = Date.now();
+    const cached = feedCache.get(cacheKey);
+    if (cached && now - cached.createdAt < FEED_CACHE_TTL_MS) {
+      return NextResponse.json(cached.payload, {
+        headers: {
+          "Cache-Control": "private, max-age=0, s-maxage=10, stale-while-revalidate=20",
+        },
+      });
+    }
 
-  let viewerIsAdmin = false;
-  if (user?.id) {
-    const { data: viewerProfile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .maybeSingle();
-    viewerIsAdmin = hasAdminAccess(user.id, viewerProfile?.role ?? null);
-  }
+    let viewerIsAdmin = false;
+    if (user?.id) {
+      const { data: viewerProfile, error: viewerProfileError } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (viewerProfileError) {
+        console.error("Error fetching viewer profile:", viewerProfileError.message);
+      }
+      viewerIsAdmin = hasAdminAccess(user.id, viewerProfile?.role ?? null);
+    }
 
-  let query = supabase
-    .from("posts")
-    .select("id,user_id,content,image_urls,likes,comments_count,is_for_sale,created_at")
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false })
-    .limit(PAGE_SIZE);
+    let query = supabase
+      .from("posts")
+      .select("id,user_id,content,image_urls,likes,comments_count,is_for_sale,created_at")
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(PAGE_SIZE);
 
-  if (before) {
-    query = query.lt("created_at", before);
-  }
+    if (before) {
+      query = query.lt("created_at", before);
+    }
 
-  const { data: postsData, error: postsError } = await query;
-  if (postsError) {
-    return NextResponse.json({ error: postsError.message }, { status: 500 });
-  }
+    const { data: postsData, error: postsError } = await query;
+    if (postsError) {
+      console.error("Error fetching posts:", postsError.message);
+      return NextResponse.json({ error: "Failed to fetch posts: " + postsError.message }, { status: 500 });
+    }
 
-  const posts = (postsData || []) as Array<FeedPost & { user_id: string }>;
-  const userIds = [...new Set(posts.map((post) => post.user_id).filter(Boolean))];
+    const posts = (postsData || []) as Array<FeedPost & { user_id: string }>;
+    const userIds = [...new Set(posts.map((post) => post.user_id).filter(Boolean))];
 
-  const profilesById = new Map<string, ProfileRow>();
-  if (userIds.length) {
-    const { data: profilesData, error: profilesError } = await supabase
-      .from("profiles")
-      .select("id,username,display_name,theme_settings,voided_until,verified_badge,member_number,shadow_banned,shadow_banned_until")
-      .in("id", userIds);
+    const profilesById = new Map<string, ProfileRow>();
+    if (userIds.length) {
+      const { data: profilesData, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id,username,display_name,theme_settings,voided_until,verified_badge,member_number,shadow_banned,shadow_banned_until")
+        .in("id", userIds);
 
-    if (!profilesError) {
+      if (profilesError) {
+        console.error("Error fetching profiles:", profilesError.message);
+        return NextResponse.json({ error: "Failed to fetch profiles: " + profilesError.message }, { status: 500 });
+      }
+
       (profilesData || []).forEach((profile) => {
         profilesById.set((profile as ProfileRow).id, profile as ProfileRow);
       });
     }
+
+    const visiblePosts = posts.filter((post) => {
+      const profile = profilesById.get(post.user_id);
+      if (viewerIsAdmin) return true;
+      if (user?.id && post.user_id === user.id) return true;
+      return !isShadowBanned(profile);
+    });
+
+    const result = visiblePosts.map((post) => {
+      const profile = profilesById.get(post.user_id);
+      const imageUrls = normalizePostImageUrls(post.image_urls);
+      return {
+        ...post,
+        image_urls: imageUrls.length ? imageUrls : null,
+        author_display_name: formatDisplayName(profile),
+        author_at_name: formatAtName(profile),
+        author_username: profile?.username ?? null,
+        author_theme: profile?.theme_settings ?? null,
+        author_voided_until: profile?.voided_until ?? null,
+        author_verified_badge: profile?.verified_badge === true,
+        author_member_number: profile?.member_number ?? null,
+      };
+    });
+
+    const payload = { posts: result };
+    feedCache.set(cacheKey, { createdAt: now, payload });
+
+    return NextResponse.json(payload, {
+      headers: {
+        "Cache-Control": "private, max-age=0, s-maxage=10, stale-while-revalidate=20",
+      },
+    });
+  } catch (err: any) {
+    console.error("Unhandled error in feed API:", err);
+    return NextResponse.json({ error: "Internal server error: " + (err?.message || err) }, { status: 500 });
   }
-
-  const visiblePosts = posts.filter((post) => {
-    const profile = profilesById.get(post.user_id);
-    if (viewerIsAdmin) return true;
-    if (user?.id && post.user_id === user.id) return true;
-    return !isShadowBanned(profile);
-  });
-
-  const result = visiblePosts.map((post) => {
-    const profile = profilesById.get(post.user_id);
-    const imageUrls = normalizePostImageUrls(post.image_urls);
-    return {
-      ...post,
-      image_urls: imageUrls.length ? imageUrls : null,
-      author_display_name: formatDisplayName(profile),
-      author_at_name: formatAtName(profile),
-      author_username: profile?.username ?? null,
-      author_theme: profile?.theme_settings ?? null,
-      author_voided_until: profile?.voided_until ?? null,
-      author_verified_badge: profile?.verified_badge === true,
-      author_member_number: profile?.member_number ?? null,
-    };
-  });
-
-  const payload = { posts: result };
-  feedCache.set(cacheKey, { createdAt: now, payload });
-
-  return NextResponse.json(payload, {
-    headers: {
-      "Cache-Control": "private, max-age=0, s-maxage=10, stale-while-revalidate=20",
-    },
-  });
 }
