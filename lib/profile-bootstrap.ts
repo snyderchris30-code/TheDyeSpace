@@ -28,6 +28,25 @@ export const PROFILE_LOOKUP_SELECT = [
 ].join(", ");
 
 const PROFILE_INIT_SELECT = `${PROFILE_LOOKUP_SELECT}, smoke_room_2_invited`;
+const PROFILE_BASE_SELECT = [
+  "id",
+  "username",
+  "display_name",
+  "bio",
+  "avatar_url",
+  "banner_url",
+  "theme_settings",
+  "created_at",
+].join(", ");
+
+function isMissingColumnError(error: unknown) {
+  const maybeError = error as { code?: string; message?: string };
+  if (maybeError?.code === "42703") {
+    return true;
+  }
+  const message = String(maybeError?.message || "").toLowerCase();
+  return message.includes("column") && message.includes("does not exist");
+}
 
 type ProfileBootstrapUser = {
   id: string;
@@ -137,12 +156,38 @@ export async function loadProfileByUsername(adminClient: any, username: string) 
     .limit(1)
     .maybeSingle();
 
-  if (error) {
+  if (error && !isMissingColumnError(error)) {
     throw error;
   }
 
-  if (data) {
+  if (data && !error) {
     return data;
+  }
+
+  if (error && isMissingColumnError(error)) {
+    const { data: fallbackData, error: fallbackError } = await adminClient
+      .from("profiles")
+      .select(PROFILE_BASE_SELECT)
+      .eq("username", normalizedUsername)
+      .limit(1)
+      .maybeSingle();
+
+    if (fallbackError) {
+      throw fallbackError;
+    }
+
+    if (fallbackData) {
+      return {
+        ...fallbackData,
+        role: null,
+        muted_until: null,
+        voided_until: null,
+        verified_badge: false,
+        member_number: null,
+        shadow_banned: false,
+        shadow_banned_until: null,
+      };
+    }
   }
 
   const { data: fallbackData, error: fallbackError } = await adminClient
@@ -152,8 +197,40 @@ export async function loadProfileByUsername(adminClient: any, username: string) 
     .limit(1)
     .maybeSingle();
 
-  if (fallbackError) {
+  if (fallbackError && !isMissingColumnError(fallbackError)) {
     throw fallbackError;
+  }
+
+  if (fallbackData && !fallbackError) {
+    return fallbackData;
+  }
+
+  if (fallbackError && isMissingColumnError(fallbackError)) {
+    const { data: fallbackMinimalData, error: fallbackMinimalError } = await adminClient
+      .from("profiles")
+      .select(PROFILE_BASE_SELECT)
+      .ilike("username", normalizedUsername)
+      .limit(1)
+      .maybeSingle();
+
+    if (fallbackMinimalError) {
+      throw fallbackMinimalError;
+    }
+
+    if (!fallbackMinimalData) {
+      return null;
+    }
+
+    return {
+      ...fallbackMinimalData,
+      role: null,
+      muted_until: null,
+      voided_until: null,
+      verified_badge: false,
+      member_number: null,
+      shadow_banned: false,
+      shadow_banned_until: null,
+    };
   }
 
   return fallbackData;
@@ -219,30 +296,34 @@ export async function ensureProfileForUser(
     .limit(1)
     .maybeSingle();
 
-  if (existingProfileError) {
+  if (existingProfileError && !isMissingColumnError(existingProfileError)) {
     throw existingProfileError;
   }
 
-  const existingThemeSettings = (existingProfile?.theme_settings ?? {}) as ProfileAppearance;
+  const safeExistingProfile = existingProfileError && isMissingColumnError(existingProfileError)
+    ? null
+    : existingProfile;
+
+  const existingThemeSettings = (safeExistingProfile?.theme_settings ?? {}) as ProfileAppearance;
 
   const { data: profile, error: upsertError } = await adminClient
     .from("profiles")
     .upsert(
       {
         id: user.id,
-        username: existingProfile?.username || username,
-        display_name: firstNonEmptyString(existingProfile?.display_name, metadataDisplayName, username) ?? username,
-        bio: existingProfile?.bio ?? "",
-        avatar_url: firstNonEmptyString(existingProfile?.avatar_url, metadataAvatarUrl),
-        banner_url: existingProfile?.banner_url ?? null,
-        role: existingProfile?.role ?? null,
-        muted_until: existingProfile?.muted_until ?? null,
-        voided_until: existingProfile?.voided_until ?? null,
-        verified_badge: existingProfile?.verified_badge ?? false,
-        shadow_banned: existingProfile?.shadow_banned ?? false,
-        shadow_banned_until: existingProfile?.shadow_banned_until ?? null,
+        username: safeExistingProfile?.username || username,
+        display_name: firstNonEmptyString(safeExistingProfile?.display_name, metadataDisplayName, username) ?? username,
+        bio: safeExistingProfile?.bio ?? "",
+        avatar_url: firstNonEmptyString(safeExistingProfile?.avatar_url, metadataAvatarUrl),
+        banner_url: safeExistingProfile?.banner_url ?? null,
+        role: safeExistingProfile?.role ?? null,
+        muted_until: safeExistingProfile?.muted_until ?? null,
+        voided_until: safeExistingProfile?.voided_until ?? null,
+        verified_badge: safeExistingProfile?.verified_badge ?? false,
+        shadow_banned: safeExistingProfile?.shadow_banned ?? false,
+        shadow_banned_until: safeExistingProfile?.shadow_banned_until ?? null,
         smoke_room_2_invited:
-          existingProfile?.verified_badge === true ? true : existingProfile?.smoke_room_2_invited ?? false,
+          safeExistingProfile?.verified_badge === true ? true : safeExistingProfile?.smoke_room_2_invited ?? false,
         theme_settings: {
           ...existingThemeSettings,
           background_color: existingThemeSettings.background_color ?? DEFAULT_BACKGROUND_COLOR,
@@ -266,12 +347,37 @@ export async function ensureProfileForUser(
     .limit(1)
     .maybeSingle();
 
-  if (upsertError) {
+  let safeProfile = profile;
+  if (upsertError && isMissingColumnError(upsertError)) {
+    const { data: fallbackUpsertProfile, error: fallbackUpsertError } = await adminClient
+      .from("profiles")
+      .select(PROFILE_BASE_SELECT)
+      .eq("id", user.id)
+      .limit(1)
+      .maybeSingle();
+
+    if (fallbackUpsertError) {
+      throw fallbackUpsertError;
+    }
+
+    safeProfile = fallbackUpsertProfile
+      ? {
+          ...fallbackUpsertProfile,
+          role: null,
+          muted_until: null,
+          voided_until: null,
+          verified_badge: false,
+          member_number: null,
+          shadow_banned: false,
+          shadow_banned_until: null,
+        }
+      : fallbackUpsertProfile;
+  } else if (upsertError) {
     throw upsertError;
   }
 
   let autoFollowError: unknown = null;
-  if (!existingProfile) {
+  if (!safeExistingProfile) {
     try {
       await ensureAdminAutoFollow(adminClient, user.id);
     } catch (error) {
@@ -280,8 +386,8 @@ export async function ensureProfileForUser(
   }
 
   return {
-    profile,
-    createdProfile: !existingProfile,
+    profile: safeProfile,
+    createdProfile: !safeExistingProfile,
     resolvedUsername: username,
     autoFollowError,
   };

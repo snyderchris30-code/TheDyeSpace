@@ -105,9 +105,6 @@ export default function LoginPage() {
     const email = String(formData.get("email") || "").trim();
     const password = String(formData.get("password") || "");
 
-    // Log the email and if password is present (not the password itself)
-    console.log("Login form values:", { email, passwordPresent: !!password });
-
     if (!email || !password) {
       setMessage("Please enter both your email and password.");
       setLoading(false);
@@ -127,8 +124,6 @@ export default function LoginPage() {
     }
 
     try {
-      console.log("Stoned CAPTCHA submit - selected images:", captchaState.selectedIds);
-
       const verifyResult = await fetchJsonWithTimeout(
         "/api/captcha",
         {
@@ -140,13 +135,6 @@ export default function LoginPage() {
       );
 
       const captchaSuccess = verifyResult.response?.ok === true && verifyResult.body?.success === true;
-      console.log("[CAPTCHA] login verify response", {
-        status: verifyResult.response?.status,
-        body: verifyResult.body,
-        captchaSuccess,
-      });
-      console.log(`Verification result: ${captchaSuccess ? "success" : "failure"}`);
-
       if (!captchaSuccess) {
         setMessage("Not quite... try again");
         setCaptchaReloadKey((current) => current + 1);
@@ -161,15 +149,11 @@ export default function LoginPage() {
         if (signOutError) {
           console.warn("[LOGIN] global signOut before login failed", signOutError.message);
         }
-        console.log("Supabase session cleared before login");
       } catch (e) {
         console.warn("[LOGIN] signOut before login failed", e);
       }
 
-      // Log attempt
-      console.log("Full login attempt started with email:", email);
       let { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      console.log("Supabase signIn response:", { data: !!data, error: error ? error.message : null });
 
       if (error && (error as { status?: number }).status === 400) {
         console.error("[LOGIN] signInWithPassword returned 400:", error.message);
@@ -177,7 +161,6 @@ export default function LoginPage() {
         const retryResult = await supabase.auth.signInWithPassword({ email, password });
         data = retryResult.data;
         error = retryResult.error;
-        console.log("Supabase signIn response:", { data: !!data, error: error ? error.message : null });
       }
 
       if (error) {
@@ -197,10 +180,7 @@ export default function LoginPage() {
       setLockedUntil(null);
 
       try {
-        const initBody = await initializeProfileAfterLogin();
-        console.log("[LOGIN] profile initialized after login", {
-          username: typeof initBody?.profile?.username === "string" ? initBody.profile.username : null,
-        });
+        await initializeProfileAfterLogin();
       } catch (profileInitError) {
         console.error("[LOGIN] profile initialization failed after login", profileInitError);
       }

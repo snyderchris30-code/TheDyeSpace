@@ -1,8 +1,16 @@
 import type { NextConfig } from "next";
 
-console.log('[NEXT.CONFIG] TheDyeSpace project loaded:', process.env.VERCEL_URL || process.env.NEXT_PUBLIC_VERCEL_URL || 'localhost');
 const buildDate = new Date().toISOString().slice(0, 10);
 const buildSeed = process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_RUN_ID || String(Date.now());
+const supabaseHost = (() => {
+  try {
+    const value = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (!value) return null;
+    return new URL(value).hostname;
+  } catch {
+    return null;
+  }
+})();
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -12,11 +20,15 @@ const nextConfig: NextConfig = {
   },
   images: {
     remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "edlhcsujawhruoaducyq.supabase.co",
-        pathname: "/storage/v1/object/public/**",
-      },
+      ...(supabaseHost
+        ? [
+            {
+              protocol: "https" as const,
+              hostname: supabaseHost,
+              pathname: "/storage/v1/object/public/**",
+            },
+          ]
+        : []),
       {
         protocol: "https",
         hostname: "images.unsplash.com",
@@ -39,7 +51,7 @@ const nextConfig: NextConfig = {
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data: https://fonts.gstatic.com",
-      "connect-src 'self' https://*.supabase.co https://open.spotify.com https://www.youtube.com https://www.youtube-nocookie.com",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://open.spotify.com https://www.youtube.com https://www.youtube-nocookie.com",
       "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://open.spotify.com",
       "object-src 'none'",
       "base-uri 'self'",

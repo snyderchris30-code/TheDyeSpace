@@ -23,7 +23,6 @@ export default function PostAffiliateProducts({ content, className }: PostAffili
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        aria-expanded={open}
         className="inline-flex w-full items-center justify-between rounded-full border border-cyan-300/20 bg-black/20 px-4 py-3 text-left text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/40 hover:bg-black/30"
       >
         <span>Product Links</span>

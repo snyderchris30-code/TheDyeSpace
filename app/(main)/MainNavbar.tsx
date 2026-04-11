@@ -522,7 +522,7 @@ export default function MainNavbar() {
               <span>{userCount}</span>
             </button>
             {usersOpen && (
-              <div data-dropdown-box="true" className={`absolute left-1/2 top-full z-50 mt-2 w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2 rounded-3xl border border-[#00f5ff]/70 bg-black/90 p-3 shadow-2xl animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
+              <div data-dropdown-box="true" className={`absolute left-0 top-full z-50 mt-2 w-[min(26rem,calc(100vw-2rem))] rounded-3xl border border-[#00f5ff]/70 bg-black/90 p-3 shadow-2xl animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
                   <span className="font-semibold text-cyan-200">User Directory</span>
                   <button
@@ -621,7 +621,7 @@ export default function MainNavbar() {
                 </span>
               </button>
               {notifDrop && (
-                <div data-dropdown-box="true" className={`absolute left-1/2 top-full z-50 mt-2 w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2 rounded-3xl border border-[#00f5ff]/70 bg-black/95 p-4 shadow-2xl animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
+                <div data-dropdown-box="true" className={`absolute right-0 top-full z-50 mt-2 w-[min(26rem,calc(100vw-2rem))] rounded-3xl border border-[#00f5ff]/70 bg-black/95 p-4 shadow-2xl animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
                   <div className="mb-3 flex items-center justify-between">
                     <span className="font-semibold text-cyan-200">Notifications</span>
                     <button onClick={markAllRead} className="text-xs text-green-200 hover:text-white">Mark all read</button>
@@ -660,7 +660,7 @@ export default function MainNavbar() {
                 </span>
               </button>
               {shareOpen ? (
-                <div data-dropdown-box="true" className={`absolute left-1/2 top-full z-50 mt-2 w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2 rounded-3xl border border-[#00f5ff]/70 bg-black/95 p-3 shadow-2xl animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
+                <div data-dropdown-box="true" className={`absolute right-0 top-full z-50 mt-2 w-[min(26rem,calc(100vw-2rem))] rounded-3xl border border-[#00f5ff]/70 bg-black/95 p-3 shadow-2xl animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
                   <p className="mb-3 text-sm text-cyan-100">Share TheDyeSpace with your friends!</p>
                   <div className="space-y-2">
                     {shareLinks.map((shareLink) => (
@@ -696,14 +696,14 @@ export default function MainNavbar() {
                 </span>
               </button>
               {settingsOpen && (
-                <div data-dropdown-box="true" className={`absolute left-1/2 top-full z-50 mt-2 w-[min(26rem,calc(100vw-2rem))] -translate-x-1/2 rounded-3xl border border-[#00f5ff]/70 bg-black/95 p-2 shadow-2xl animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
+                <div data-dropdown-box="true" className={`absolute right-0 top-full z-50 mt-2 w-[min(26rem,calc(100vw-2rem))] rounded-3xl border border-[#00f5ff]/70 bg-black/95 p-2 shadow-2xl animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
                   <div className="flex justify-end mb-1">
                     <button data-dropdown-trigger="true" aria-label="Close" title="Close" className="text-[#00f5ff] hover:text-white p-1" onClick={() => setOpenDropdown(null)}>
                       <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M6 6l8 8M6 14L14 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                     </button>
                   </div>
                   <Link href="/settings" prefetch={false} className="flex items-center gap-2 px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded"><Settings size={16} /> Settings</Link>
-                  <button className="flex items-center gap-2 w-full px-4 py-2 text-red-400 hover:bg-cyan-900/40 rounded" onClick={() => alert('Delete account logic here!')}><Trash2 size={16} /> Delete Account</button>
+                  <Link href="/settings" prefetch={false} className="flex items-center gap-2 px-4 py-2 text-red-400 hover:bg-cyan-900/40 rounded"><Trash2 size={16} /> Manage Account</Link>
                   <Link href="/terms" prefetch={false} className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Terms of Service</Link>
                   <Link href="/privacy" prefetch={false} className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Privacy Policy</Link>
                   <Link href="/guidelines" prefetch={false} className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Community Guidelines</Link>

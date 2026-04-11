@@ -660,23 +660,10 @@ export default function ProfileEditor() {
         throw new Error("Unable to determine profile route.");
       }
 
-      console.log("Profile fetch started", {
-        username: routeUsername,
-        userId: sessionUser?.id ?? null,
-      });
-
       setIsOwner(false);
       loadStage = "route-profile-fetch";
       const lookup = await fetchProfileSnapshotWithRetry(routeUsername);
       const viewedProfile = lookup.profile;
-
-      if (lookup.meta?.createdProfile) {
-        console.log("Profile created successfully", {
-          requestedUsername: routeUsername,
-          resolvedUsername: lookup.meta.resolvedUsername ?? routeUsername,
-          userId: sessionUser?.id ?? null,
-        });
-      }
 
       if (!viewedProfile) {
         if (sessionUser?.id) {
@@ -879,20 +866,21 @@ export default function ProfileEditor() {
       try {
         await ensureProfileBuckets();
 
-        const fileExt = file.name.split(".").pop() || "png";
-        const fileName = `${userId}-${Date.now()}.${fileExt}`;
+        const uploadBody = new FormData();
+        uploadBody.append("bucket", options.bucket);
+        uploadBody.append("file", file);
 
-        const { error: uploadError } = await supabase.storage
-          .from(options.bucket)
-          .upload(fileName, file, { upsert: true, contentType: file.type || undefined });
+        const uploadResponse = await fetch("/api/profile/upload", {
+          method: "POST",
+          body: uploadBody,
+        });
 
-        if (uploadError) {
-          throw uploadError;
+        const uploadPayload = await uploadResponse.json().catch(() => ({}));
+        if (!uploadResponse.ok || typeof uploadPayload?.publicUrl !== "string") {
+          throw new Error(uploadPayload?.error || options.errorText);
         }
 
-        const {
-          data: { publicUrl },
-        } = supabase.storage.from(options.bucket).getPublicUrl(fileName);
+        const publicUrl = uploadPayload.publicUrl;
 
         const nextDraft = {
           ...draft,
@@ -910,7 +898,7 @@ export default function ProfileEditor() {
         setIsUploading(false);
       }
     },
-    [draft, ensureProfileBuckets, profileUserId, saveProfile, session?.user?.id, supabase.storage]
+    [draft, ensureProfileBuckets, profileUserId, saveProfile, session?.user?.id]
   );
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1030,25 +1018,23 @@ export default function ProfileEditor() {
         await ensureProfileBuckets();
 
         const uploadedUrls: string[] = [];
-        const uploadTimestamp = Date.now();
 
-        for (const [index, file] of selectedFiles.entries()) {
-          const fileExt = file.name.split(".").pop() || "png";
-          const fileName = `${userId}/shop-${productId}-${uploadTimestamp}-${index}.${fileExt}`;
+        for (const file of selectedFiles) {
+          const uploadBody = new FormData();
+          uploadBody.append("bucket", "posts");
+          uploadBody.append("file", file);
 
-          const { error: uploadError } = await supabase.storage
-            .from("posts")
-            .upload(fileName, file, { upsert: true, contentType: file.type || undefined });
+          const uploadResponse = await fetch("/api/profile/upload", {
+            method: "POST",
+            body: uploadBody,
+          });
 
-          if (uploadError) {
-            throw uploadError;
+          const uploadPayload = await uploadResponse.json().catch(() => ({}));
+          if (!uploadResponse.ok || typeof uploadPayload?.publicUrl !== "string") {
+            throw new Error(uploadPayload?.error || "Failed to upload your product photos.");
           }
 
-          const {
-            data: { publicUrl },
-          } = supabase.storage.from("posts").getPublicUrl(fileName);
-
-          uploadedUrls.push(publicUrl);
+          uploadedUrls.push(uploadPayload.publicUrl);
         }
 
         setDraft((prev) => ({
@@ -1076,7 +1062,7 @@ export default function ProfileEditor() {
         setIsUploading(false);
       }
     },
-    [draft.shop_products, ensureProfileBuckets, profileUserId, session?.user?.id, supabase.storage]
+    [draft.shop_products, ensureProfileBuckets, profileUserId, session?.user?.id]
   );
 
   const openEditor = () => {

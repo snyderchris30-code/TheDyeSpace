@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
 type MusicPlayerContextValue = {
   isMinimized: boolean;
@@ -14,30 +14,39 @@ type MusicPlayerContextValue = {
 };
 
 const MUSIC_PLAYER_MINIMIZED_KEY = "dyespace.music_player_minimized";
+const MUSIC_PLAYER_VISIBLE_KEY = "dyespace.music_player_visible";
+const MUSIC_PLAYER_INDEX_KEY = "dyespace.music_player_index";
 
 const MusicPlayerContext = createContext<MusicPlayerContextValue | null>(null);
 
 export function MusicPlayerProvider({ children }: { children: React.ReactNode }) {
   const [isMinimized, setIsMinimized] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isVisible, setIsVisible] = useState(true);
 
-  useLayoutEffect(() => {
-    let shouldSet = false;
+  useEffect(() => {
     try {
-      const storedValue = window.localStorage.getItem(MUSIC_PLAYER_MINIMIZED_KEY);
-      if (storedValue === "true") {
-        shouldSet = true;
+      const minimizedValue = window.localStorage.getItem(MUSIC_PLAYER_MINIMIZED_KEY);
+      const visibleValue = window.localStorage.getItem(MUSIC_PLAYER_VISIBLE_KEY);
+      const indexValue = window.localStorage.getItem(MUSIC_PLAYER_INDEX_KEY);
+
+      if (minimizedValue === "true") {
+        setIsMinimized(true);
+      }
+      if (visibleValue === "false") {
+        setIsVisible(false);
+      }
+      if (indexValue !== null) {
+        const parsed = Number.parseInt(indexValue, 10);
+        if (Number.isFinite(parsed) && parsed >= 0) {
+          setCurrentIndex(parsed);
+        }
       }
     } catch {
       // Ignore localStorage failures on hydration.
     }
-    if (shouldSet) {
-      // Defer setState to next tick to avoid calling synchronously in render
-      setTimeout(() => setIsMinimized(true), 0);
-    }
   }, []);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isVisible, setIsVisible] = useState(true);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -47,6 +56,24 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
       // Ignore localStorage failures.
     }
   }, [isMinimized]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(MUSIC_PLAYER_VISIBLE_KEY, isVisible ? "true" : "false");
+    } catch {
+      // Ignore localStorage failures.
+    }
+  }, [isVisible]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(MUSIC_PLAYER_INDEX_KEY, String(currentIndex));
+    } catch {
+      // Ignore localStorage failures.
+    }
+  }, [currentIndex]);
 
   const value = useMemo(
     () => ({

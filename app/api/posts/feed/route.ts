@@ -32,6 +32,17 @@ type FeedPost = {
   author_member_number: number | null;
 };
 
+type PostRow = {
+  id: string;
+  user_id: string;
+  content: string | null;
+  image_urls: string[] | null;
+  likes: number;
+  comments_count: number;
+  is_for_sale: boolean;
+  created_at: string;
+};
+
 type ProfileRow = {
   id: string;
   username: string | null;
@@ -72,6 +83,15 @@ function formatDisplayName(profile?: ProfileRow) {
   return "DyeSpace User";
 }
 
+function isMissingColumnError(error: unknown) {
+  const maybeError = error as { code?: string; message?: string };
+  if (maybeError?.code === "42703") {
+    return true;
+  }
+  const message = String(maybeError?.message || "").toLowerCase();
+  return message.includes("column") && message.includes("does not exist");
+}
+
 export async function GET(request: NextRequest) {
   try {
     const before = request.nextUrl.searchParams.get("before");
@@ -105,24 +125,56 @@ export async function GET(request: NextRequest) {
       viewerIsAdmin = hasAdminAccess(user.id, viewerProfile?.role ?? null);
     }
 
-    let query = supabase
-      .from("posts")
-      .select("id,user_id,content,image_urls,likes,comments_count,is_for_sale,created_at")
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .limit(PAGE_SIZE);
+    let posts: PostRow[] = [];
+    {
+      let query = supabase
+        .from("posts")
+        .select("id,user_id,content,image_urls,likes,comments_count,is_for_sale,created_at")
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(PAGE_SIZE);
 
-    if (before) {
-      query = query.lt("created_at", before);
+      if (before) {
+        query = query.lt("created_at", before);
+      }
+
+      const { data: postsData, error: postsError } = await query;
+      if (postsError && isMissingColumnError(postsError)) {
+        let fallbackQuery = supabase
+          .from("posts")
+          .select("id,user_id,content,image_urls,created_at")
+          .order("created_at", { ascending: false })
+          .limit(PAGE_SIZE);
+
+        if (before) {
+          fallbackQuery = fallbackQuery.lt("created_at", before);
+        }
+
+        const { data: fallbackPostsData, error: fallbackPostsError } = await fallbackQuery;
+        if (fallbackPostsError) {
+          console.error("Error fetching fallback posts:", fallbackPostsError.message);
+          return NextResponse.json({ error: "Failed to fetch posts: " + fallbackPostsError.message }, { status: 500 });
+        }
+
+        posts = ((fallbackPostsData || []) as Array<{
+          id: string;
+          user_id: string;
+          content: string | null;
+          image_urls: string[] | null;
+          created_at: string;
+        }>).map((post) => ({
+          ...post,
+          likes: 0,
+          comments_count: 0,
+          is_for_sale: false,
+        }));
+      } else if (postsError) {
+        console.error("Error fetching posts:", postsError.message);
+        return NextResponse.json({ error: "Failed to fetch posts: " + postsError.message }, { status: 500 });
+      } else {
+        posts = (postsData || []) as PostRow[];
+      }
     }
-
-    const { data: postsData, error: postsError } = await query;
-    if (postsError) {
-      console.error("Error fetching posts:", postsError.message);
-      return NextResponse.json({ error: "Failed to fetch posts: " + postsError.message }, { status: 500 });
-    }
-
-    const posts = (postsData || []) as Array<FeedPost & { user_id: string }>;
     const userIds = [...new Set(posts.map((post) => post.user_id).filter(Boolean))];
 
     const profilesById = new Map<string, ProfileRow>();
@@ -132,12 +184,29 @@ export async function GET(request: NextRequest) {
         .select("id,username,display_name,theme_settings,voided_until,verified_badge,member_number,shadow_banned,shadow_banned_until")
         .in("id", userIds);
 
-      if (profilesError) {
+      let safeProfilesData = profilesData;
+      if (profilesError && isMissingColumnError(profilesError)) {
+        const { data: fallbackProfilesData, error: fallbackProfilesError } = await supabase
+          .from("profiles")
+          .select("id,username,display_name,theme_settings,voided_until")
+          .in("id", userIds);
+        if (fallbackProfilesError) {
+          console.error("Error fetching fallback profiles:", fallbackProfilesError.message);
+          return NextResponse.json({ error: "Failed to fetch profiles: " + fallbackProfilesError.message }, { status: 500 });
+        }
+        safeProfilesData = (fallbackProfilesData || []).map((profile: any) => ({
+          ...profile,
+          verified_badge: false,
+          member_number: null,
+          shadow_banned: false,
+          shadow_banned_until: null,
+        }));
+      } else if (profilesError) {
         console.error("Error fetching profiles:", profilesError.message);
         return NextResponse.json({ error: "Failed to fetch profiles: " + profilesError.message }, { status: 500 });
       }
 
-      (profilesData || []).forEach((profile) => {
+      (safeProfilesData || []).forEach((profile) => {
         profilesById.set((profile as ProfileRow).id, profile as ProfileRow);
       });
     }

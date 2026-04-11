@@ -69,8 +69,6 @@ export default function SignupPage() {
     }
 
     try {
-      console.log("Stoned CAPTCHA submit - selected images:", captchaState.selectedIds);
-
       const verifyResult = await fetchJsonWithTimeout(
         "/api/captcha",
         {
@@ -81,12 +79,7 @@ export default function SignupPage() {
         8000
       );
 
-      console.log("[CAPTCHA] signup verify response", {
-        status: verifyResult.response?.status,
-        body: verifyResult.body,
-      });
       const captchaSuccess = verifyResult.response?.ok === true && verifyResult.body?.success === true;
-      console.log(`Verification result: ${captchaSuccess ? "success" : "failure"}`);
 
       if (!captchaSuccess) {
         setMessage("Not quite... try again");
@@ -101,9 +94,6 @@ export default function SignupPage() {
     }
 
     try {
-      console.log("CAPTCHA success - proceeding with signup");
-      console.log("Signup attempt started");
-
       const formElement = submittedForm instanceof HTMLFormElement
         ? submittedForm
         : document.getElementById("signup-form");
@@ -115,7 +105,6 @@ export default function SignupPage() {
       const formData = new FormData(formElement);
       const email = String(formData.get("email") || "").trim();
       const password = String(formData.get("password") || "");
-      console.log("Signup attempt with email:", email);
       if (!email || !password) {
         setMessage("Please enter both email and password.");
         return;
@@ -133,7 +122,6 @@ export default function SignupPage() {
       }
 
       const { data, error } = await supabase.auth.signUp({ email, password });
-      console.log("Supabase signup response:", { data, error });
 
       if (error) {
         console.error("[SIGNUP] signUp failed with exact error message:", error.message);
