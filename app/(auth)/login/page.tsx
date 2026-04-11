@@ -74,6 +74,9 @@ export default function LoginPage() {
     const email = String(formData.get("email") || "").trim();
     const password = String(formData.get("password") || "");
 
+    // Log the email and if password is present (not the password itself)
+    console.log("Login form values:", { email, passwordPresent: !!password });
+
     if (!email || !password) {
       setMessage("Please enter both your email and password.");
       setLoading(false);
@@ -114,23 +117,25 @@ export default function LoginPage() {
       console.log(`Verification result: ${captchaSuccess ? "success" : "failure"}`);
 
       if (!captchaSuccess) {
-
         setMessage("Not quite... try again");
         setCaptchaReloadKey((current) => current + 1);
         setLoading(false);
         return;
       }
 
-      // --- FIX: Clean session before login, then login ---
-      console.log(`CAPTCHA success - attempting login with email: ${email}`);
+      // --- Clean session before login, then login ---
       const supabase = createClient();
       try {
         await supabase.auth.signOut(); // Clear any old/broken session
+        console.log("Supabase session cleared before login");
       } catch (e) {
         console.warn("[LOGIN] signOut before login failed", e);
       }
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      console.log("[LOGIN] auth response", { error });
+
+      // Log attempt
+      console.log("Attempting login with email:", email);
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      console.log("Supabase login response:", { data, error });
 
       if (error) {
         setFailedAttempts((prev) => {
