@@ -3,6 +3,8 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 
+const LIVE_SITE_ORIGIN = "https://thedyespace.app";
+
 function hasRecoveryParams(search: string, hash: string) {
   const searchParams = new URLSearchParams(search);
   const hashValue = hash.startsWith("#") ? hash.slice(1) : hash;
@@ -25,12 +27,17 @@ export default function AuthRecoveryRedirect() {
       return;
     }
 
-    const { pathname: currentPathname, search, hash } = window.location;
+    const { pathname: currentPathname, search, hash, origin } = window.location;
     if (currentPathname === "/reset-password") {
       return;
     }
 
     if (!hasRecoveryParams(search, hash)) {
+      return;
+    }
+
+    if (origin !== LIVE_SITE_ORIGIN) {
+      window.location.replace(`${LIVE_SITE_ORIGIN}/reset-password${search}${hash}`);
       return;
     }
 

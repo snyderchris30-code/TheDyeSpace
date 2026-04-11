@@ -7,6 +7,8 @@ import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import CaptchaChallenge from "@/app/CaptchaChallenge";
 
+const LIVE_SITE_URL = "https://thedyespace.app";
+
 export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [failedAttempts, setFailedAttempts] = useState(0);
@@ -121,7 +123,13 @@ export default function SignupPage() {
         console.warn("[SIGNUP] signOut before signup failed", e);
       }
 
-      const { data, error } = await supabase.auth.signUp({ email, password });
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: `${LIVE_SITE_URL}/confirm`,
+        },
+      });
 
       if (error) {
         console.error("[SIGNUP] signUp failed with exact error message:", error.message);
