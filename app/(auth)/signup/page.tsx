@@ -46,6 +46,7 @@ export default function SignupPage() {
 
   async function handleSignup(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const submittedForm = e.currentTarget;
 
     if (lockedUntil && Date.now() < lockedUntil) {
       setMessage("Too many failed attempts. Please wait a minute and try again.");
@@ -103,10 +104,18 @@ export default function SignupPage() {
       console.log("CAPTCHA success - proceeding with signup");
       console.log("Signup attempt started");
 
-      const form = e.currentTarget;
-      const formData = new FormData(form);
+      const formElement = submittedForm instanceof HTMLFormElement
+        ? submittedForm
+        : document.getElementById("signup-form");
+
+      if (!(formElement instanceof HTMLFormElement)) {
+        throw new Error("Signup form element was not found.");
+      }
+
+      const formData = new FormData(formElement);
       const email = String(formData.get("email") || "").trim();
       const password = String(formData.get("password") || "");
+      console.log("Signup form submitted with email:", email);
       if (!email || !password) {
         setMessage("Please enter both email and password.");
         return;
@@ -185,6 +194,7 @@ export default function SignupPage() {
   return (
     <div className="flex flex-col items-center justify-center min-h-[70vh]">
       <form
+        id="signup-form"
         onSubmit={handleSignup}
         className="bg-black/60 backdrop-blur-lg p-8 rounded-2xl shadow-2xl border border-purple-900 flex flex-col gap-4 w-full max-w-md"
       >
