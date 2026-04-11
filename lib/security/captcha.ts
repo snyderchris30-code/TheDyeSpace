@@ -20,6 +20,8 @@ type CaptchaPayload = {
   expiresAt: number;
 };
 
+type CaptchaVerifyReason = "valid" | "invalid" | "expired" | "incorrect";
+
 export type CaptchaOption = {
   id: string;
   src: string;
@@ -159,24 +161,49 @@ export async function createCaptchaChallenge(): Promise<CaptchaChallenge> {
   throw new Error("No CAPTCHA challenge could be generated.");
 }
 
+function normalizeCaptchaSelectionId(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    return decodeURIComponent(trimmed).toLowerCase();
+  } catch {
+    return trimmed.toLowerCase();
+  }
+}
+
 export function verifyCaptchaSelection(token: string, selectedIds: string[]) {
   const payload = decryptPayload(token);
   if (!payload) {
-    return { ok: false, reason: "invalid" as const };
+    return {
+      ok: false,
+      reason: "invalid" as CaptchaVerifyReason,
+      normalizedSelected: [],
+      normalizedCorrect: [],
+    };
   }
 
   if (payload.expiresAt < Date.now()) {
-    return { ok: false, reason: "expired" as const };
+    return {
+      ok: false,
+      reason: "expired" as CaptchaVerifyReason,
+      normalizedSelected: [...new Set(selectedIds.map(normalizeCaptchaSelectionId).filter(Boolean))].sort(),
+      normalizedCorrect: [...new Set(payload.correctIds.map(normalizeCaptchaSelectionId).filter(Boolean))].sort(),
+    };
   }
 
-  const normalizedSelected = [...new Set(selectedIds.filter((value) => typeof value === "string" && value.trim()))].sort();
-  const normalizedCorrect = [...new Set(payload.correctIds)].sort();
+  const normalizedSelected = [...new Set(selectedIds.map(normalizeCaptchaSelectionId).filter(Boolean))].sort();
+  const normalizedCorrect = [...new Set(payload.correctIds.map(normalizeCaptchaSelectionId).filter(Boolean))].sort();
   const matchesExactly =
     normalizedSelected.length === normalizedCorrect.length &&
     normalizedSelected.every((value, index) => value === normalizedCorrect[index]);
 
   return {
     ok: matchesExactly,
-    reason: matchesExactly ? ("valid" as const) : ("incorrect" as const),
+    reason: matchesExactly ? ("valid" as CaptchaVerifyReason) : ("incorrect" as CaptchaVerifyReason),
+    normalizedSelected,
+    normalizedCorrect,
   };
 }

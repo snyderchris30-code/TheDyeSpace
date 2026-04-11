@@ -45,6 +45,7 @@ type VerifyBody = {
 export async function POST(req: NextRequest) {
   const requestContext = createRequestLogContext(req, "captcha/verify");
   const ip = getClientIp(req);
+  console.info("[CAPTCHA] verify started", { ...requestContext, ip });
 
   const limiter = applyRateLimit({
     key: `captcha:verify:${ip}`,
@@ -67,17 +68,35 @@ export async function POST(req: NextRequest) {
       ? body.selectedIds.filter((value): value is string => typeof value === "string")
       : [];
 
+    console.info("[CAPTCHA] Selected images", {
+      ...requestContext,
+      selectedIds,
+      selectedCount: selectedIds.length,
+    });
+
     if (!token) {
       console.warn("[CAPTCHA] verify missing token", requestContext);
       return NextResponse.json({ error: "CAPTCHA token is required." }, { status: 400 });
     }
 
     const verification = verifyCaptchaSelection(token, selectedIds);
+    console.info("[CAPTCHA] Correct images", {
+      ...requestContext,
+      correctIds: verification.normalizedCorrect,
+      correctCount: verification.normalizedCorrect.length,
+    });
+
     if (!verification.ok) {
       logWarn("captcha/verify", "CAPTCHA verification failed", {
         ...requestContext,
         reason: verification.reason,
         selectedCount: selectedIds.length,
+      });
+      console.info("[CAPTCHA] Result: failure", {
+        ...requestContext,
+        reason: verification.reason,
+        selectedIds: verification.normalizedSelected,
+        correctIds: verification.normalizedCorrect,
       });
       const messages: Record<string, string> = {
         invalid: "CAPTCHA invalid. Please try again.",
@@ -85,10 +104,20 @@ export async function POST(req: NextRequest) {
         incorrect: "Not quite. Please try again.",
       };
       return NextResponse.json(
-        { ok: false, reason: verification.reason, message: messages[verification.reason] || "CAPTCHA verification failed." },
+        {
+          ok: false,
+          reason: verification.reason,
+          message: messages[verification.reason] || "CAPTCHA verification failed.",
+        },
         { status: 200 }
       );
     }
+
+    console.info("[CAPTCHA] Result: success", {
+      ...requestContext,
+      selectedIds: verification.normalizedSelected,
+      correctIds: verification.normalizedCorrect,
+    });
 
     return NextResponse.json({ ok: true, message: "Correct!" });
   } catch (error) {

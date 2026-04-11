@@ -94,7 +94,12 @@ export default function LoginPage() {
         body: captchaBody,
       });
 
-      if (!captchaResponse || !captchaResponse.ok || captchaBody?.ok !== true) {
+      if (!captchaResponse) {
+        setMessage("Something went wrong. Please try again.");
+        return;
+      }
+
+      if (!captchaResponse.ok || captchaBody?.ok !== true) {
         const reason = captchaBody?.reason || "verification failed";
         const message = captchaBody?.message || (reason === "expired" || reason === "invalid" ? "The CAPTCHA expired. Try again." : "Not quite... try again");
         console.warn("[CAPTCHA] login verify failed", { reason, selectedIds: captchaState.selectedIds, message });
@@ -108,6 +113,7 @@ export default function LoginPage() {
       }
 
       console.log("[CAPTCHA] login verify succeeded");
+      setMessage(captchaBody?.message || "Correct!");
 
       const form = e.currentTarget;
       const email = form.email.value;
