@@ -126,16 +126,28 @@ export default function LoginPage() {
       // --- Clean session before login, then login ---
       const supabase = createClient();
       try {
-        await supabase.auth.signOut(); // Clear any old/broken session
+        const { error: signOutError } = await supabase.auth.signOut({ scope: "global" }); // Clear old tokens/cookies everywhere
+        if (signOutError) {
+          console.warn("[LOGIN] global signOut before login failed", signOutError.message);
+        }
         console.log("Supabase session cleared before login");
       } catch (e) {
         console.warn("[LOGIN] signOut before login failed", e);
       }
 
       // Log attempt
-      console.log("Attempting login with email:", email);
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      console.log("Supabase login response:", { data: !!data, error: error?.message });
+      console.log("Full login attempt started with email:", email);
+      let { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      console.log("Supabase signIn response:", { data: !!data, error: error ? error.message : null });
+
+      if (error && (error as { status?: number }).status === 400) {
+        console.error("[LOGIN] signInWithPassword returned 400:", error.message);
+        await new Promise((resolve) => window.setTimeout(resolve, 400));
+        const retryResult = await supabase.auth.signInWithPassword({ email, password });
+        data = retryResult.data;
+        error = retryResult.error;
+        console.log("Supabase signIn response:", { data: !!data, error: error ? error.message : null });
+      }
 
       if (error) {
         setFailedAttempts((prev) => {
