@@ -114,15 +114,21 @@ export default function LoginPage() {
       console.log(`Verification result: ${captchaSuccess ? "success" : "failure"}`);
 
       if (!captchaSuccess) {
+
         setMessage("Not quite... try again");
         setCaptchaReloadKey((current) => current + 1);
         setLoading(false);
         return;
       }
 
-      // --- FIX: CAPTCHA success, now trigger login with current email/password ---
+      // --- FIX: Clean session before login, then login ---
       console.log(`CAPTCHA success - attempting login with email: ${email}`);
       const supabase = createClient();
+      try {
+        await supabase.auth.signOut(); // Clear any old/broken session
+      } catch (e) {
+        console.warn("[LOGIN] signOut before login failed", e);
+      }
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       console.log("[LOGIN] auth response", { error });
 

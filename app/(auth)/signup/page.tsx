@@ -113,6 +113,13 @@ export default function SignupPage() {
         return;
       }
       const supabase = createClient();
+
+      // --- FIX: Clean session before signup, then signup ---
+      try {
+        await supabase.auth.signOut(); // Clear any old/broken session
+      } catch (e) {
+        console.warn("[SIGNUP] signOut before signup failed", e);
+      }
       const { data, error } = await supabase.auth.signUp({ email, password });
       console.log("[SIGNUP] auth response", { data, error });
 
