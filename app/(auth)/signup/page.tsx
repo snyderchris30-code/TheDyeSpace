@@ -79,6 +79,7 @@ export default function SignupPage() {
       });
 
       if (!captchaResponse) {
+        console.warn("[CAPTCHA] signup verify no response", { selectedIds: captchaState.selectedIds });
         setMessage("Something went wrong. Please try again.");
         return;
       }
@@ -96,8 +97,8 @@ export default function SignupPage() {
         return;
       }
 
-      console.log("[CAPTCHA] signup verify succeeded");
-      setMessage(captchaBody?.message || "Correct!");
+      console.log("[CAPTCHA] signup verify succeeded", { response: captchaBody });
+      setCaptchaReloadKey((current) => current + 1);
 
       const form = e.currentTarget;
       const email = form.email.value;

@@ -92,6 +92,7 @@ export default function LoginPage() {
       });
 
       if (!captchaResponse) {
+        console.warn("[CAPTCHA] login verify no response", { selectedIds: captchaState.selectedIds });
         setMessage("Something went wrong. Please try again.");
         return;
       }
@@ -109,8 +110,8 @@ export default function LoginPage() {
         return;
       }
 
-      console.log("[CAPTCHA] login verify succeeded");
-      setMessage(captchaBody?.message || "Correct!");
+      console.log("[CAPTCHA] login verify succeeded", { response: captchaBody });
+      setCaptchaReloadKey((current) => current + 1);
 
       const form = e.currentTarget;
       const email = form.email.value;
