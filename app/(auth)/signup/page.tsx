@@ -1,6 +1,5 @@
 "use client";
 
-import { z } from "zod";
 import { createClient } from "@/lib/supabase/client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -109,21 +108,36 @@ export default function SignupPage() {
       const email = String(formData.get("email") || "").trim();
       const password = String(formData.get("password") || "");
       if (!email || !password) {
-        setMessage("Unable to complete signup. Please try again.");
+        setMessage("Please enter both email and password.");
         return;
       }
       const supabase = createClient();
 
       // --- FIX: Clean session before signup, then signup ---
       try {
-        await supabase.auth.signOut(); // Clear any old/broken session
+        const { error: signOutError } = await supabase.auth.signOut({ scope: "global" });
+        if (signOutError) {
+          console.warn("[SIGNUP] global signOut before signup failed", signOutError.message);
+        }
       } catch (e) {
         console.warn("[SIGNUP] signOut before signup failed", e);
       }
+
+      console.log("[SIGNUP] calling signUp", {
+        email,
+        hasPassword: password.length > 0,
+        passwordLength: password.length,
+      });
       const { data, error } = await supabase.auth.signUp({ email, password });
-      console.log("[SIGNUP] auth response", { data, error });
+      console.log("[SIGNUP] full Supabase signUp response", { data, error });
+      console.log("[SIGNUP] signUp finished", {
+        hasUser: Boolean(data?.user),
+        hasSession: Boolean(data?.session),
+        errorMessage: error?.message ?? null,
+      });
 
       if (error) {
+        console.error("[SIGNUP] signUp failed with exact error message:", error.message);
         setFailedAttempts((prev) => {
           const next = prev + 1;
           if (next >= 5) {
@@ -131,7 +145,7 @@ export default function SignupPage() {
           }
           return next;
         });
-        setMessage(error.message);
+        setMessage(`Signup failed: ${error.message}`);
         return;
       }
 
@@ -162,7 +176,7 @@ export default function SignupPage() {
       }
     } catch (error) {
       console.error("[SIGNUP] unexpected error", error);
-      setMessage("Unable to complete signup. Please try again.");
+      setMessage("Unable to complete signup due to an unexpected error. Please try again.");
     } finally {
       setLoading(false);
     }
