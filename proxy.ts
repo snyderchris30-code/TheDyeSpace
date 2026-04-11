@@ -9,6 +9,25 @@ const PROTECTED_ROUTE_PREFIXES = ['/create', '/notifications'];
 const PROTECTED_EXACT_ROUTES = new Set<string>(['/profile']);
 const BLOCKED_ATTACK_PATHS = new Set(['/xmlrpc.php', '/wp-admin', '/wp-login.php', '/wp-json', '/.env', '/phpinfo.php']);
 
+function clearSupabaseCookies(request: NextRequest, response: NextResponse) {
+  for (const cookie of request.cookies.getAll()) {
+    if (!cookie.name.startsWith('sb-')) {
+      continue;
+    }
+
+    try {
+      request.cookies.set(cookie.name, '');
+    } catch {
+      // Ignore request cookie mutation errors in middleware.
+    }
+
+    response.cookies.set(cookie.name, '', {
+      maxAge: 0,
+      path: '/',
+    });
+  }
+}
+
 function isProtectedPath(pathname: string) {
   if (PROTECTED_EXACT_ROUTES.has(pathname)) {
     return true;
@@ -28,12 +47,7 @@ export async function proxy(request: NextRequest) {
   const suspiciousSource = `${pathname}${request.nextUrl.search || ''}`;
   if (hasSuspiciousInput(suspiciousSource)) {
     const response = NextResponse.json({ error: 'Suspicious request blocked.' }, { status: 403 });
-    // Best effort: invalidate Supabase session cookies on suspicious activity.
-    for (const cookie of request.cookies.getAll()) {
-      if (cookie.name.startsWith('sb-')) {
-        response.cookies.set(cookie.name, '', { maxAge: 0, path: '/' });
-      }
-    }
+    clearSupabaseCookies(request, response);
     console.warn('[proxy] Suspicious request blocked', { pathname, ip });
     return response;
   }
@@ -114,14 +128,16 @@ export async function proxy(request: NextRequest) {
       pathname,
       error: typeof error?.message === "string" ? error.message : String(error),
     });
-    // Suppress refresh token errors - user is not authenticated or session is invalid
-    // Continue with user = null for proper redirect handling
+    clearSupabaseCookies(request, response);
+    // Continue with user = null for proper redirect handling after clearing stale cookies.
   }
 
   if (!user && isProtectedPath(pathname)) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('redirect', pathname);
-    return NextResponse.redirect(loginUrl);
+    const redirectResponse = NextResponse.redirect(loginUrl);
+    clearSupabaseCookies(request, redirectResponse);
+    return redirectResponse;
   }
 
   if (user && REDIRECT_IF_AUTH_ROUTES.has(pathname)) {

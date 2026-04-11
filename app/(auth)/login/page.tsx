@@ -58,6 +58,37 @@ export default function LoginPage() {
     }
   }
 
+  async function initializeProfileAfterLogin() {
+    let lastStatus: number | null = null;
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const result = await fetchJsonWithTimeout(
+        "/api/profile/init",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+        },
+        5000
+      );
+
+      lastStatus = result.response?.status ?? null;
+      if (result.response?.ok) {
+        return result.body;
+      }
+
+      // Fresh auth cookies can lag slightly behind the client sign-in event.
+      if (result.response?.status === 401 && attempt < 2) {
+        await new Promise((resolve) => window.setTimeout(resolve, 350));
+        continue;
+      }
+
+      break;
+    }
+
+    throw new Error(lastStatus === 401 ? "Profile initialization did not receive a fresh session." : "Profile initialization failed.");
+  }
+
   async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
@@ -164,7 +195,16 @@ export default function LoginPage() {
 
       setFailedAttempts(0);
       setLockedUntil(null);
-      void fetch("/api/profile/init", { method: "POST" }).catch(() => null);
+
+      try {
+        const initBody = await initializeProfileAfterLogin();
+        console.log("[LOGIN] profile initialized after login", {
+          username: typeof initBody?.profile?.username === "string" ? initBody.profile.username : null,
+        });
+      } catch (profileInitError) {
+        console.error("[LOGIN] profile initialization failed after login", profileInitError);
+      }
+
       setMessage("Welcome back, cosmic soul!");
       router.push(redirect);
     } catch (error) {
