@@ -51,7 +51,7 @@ const nextConfig: NextConfig = {
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data: https://fonts.gstatic.com",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://open.spotify.com https://www.youtube.com https://www.youtube-nocookie.com",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://open.spotify.com https://api.spotify.com https://www.youtube.com https://www.youtube-nocookie.com https://*.youtube.com",
       "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://open.spotify.com",
       "object-src 'none'",
       "base-uri 'self'",

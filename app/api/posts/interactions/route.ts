@@ -20,23 +20,33 @@ export async function GET(req: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser();
 
-    const adminClient = createAdminClient();
+    let adminClient: ReturnType<typeof createAdminClient>;
+    try {
+      adminClient = createAdminClient();
+    } catch (error) {
+      console.error("[posts/interactions] Missing service role configuration", { error });
+      return NextResponse.json({ interactionsByPostId: {}, degraded: true });
+    }
+
     const viewerIsAdmin = user ? await userIsAdmin(adminClient, user.id) : false;
     try {
       const interactionsByPostId = await loadRelationalInteractions(adminClient, postIds, user?.id || null, viewerIsAdmin);
       return NextResponse.json({ interactionsByPostId, storage: "relational" });
     } catch (error: any) {
       if (!isMissingInteractionTablesError(error)) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        console.error("[posts/interactions] Relational load failed; returning degraded payload", {
+          error: error?.message || error,
+        });
+        return NextResponse.json({ interactionsByPostId: {}, degraded: true });
       }
     }
 
     const interactionsByPostId = await loadLegacyInteractions(adminClient, postIds, user?.id || null);
     return NextResponse.json({ interactionsByPostId, storage: "legacy" });
   } catch (error: any) {
-    return NextResponse.json(
-      { error: typeof error?.message === "string" ? error.message : "Failed to load interactions." },
-      { status: 500 }
-    );
+    console.error("[posts/interactions] Unhandled route failure; returning degraded payload", {
+      error: error?.message || error,
+    });
+    return NextResponse.json({ interactionsByPostId: {}, degraded: true });
   }
 }

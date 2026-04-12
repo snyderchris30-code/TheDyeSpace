@@ -462,7 +462,6 @@ export default function MainNavbar() {
   useEffect(() => {
     const handler = (event: Event) => {
       const promptEvent = event as BeforeInstallPromptEvent;
-      promptEvent.preventDefault();
       setDeferredPrompt(promptEvent);
       setShowInstall(true);
     };

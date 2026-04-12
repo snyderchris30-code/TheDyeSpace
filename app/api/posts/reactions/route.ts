@@ -22,6 +22,64 @@ type ReactionBody = {
   emoji?: ReactionEmoji;
 };
 
+type ReactionsGetResponse = {
+  interactionsByPostId: Record<string, any>;
+  storage?: "relational" | "legacy";
+  degraded?: boolean;
+};
+
+export async function GET(req: NextRequest) {
+  const postIds = (req.nextUrl.searchParams.get("postIds") || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  const emptyPayload: ReactionsGetResponse = { interactionsByPostId: {} };
+  if (!postIds.length) {
+    return NextResponse.json(emptyPayload);
+  }
+
+  try {
+    const supabase = await createSupabaseServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    let adminClient: ReturnType<typeof createAdminClient>;
+    try {
+      adminClient = createAdminClient();
+    } catch (error) {
+      console.error("[posts/reactions] Missing service role configuration in GET", { error });
+      return NextResponse.json({ ...emptyPayload, degraded: true });
+    }
+
+    const viewerIsAdmin = user ? await userIsAdmin(adminClient, user.id) : false;
+    try {
+      const interactionByPostId: Record<string, any> = {};
+      const loaded = await Promise.all(postIds.map((postId) => loadRelationalInteraction(adminClient, postId, user?.id || null, viewerIsAdmin)));
+      postIds.forEach((postId, index) => {
+        interactionByPostId[postId] = loaded[index] ?? { comments: [], reactions: [], viewerReaction: null };
+      });
+      return NextResponse.json({ interactionsByPostId: interactionByPostId, storage: "relational" });
+    } catch (error: any) {
+      if (!isMissingInteractionTablesError(error)) {
+        console.error("[posts/reactions] Relational GET failed; returning degraded payload", { error: error?.message || error });
+        return NextResponse.json({ ...emptyPayload, degraded: true });
+      }
+    }
+
+    const interactionByPostId: Record<string, any> = {};
+    const loadedLegacy = await Promise.all(postIds.map((postId) => loadLegacyInteraction(adminClient, postId, user?.id || null)));
+    postIds.forEach((postId, index) => {
+      interactionByPostId[postId] = loadedLegacy[index] ?? { comments: [], reactions: [], viewerReaction: null };
+    });
+    return NextResponse.json({ interactionsByPostId: interactionByPostId, storage: "legacy" });
+  } catch (error: any) {
+    console.error("[posts/reactions] Unhandled GET failure; returning degraded payload", { error: error?.message || error });
+    return NextResponse.json({ interactionsByPostId: {}, degraded: true });
+  }
+}
+
 async function insertNotificationRecord(
   adminClient: ReturnType<typeof createAdminClient>,
   payload: Record<string, any>
