@@ -166,16 +166,16 @@ export default function SuggestionsPage() {
             </div>
 
             <div className="rounded-[1.5rem] border border-fuchsia-300/25 bg-black/30 p-5 text-sm leading-7 text-cyan-100/85">
-              <p className="font-semibold text-cyan-50">Verified Seller Badge</p>
               <p className="mt-2">
-                For real tie-dye artists and hippie vendors.<br />
-                Get the <span className="font-semibold text-cyan-50">Verified Seller</span> badge after manual review.
+                For real tie-dye artists and hippie vendors.{' '}
+                <a
+                  href="/profile/shaggy_dyes"
+                  className="text-cyan-200 underline decoration-cyan-400/50 underline-offset-4 transition hover:text-cyan-50"
+                >
+                  Contact @shaggy_dyes
+                </a>{' '}
+                for a verified seller profile.
               </p>
-              <ul className="mt-4 space-y-1">
-                <li><span className="font-semibold text-cyan-50">$15 per month</span></li>
-                <li><span className="font-semibold text-cyan-50">$120 per year</span> (save $60)</li>
-              </ul>
-              <p className="mt-4"><span className="font-semibold text-cyan-50">How to apply:</span> Go to your profile → &quot;Apply for Verified Seller&quot;</p>
               <p className="mt-4 font-semibold text-cyan-50">Current Support via Cash App:</p>
               <a
                 href={`https://cash.app/${CASH_APP_CASHTAG.replace("$", "")}`}
