@@ -16,6 +16,7 @@ import PostAffiliateProducts from "@/app/PostAffiliateProducts";
 import UserIdentity from "@/app/UserIdentity";
 import AsyncStateCard from "@/app/AsyncStateCard";
 import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
+import { fetchProfileLookupByUsername } from "@/lib/profile-fetch";
 import { normalizePostImageUrls } from "@/lib/post-media";
 import { countInteractionReactions, type AggregatedPostInteraction, type ReactionEmoji } from "@/lib/post-interactions";
 import { hasAdminAccess, runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
@@ -495,17 +496,7 @@ export default function ProfileEditor() {
   );
 
   const fetchProfileSnapshotByUsername = useCallback(async (username: string, signal?: AbortSignal) => {
-    const response = await fetch(`/api/profile/lookup?username=${encodeURIComponent(username)}`, {
-      cache: "no-store",
-      signal,
-    });
-    const body = (await response.json().catch(() => ({}))) as ProfileLookupResponse;
-
-    if (!response.ok) {
-      throw new Error(typeof body?.error === "string" ? body.error : "Could not load this profile right now.");
-    }
-
-    return body;
+    return fetchProfileLookupByUsername<ProfileRow>(username, signal);
   }, []);
 
   const fetchProfileSnapshotWithRetry = useCallback(

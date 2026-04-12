@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { MessageCircle, Store } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { fetchProfileLookupByUsername } from "@/lib/profile-fetch";
 import { normalizeSellerProducts } from "@/lib/verified-seller";
 import { sanitizeUsernameInput } from "@/lib/profile-identity";
 import type { ProfileThemeSettings } from "@/types/database";
@@ -52,27 +53,28 @@ export default function ShopPage() {
   useEffect(() => {
     let active = true;
 
-    async function loadProfile() {
-      if (!username) {
-        if (active) {
-          setProfile(null);
-          setLoading(false);
-        }
-        return;
-      }
-
-      setLoading(true);
-      const response = await fetch(`/api/profile/lookup?username=${encodeURIComponent(username)}`);
-      const body = await response.json().catch(() => ({}));
-      const nextProfile = response.ok && body?.profile ? (body.profile as ShopProfile) : null;
-
+    if (!username) {
       if (active) {
-        setProfile(nextProfile);
+        setProfile(null);
         setLoading(false);
       }
+      return;
     }
 
-    void loadProfile();
+    setLoading(true);
+    void fetchProfileLookupByUsername<ShopProfile>(username)
+      .then((body) => {
+        if (!active) return;
+        setProfile(body.profile ?? null);
+      })
+      .catch(() => {
+        if (!active) return;
+        setProfile(null);
+      })
+      .finally(() => {
+        if (!active) return;
+        setLoading(false);
+      });
 
     return () => {
       active = false;

@@ -22,6 +22,10 @@ export default function CreatePostPage() {
   const [status, setStatus] = useState<string | null>(null);
 
   const handleCreatePost = async () => {
+    if (isSubmitting) {
+      return;
+    }
+
     setStatus(null);
     if (!content.trim()) {
       setStatus("Please add post content before publishing.");

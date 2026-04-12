@@ -5,6 +5,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 type NotificationRow = {
   id: string;
   actor_name: string;
+  actor_avatar_url?: string | null;
   type: string;
   message: string;
   read: boolean;
@@ -70,6 +71,11 @@ function isMissingActorNameColumnError(error: unknown) {
   return message.includes("Could not find the 'actor_name' column of 'notifications' in the schema cache");
 }
 
+function isMissingActorAvatarColumnError(error: unknown) {
+  const message = typeof error === "object" && error !== null && "message" in error ? String((error as { message?: unknown }).message || "") : "";
+  return message.includes("Could not find the 'actor_avatar_url' column of 'notifications' in the schema cache");
+}
+
 function normalizeNotificationRow(row: Partial<NotificationRow> | null | undefined): NotificationRow {
   const actorName = typeof row?.actor_name === "string" && row.actor_name.trim() ? row.actor_name : "someone";
   const type = typeof row?.type === "string" && row.type.trim() ? row.type : "activity";
@@ -81,6 +87,7 @@ function normalizeNotificationRow(row: Partial<NotificationRow> | null | undefin
   return {
     id: typeof row?.id === "string" && row.id ? row.id : `unknown-${type}-${createdAt}`,
     actor_name: actorName,
+    actor_avatar_url: typeof row?.actor_avatar_url === "string" ? row.actor_avatar_url : null,
     type,
     message,
     read: row?.read === true,
@@ -174,7 +181,7 @@ async function readNotificationsForUser(
 
   const withPostId = await client
     .from("notifications")
-    .select("id, actor_name, type, message, read, created_at, post_id")
+    .select("id, actor_name, actor_avatar_url, type, message, read, created_at, post_id")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(100);
@@ -189,8 +196,9 @@ async function readNotificationsForUser(
 
   const missingPostId = isMissingPostIdColumnError(withPostId.error);
   const missingActorName = isMissingActorNameColumnError(withPostId.error);
+  const missingActorAvatar = isMissingActorAvatarColumnError(withPostId.error);
 
-  if (!missingPostId && !missingActorName) {
+  if (!missingPostId && !missingActorName && !missingActorAvatar) {
     throw withPostId.error;
   }
 
@@ -201,9 +209,15 @@ async function readNotificationsForUser(
     error: serializeError(withPostId.error),
   });
 
-  const fallbackSelect = missingActorName
-    ? "id, type, message, read, created_at"
-    : "id, actor_name, type, message, read, created_at";
+  const fallbackSelectParts = ["id"];
+  if (!missingActorName) {
+    fallbackSelectParts.push("actor_name");
+  }
+  if (!missingActorAvatar) {
+    fallbackSelectParts.push("actor_avatar_url");
+  }
+  fallbackSelectParts.push("type", "message", "read", "created_at");
+  const fallbackSelect = fallbackSelectParts.join(", ");
 
   const fallback = await client
     .from("notifications")

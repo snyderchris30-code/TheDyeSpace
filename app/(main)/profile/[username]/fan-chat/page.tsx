@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import FanChatRoomClient from "./FanChatRoomClient";
+import { fetchProfileLookupByUsername } from "@/lib/profile-fetch";
 
 type FanChatProfile = {
   id: string;
@@ -44,19 +45,13 @@ export default function FanChatPage() {
       }
 
       setLoading(true);
-      const supabase = createClient();
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("id,username,display_name,verified_badge,seller_background_url")
-        .eq("username", username)
-        .limit(1)
-        .maybeSingle();
+      const lookup = await fetchProfileLookupByUsername<FanChatProfile>(username);
 
       if (!active) {
         return;
       }
 
-      const resolvedProfile = (profileData as FanChatProfile | null) ?? null;
+      const resolvedProfile = lookup.profile ?? null;
       setProfile(resolvedProfile);
 
       if (!resolvedProfile) {
@@ -65,6 +60,7 @@ export default function FanChatPage() {
         return;
       }
 
+      const supabase = createClient();
       const { data: sessionData } = await supabase.auth.getSession();
       const currentUserId = sessionData?.session?.user?.id ?? null;
 
