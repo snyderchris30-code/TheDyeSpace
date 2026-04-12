@@ -204,7 +204,7 @@ export default function SuggestionsPage() {
         </div>
 
         <footer className="flex flex-col items-center justify-between gap-3 border-t border-cyan-300/15 pt-6 text-sm text-cyan-100/70 sm:flex-row">
-          <p>Built with tie-dye love, good vibes, and community feedback.</p>
+          <p>Built with tie-dye love, hippie vibes, and community feedback.</p>
           <div className="flex flex-wrap items-center justify-center gap-4">
             <Link href="/terms" className="underline decoration-cyan-400/40 underline-offset-4 hover:text-cyan-50">Terms</Link>
             <Link href="/privacy" className="underline decoration-cyan-400/40 underline-offset-4 hover:text-cyan-50">Privacy</Link>
