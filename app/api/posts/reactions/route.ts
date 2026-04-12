@@ -116,7 +116,7 @@ async function createLikeNotification(
   adminClient: ReturnType<typeof createAdminClient>,
   ownerId: string | null | undefined,
   actorId: string,
-  actorName: string,
+  actorHandle: string,
   postId: string,
   emoji: ReactionEmoji
 ) {
@@ -133,10 +133,10 @@ async function createLikeNotification(
 
   const payload = {
     user_id: ownerId,
-    actor_name: actorName,
+    actor_name: actorHandle,
     type: "like",
     post_id: postId,
-    message: `${actorName} reacted ${emoji} to your post.`,
+    message: `@${actorHandle} reacted with ${emoji} to your post.`,
     read: false,
   };
 
@@ -145,7 +145,7 @@ async function createLikeNotification(
     actorId,
     postId,
     emoji,
-    actorName,
+    actorHandle,
   });
 
   try {
@@ -226,11 +226,16 @@ export async function POST(req: NextRequest) {
 
     const { data: actorProfile } = await adminClient
       .from("profiles")
-      .select("username, display_name")
+      .select("username")
       .eq("id", user.id)
       .maybeSingle();
 
-    const actorName = actorProfile?.display_name?.trim() || resolveProfileUsername(actorProfile?.username, user.user_metadata?.username, user.email, user.id);
+    const actorHandle = resolveProfileUsername(
+      actorProfile?.username,
+      user.user_metadata?.username,
+      user.email,
+      user.id
+    ).replace(/^@+/, "");
 
     const { data: currentReaction, error: currentReactionError } = await adminClient
       .from("post_reactions")
@@ -297,7 +302,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (shouldNotify) {
-        await createLikeNotification(adminClient, post.user_id, user.id, actorName, body.postId, emoji);
+        await createLikeNotification(adminClient, post.user_id, user.id, actorHandle, body.postId, emoji);
       }
 
       return NextResponse.json({ interaction, likesCount, storage: "relational" });
@@ -311,7 +316,7 @@ export async function POST(req: NextRequest) {
 
     const { data: existingProfile } = await adminClient
       .from("profiles")
-      .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings")
+      .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings, verified_badge")
       .eq("id", user.id)
       .limit(1)
       .maybeSingle();
@@ -338,6 +343,7 @@ export async function POST(req: NextRequest) {
         bio: existingProfile?.bio ?? "",
         avatar_url: existingProfile?.avatar_url ?? null,
         banner_url: existingProfile?.banner_url ?? null,
+        verified_badge: existingProfile?.verified_badge ?? false,
         theme_settings: {
           ...existingThemeSettings,
           post_comments: getStoredPostComments(existingThemeSettings),
@@ -369,7 +375,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (shouldNotify) {
-      await createLikeNotification(adminClient, post.user_id, user.id, actorName, body.postId, emoji);
+      await createLikeNotification(adminClient, post.user_id, user.id, actorHandle, body.postId, emoji);
     }
 
     return NextResponse.json({ interaction, likesCount, storage: "legacy" });

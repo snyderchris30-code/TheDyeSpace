@@ -264,11 +264,16 @@ export async function POST(req: NextRequest) {
 
     const { data: actorProfile } = await adminClient
       .from("profiles")
-      .select("username, display_name")
+      .select("username")
       .eq("id", user.id)
       .maybeSingle();
 
-    const actorName = actorProfile?.display_name?.trim() || resolveProfileUsername(actorProfile?.username, user.user_metadata?.username, user.email, user.id);
+    const actorName = resolveProfileUsername(
+      actorProfile?.username,
+      user.user_metadata?.username,
+      user.email,
+      user.id
+    ).replace(/^@+/, "");
 
     const mentionMatches = Array.from(content.matchAll(/(?:^|\s)@([a-z0-9._-]{3,30})\b/gi)).map((match) => match[1].toLowerCase());
     const mentionedUsernames = Array.from(new Set(mentionMatches));
@@ -334,7 +339,7 @@ export async function POST(req: NextRequest) {
 
     const { data: existingProfile } = await adminClient
       .from("profiles")
-      .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings")
+      .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings, verified_badge")
       .eq("id", user.id)
       .limit(1)
       .maybeSingle();
@@ -357,8 +362,7 @@ export async function POST(req: NextRequest) {
         display_name: existingProfile?.display_name ?? "",
         bio: existingProfile?.bio ?? "",
         avatar_url: existingProfile?.avatar_url ?? null,
-        banner_url: existingProfile?.banner_url ?? null,
-        theme_settings: {
+        banner_url: existingProfile?.banner_url ?? null,        verified_badge: existingProfile?.verified_badge ?? false,        theme_settings: {
           ...existingThemeSettings,
           post_comments: nextComments,
           post_reactions: getStoredPostReactions(existingThemeSettings),

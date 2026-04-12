@@ -171,10 +171,10 @@ body {
   overscroll-behavior-y: auto;
   font-family: var(--font-inter), var(--font-space-grotesk), system-ui, sans-serif;
   background-color: #060b14;
-  background-image: var(--neon-starfield-image);
+  background-image: var(--seller-background-image, var(--neon-starfield-image));
   background-position: center top;
   background-repeat: no-repeat;
-  background-size: contain;
+  background-size: cover;
   color: var(--site-text);
   position: relative;
   min-height: 100vh;

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -10,6 +10,8 @@ type FanChatProfile = {
   id: string;
   username: string | null;
   display_name: string | null;
+  verified_badge?: boolean;
+  seller_background_url?: string;
 };
 
 function resolveParamUsername(value: string | string[] | undefined) {
@@ -23,6 +25,14 @@ export default function FanChatPage() {
   const [profile, setProfile] = useState<FanChatProfile | null>(null);
   const [allowed, setAllowed] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (profile?.seller_background_url && profile?.verified_badge) {
+      document.documentElement.style.setProperty("--seller-background-image", `url('${profile.seller_background_url}')`);
+    } else {
+      document.documentElement.style.removeProperty("--seller-background-image");
+    }
+  }, [profile?.seller_background_url, profile?.verified_badge]);
 
   useEffect(() => {
     let active = true;
@@ -41,7 +51,7 @@ export default function FanChatPage() {
       const supabase = createClient();
       const { data: profileData } = await supabase
         .from("profiles")
-        .select("id,username,display_name")
+        .select("id,username,display_name,verified_badge,seller_background_url")
         .eq("username", username)
         .limit(1)
         .maybeSingle();

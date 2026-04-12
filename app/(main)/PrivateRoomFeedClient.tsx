@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AsyncStateCard from "@/app/AsyncStateCard";
 import UserIdentity from "@/app/UserIdentity";
 import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
@@ -50,6 +50,7 @@ function formatTimeRemaining(expiresAt: string) {
 export default function PrivateRoomFeedClient({ room }: { room: PrivateRoomKey }) {
   const roomDefinition = useMemo(() => getPrivateRoomDefinition(room), [room]);
   const [authorized, setAuthorized] = useState(false);
+  const authorizedRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,6 +100,7 @@ export default function PrivateRoomFeedClient({ room }: { room: PrivateRoomKey }
         }
 
         setAuthorized(allowed);
+        authorizedRef.current = allowed;
         if (!allowed) {
           setLoading(false);
           setError(null);
@@ -127,7 +129,7 @@ export default function PrivateRoomFeedClient({ room }: { room: PrivateRoomKey }
     void bootstrap();
 
     const intervalId = window.setInterval(() => {
-      if (!document.hidden && authorized) {
+      if (!document.hidden && authorizedRef.current) {
         void loadPosts().catch(() => undefined);
       }
     }, 30000);
@@ -136,7 +138,7 @@ export default function PrivateRoomFeedClient({ room }: { room: PrivateRoomKey }
       active = false;
       window.clearInterval(intervalId);
     };
-  }, [authorized, loadPosts, room]);
+  }, [loadPosts, room]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();

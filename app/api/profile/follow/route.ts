@@ -23,7 +23,7 @@ async function createFollowNotification(
   adminClient: ReturnType<typeof createAdminClient>,
   followedId: string,
   followerId: string,
-  actorName: string
+  actorHandle: string
 ) {
   if (!followedId || !followerId || followedId === followerId) {
     return;
@@ -31,17 +31,17 @@ async function createFollowNotification(
 
   const payload = {
     user_id: followedId,
-    actor_name: actorName,
+    actor_name: actorHandle,
     type: "follow",
     post_id: null,
-    message: `${actorName} started following you.`,
+    message: `@${actorHandle} started following you.`,
     read: false,
   };
 
   console.info("[notifications] Attempting follow notification", {
     followedId,
     followerId,
-    actorName,
+    actorHandle,
   });
 
   let data: Array<{ id: string }> | null = null;
@@ -216,11 +216,10 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
 
       const actorName =
-        actorProfile?.display_name?.trim() ||
-        actorProfile?.username?.trim() ||
-        user.user_metadata?.username ||
-        user.email ||
-        "A user";
+        (actorProfile?.username?.trim() ||
+          user.user_metadata?.username ||
+          user.email ||
+          "A user").replace(/^@+/, "");
 
       await createFollowNotification(adminClient, targetUserId, user.id, actorName);
     }

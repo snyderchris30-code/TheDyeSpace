@@ -166,7 +166,7 @@ export async function POST(req: NextRequest) {
 
     const { data: existingProfile } = await adminClient
       .from("profiles")
-      .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings")
+      .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings, verified_badge")
       .eq("id", user.id)
       .limit(1)
       .maybeSingle();
@@ -193,6 +193,7 @@ export async function POST(req: NextRequest) {
         bio: existingProfile?.bio ?? "",
         avatar_url: existingProfile?.avatar_url ?? null,
         banner_url: existingProfile?.banner_url ?? null,
+        verified_badge: existingProfile?.verified_badge ?? false,
         theme_settings: {
           ...existingThemeSettings,
           post_comments: getStoredPostComments(existingThemeSettings),

@@ -41,12 +41,28 @@ export default function NotificationsPage() {
 
   const formatMessage = (notif: Notification) => {
     const actor = (notif.actor_name || "someone").replace(/^@+/, "");
+    if (notif.message?.trim()) return notif.message;
     if (notif.type === "like") return `@${actor} liked your post`;
     if (notif.type === "comment") return `@${actor} commented on your post`;
-    if (notif.type === "follow") return `@${actor} followed you`;
-    if (notif.message?.trim()) return notif.message;
+    if (notif.type === "follow") return `@${actor} started following you`;
     return `@${actor} interacted with your account`;
   };
+
+  const markAllAsRead = useCallback(async () => {
+    const response = await fetch("/api/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ markAll: true }),
+    });
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      setError(body?.error || "Failed to mark notifications as read.");
+      return;
+    }
+
+    setNotifications((prev) => prev.map((item) => ({ ...item, read: true })));
+  }, []);
 
   const fetchNotifications = useCallback(async () => {
     const response = await fetch("/api/notifications", { cache: "no-store" });
@@ -199,6 +215,18 @@ export default function NotificationsPage() {
       void supabase.removeChannel(channel);
     };
   }, [loadNotificationStateThrottled, supabase, userId]);
+
+  useEffect(() => {
+    if (!userId) {
+      return;
+    }
+
+    if (!notifications.some((item) => !item.read)) {
+      return;
+    }
+
+    void markAllAsRead();
+  }, [markAllAsRead, notifications, userId]);
 
   const markAsRead = async (notifId: string) => {
     if (!userId) return;

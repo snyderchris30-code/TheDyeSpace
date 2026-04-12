@@ -1594,27 +1594,17 @@ export default function ProfileEditor() {
     setEditorAutoOpened(true);
   }, [editing, editorAutoOpened, form, isOwner, loading, shouldAutoOpenEditor]);
 
+  // Set seller background as CSS variable if verified and has a background
+  useEffect(() => {
+    if (profileIsVerified && verifiedSellerBackgroundUrl) {
+      document.documentElement.style.setProperty("--seller-background-image", `url('${verifiedSellerBackgroundUrl}')`);
+    } else {
+      document.documentElement.style.removeProperty("--seller-background-image");
+    }
+  }, [profileIsVerified, verifiedSellerBackgroundUrl]);
+
   return (
     <div className="relative min-h-screen px-4 pb-16 pt-8 text-white sm:px-8 sm:pt-10" aria-label="Profile Customization Hub">
-      {verifiedSellerBackgroundUrl ? (
-        <>
-          <div className="pointer-events-none fixed inset-0 -z-20 overflow-hidden" aria-hidden="true">
-            <Image
-              src={verifiedSellerBackgroundUrl}
-              alt="Verified Seller Background"
-              className="object-center object-contain opacity-40 drop-shadow-lg"
-              fill
-              priority
-              sizes="100vw"
-              unoptimized
-            />
-          </div>
-          <div
-            className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(68,249,207,0.07),transparent_32%),linear-gradient(180deg,rgba(3,8,18,0.08),rgba(3,8,18,0.65))]"
-            aria-hidden="true"
-          />
-        </>
-      ) : null}
       <div className="mx-auto max-w-6xl">
         {status ? (
           <div

@@ -239,6 +239,7 @@ export async function POST(req: NextRequest) {
           bio: body.bio ?? existingProfile?.bio ?? "",
           avatar_url: body.avatar_url !== undefined ? body.avatar_url : (existingProfile?.avatar_url ?? null),
           banner_url: body.banner_url !== undefined ? body.banner_url : (existingProfile?.banner_url ?? null),
+          verified_badge: existingProfile?.verified_badge ?? false,
           theme_settings: {
             ...existingThemeSettings,
             background_color: body.background_color ?? existingThemeSettings.background_color ?? DEFAULT_BACKGROUND_COLOR,

@@ -21,12 +21,6 @@ function FreshDataRuntime() {
           url.searchParams.set('v', APP_VERSION);
           const nextInit: RequestInit = {
             ...init,
-            cache: 'no-store',
-            headers: {
-              ...(init?.headers as Record<string, string> | undefined),
-              'Cache-Control': 'no-cache, no-store, must-revalidate',
-              Pragma: 'no-cache',
-            },
           };
 
           return originalFetch(url.toString(), nextInit);
@@ -55,7 +49,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
             staleTime: 1000 * 30,
             gcTime: 1000 * 60 * 5,
             refetchOnMount: false,
-            refetchOnReconnect: true,
+            refetchOnReconnect: false,
             refetchOnWindowFocus: false,
             retry: 1,
           },
