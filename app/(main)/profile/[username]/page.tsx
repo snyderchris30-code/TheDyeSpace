@@ -1534,10 +1534,6 @@ export default function ProfileEditor() {
   const typedUsername = sanitizeUsernameInput(draft.username);
   const profileAppearance = resolveProfileAppearance(profileDisplay);
   const profileThemeTag = profileDisplay.font_style ? profileDisplay.font_style : "Custom theme";
-  const verifiedSellerBackgroundUrl =
-    profileIsVerified && typeof profileDisplay.seller_background_url === "string" && profileDisplay.seller_background_url.trim()
-      ? profileDisplay.seller_background_url
-      : null;
   const avatarInitials = (() => {
     const source = displayName !== "DyeSpace User" ? displayName : displayUsername || "TD";
     return source
@@ -1596,12 +1592,8 @@ export default function ProfileEditor() {
 
   // Set seller background as CSS variable if verified and has a background
   useEffect(() => {
-    if (profileIsVerified && verifiedSellerBackgroundUrl) {
-      document.documentElement.style.setProperty("--seller-background-image", `url('${verifiedSellerBackgroundUrl}')`);
-    } else {
-      document.documentElement.style.removeProperty("--seller-background-image");
-    }
-  }, [profileIsVerified, verifiedSellerBackgroundUrl]);
+    document.documentElement.style.removeProperty("--seller-background-image");
+  }, []);
 
   return (
     <div className="relative min-h-screen px-4 pb-16 pt-8 text-white sm:px-8 sm:pt-10" aria-label="Profile Customization Hub">
@@ -2486,35 +2478,6 @@ export default function ProfileEditor() {
 
                 {profileIsVerified ? (
                   <>
-                    <div className="sm:col-span-2 rounded-2xl border border-amber-300/20 bg-amber-500/5 p-4">
-                      <div className="mb-3">
-                        <p className="text-sm font-semibold text-amber-100">Verified Seller Background</p>
-                        <p className="text-xs text-amber-100/70">
-                          This image only appears on your profile page and will carry over to your seller listings and fan chat pages.
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-3">
-                        <label className="flex h-11 cursor-pointer items-center justify-center rounded-xl border border-amber-300/30 bg-black/30 px-4 text-sm text-amber-100 hover:bg-black/50">
-                          Upload Seller Background
-                          <input type="file" accept="image/*" className="hidden" onChange={handleSellerBackgroundUpload} disabled={isUploading} />
-                        </label>
-                        {draft.seller_background_url ? (
-                          <button
-                            type="button"
-                            className="inline-flex h-11 items-center justify-center rounded-xl border border-white/15 bg-black/30 px-4 text-sm text-white/90 hover:bg-black/50"
-                            onClick={() => setDraft((prev) => ({ ...prev, seller_background_url: null }))}
-                          >
-                            Remove Background
-                          </button>
-                        ) : null}
-                      </div>
-                      <p className="mt-3 text-xs text-amber-100/70">
-                        {draft.seller_background_url
-                          ? "Seller background photo ready. Save changes after removing it, or upload again to replace it."
-                          : "No seller background photo uploaded yet."}
-                      </p>
-                    </div>
-
                     <div className="sm:col-span-2 rounded-2xl border border-amber-300/20 bg-amber-500/5 p-4">
                       <div className="mb-3">
                         <p className="text-sm font-semibold text-amber-100">Contact Information</p>

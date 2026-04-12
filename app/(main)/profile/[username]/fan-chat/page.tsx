@@ -27,12 +27,8 @@ export default function FanChatPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (profile?.seller_background_url && profile?.verified_badge) {
-      document.documentElement.style.setProperty("--seller-background-image", `url('${profile.seller_background_url}')`);
-    } else {
-      document.documentElement.style.removeProperty("--seller-background-image");
-    }
-  }, [profile?.seller_background_url, profile?.verified_badge]);
+    document.documentElement.style.removeProperty("--seller-background-image");
+  }, []);
 
   useEffect(() => {
     let active = true;

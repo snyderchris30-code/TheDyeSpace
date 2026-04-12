@@ -46,12 +46,8 @@ export default function ShopPage() {
   const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
-    if (profile?.theme_settings?.seller_background_url && profile?.verified_badge) {
-      document.documentElement.style.setProperty("--seller-background-image", `url('${profile.theme_settings.seller_background_url}')`);
-    } else {
-      document.documentElement.style.removeProperty("--seller-background-image");
-    }
-  }, [profile?.theme_settings?.seller_background_url, profile?.verified_badge]);
+    document.documentElement.style.removeProperty("--seller-background-image");
+  }, []);
 
   useEffect(() => {
     let active = true;
