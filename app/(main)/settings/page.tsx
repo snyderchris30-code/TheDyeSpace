@@ -133,7 +133,6 @@ function SettingsContent() {
       }
 
       router.push("/signup");
-      router.refresh();
     } catch (err: any) {
       setError(typeof err?.message === "string" ? err.message : "Failed to delete account.");
     } finally {

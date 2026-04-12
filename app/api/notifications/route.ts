@@ -65,6 +65,11 @@ function isMissingPostIdColumnError(error: unknown) {
   return message.includes("Could not find the 'post_id' column of 'notifications' in the schema cache");
 }
 
+function isMissingActorNameColumnError(error: unknown) {
+  const message = typeof error === "object" && error !== null && "message" in error ? String((error as { message?: unknown }).message || "") : "";
+  return message.includes("Could not find the 'actor_name' column of 'notifications' in the schema cache");
+}
+
 function normalizeNotificationRow(row: Partial<NotificationRow> | null | undefined): NotificationRow {
   const actorName = typeof row?.actor_name === "string" && row.actor_name.trim() ? row.actor_name : "someone";
   const type = typeof row?.type === "string" && row.type.trim() ? row.type : "activity";
@@ -182,38 +187,63 @@ async function readNotificationsForUser(
     };
   }
 
-  const cacheError = isMissingPostIdColumnError(withPostId.error);
+  const missingPostId = isMissingPostIdColumnError(withPostId.error);
+  const missingActorName = isMissingActorNameColumnError(withPostId.error);
 
-  if (!cacheError) {
+  if (!missingPostId && !missingActorName) {
     throw withPostId.error;
   }
 
-  console.warn("[notifications] Falling back to notifications query without post_id", {
+  console.warn("[notifications] Falling back to notifications query without post_id / actor_name", {
     requestId,
     userId,
     clientType,
     error: serializeError(withPostId.error),
   });
 
+  const fallbackSelect = missingActorName
+    ? "id, type, message, read, created_at"
+    : "id, actor_name, type, message, read, created_at";
+
   const fallback = await client
     .from("notifications")
-    .select("id, actor_name, type, message, read, created_at")
+    .select(fallbackSelect)
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(100);
 
-  if (fallback.error) {
-    throw fallback.error;
+  if (!fallback.error) {
+    return {
+      notifications: normalizeNotificationRows(fallback.data).map((item) => ({
+        ...item,
+        post_id: null,
+      })),
+      usedFallback: true,
+      clientType,
+    };
   }
 
-  return {
-    notifications: normalizeNotificationRows(fallback.data).map((item) => ({
-      ...item,
-      post_id: null,
-    })),
-    usedFallback: true,
-    clientType,
-  };
+  if (missingActorName) {
+    const fallbackWithoutActorName = await client
+      .from("notifications")
+      .select("id, type, message, read, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (!fallbackWithoutActorName.error) {
+      return {
+        notifications: normalizeNotificationRows(fallbackWithoutActorName.data).map((item) => ({
+          ...item,
+          post_id: null,
+        })),
+        usedFallback: true,
+        clientType,
+      };
+    }
+  }
+
+  throw fallback.error || withPostId.error;
 }
 
 export async function GET(req: NextRequest) {

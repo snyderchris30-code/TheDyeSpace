@@ -91,7 +91,6 @@ export default function CreatePostPage() {
       setSelectedAffiliateProductIds([]);
       // No need to reset isForSale, it's derived from category now
       router.push("/explore");
-      router.refresh();
     } catch (e: any) {
       setStatus(typeof e?.message === "string" ? e.message : "Failed to create post.");
     } finally {

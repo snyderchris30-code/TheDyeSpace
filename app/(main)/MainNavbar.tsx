@@ -224,7 +224,6 @@ export default function MainNavbar() {
       queryClient.clear();
     } finally {
       router.replace("/login");
-      router.refresh();
     }
   };
   const queryClient = useQueryClient();
