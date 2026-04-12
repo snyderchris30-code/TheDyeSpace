@@ -1,6 +1,6 @@
 export default function CommunityGuidelines() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-teal-900 to-green-900 text-cyan-100 flex flex-col items-center justify-center p-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-900 via-teal-900 to-green-900 text-cyan-100 flex flex-col items-center p-8">
       <div className="max-w-2xl w-full bg-white/10 rounded-3xl shadow-xl p-8 border border-cyan-400 prose prose-invert prose-cyan">
         <h1 className="text-4xl font-bold mb-6 text-cyan-200 cosmic-headline">Community Guidelines</h1>
         <article className="prose prose-invert prose-cyan">
