@@ -53,6 +53,7 @@ type ProfileRow = {
   member_number?: number | null;
   shadow_banned?: boolean | null;
   shadow_banned_until?: string | null;
+  ghost_ridin?: boolean | null;
   role?: string | null;
 };
 
@@ -181,7 +182,7 @@ export async function GET(request: NextRequest) {
     if (userIds.length) {
       const { data: profilesData, error: profilesError } = await supabase
         .from("profiles")
-        .select("id,username,display_name,theme_settings,voided_until,verified_badge,member_number,shadow_banned,shadow_banned_until")
+        .select("id,username,display_name,theme_settings,voided_until,verified_badge,member_number,shadow_banned,shadow_banned_until,ghost_ridin")
         .in("id", userIds);
 
       let safeProfilesData = profilesData;
@@ -200,6 +201,7 @@ export async function GET(request: NextRequest) {
           member_number: null,
           shadow_banned: false,
           shadow_banned_until: null,
+          ghost_ridin: false,
         }));
       } else if (profilesError) {
         console.error("Error fetching profiles:", profilesError.message);
@@ -220,16 +222,18 @@ export async function GET(request: NextRequest) {
 
     const result = visiblePosts.map((post) => {
       const profile = profilesById.get(post.user_id);
+      const viewerOwnPost = Boolean(user?.id && post.user_id === user.id);
+      const showGhostIdentity = profile?.ghost_ridin === true && !viewerIsAdmin && !viewerOwnPost;
       const imageUrls = normalizePostImageUrls(post.image_urls);
       return {
         ...post,
         image_urls: imageUrls.length ? imageUrls : null,
-        author_display_name: formatDisplayName(profile),
-        author_at_name: formatAtName(profile),
-        author_username: profile?.username ?? null,
+        author_display_name: showGhostIdentity ? "Ghost Rider" : formatDisplayName(profile),
+        author_at_name: showGhostIdentity ? "Ghost Rider" : formatAtName(profile),
+        author_username: showGhostIdentity ? null : profile?.username ?? null,
         author_theme: profile?.theme_settings ?? null,
         author_voided_until: profile?.voided_until ?? null,
-        author_verified_badge: profile?.verified_badge === true,
+        author_verified_badge: showGhostIdentity ? false : profile?.verified_badge === true,
         author_member_number: profile?.member_number ?? null,
       };
     });

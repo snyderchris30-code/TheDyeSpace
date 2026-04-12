@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const interactionsByPostId = await loadLegacyInteractions(adminClient, postIds, user?.id || null);
+    const interactionsByPostId = await loadLegacyInteractions(adminClient, postIds, user?.id || null, viewerIsAdmin);
     return NextResponse.json({ interactionsByPostId, storage: "legacy" });
   } catch (error: any) {
     console.error("[posts/interactions] Unhandled route failure; returning degraded payload", {

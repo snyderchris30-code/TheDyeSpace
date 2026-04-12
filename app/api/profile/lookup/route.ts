@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { createAdminClient } from "@/lib/admin-utils";
+import { hasAdminAccess } from "@/lib/admin-actions";
 import {
   ensureProfileForUser,
   isOwnProfileRouteUsername,
@@ -23,6 +24,7 @@ export async function GET(req: NextRequest) {
       email?: string | null;
       user_metadata?: Record<string, unknown> | null;
     } | null = null;
+    let viewerIsAdmin = false;
 
     let adminClient;
     try {
@@ -36,22 +38,34 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Server misconfiguration: service role key missing" }, { status: 500 });
     }
 
+    const supabase = await createSupabaseServerClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+    viewer = authError ? null : user;
+
+    if (viewer?.id) {
+      const { data: viewerProfile } = await adminClient
+        .from("profiles")
+        .select("role")
+        .eq("id", viewer.id)
+        .limit(1)
+        .maybeSingle();
+      viewerIsAdmin = hasAdminAccess(viewer.id, viewerProfile?.role ?? null);
+    }
+
     logInfo("profile/lookup", "Profile fetch started", {
       ...requestContext,
       username,
-      viewerUserId: null,
+      viewerUserId: viewer?.id ?? null,
     });
 
     let profile = await loadProfileByUsername(adminClient, username);
     let createdProfile = false;
 
     if (!profile) {
-      const supabase = await createSupabaseServerClient();
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-      viewer = authError ? null : user;
+      // viewer already resolved above
     }
 
     if (!profile && viewer && isOwnProfileRouteUsername(username, viewer)) {
@@ -88,6 +102,18 @@ export async function GET(req: NextRequest) {
         viewerUserId: viewer?.id ?? null,
       });
       return NextResponse.json({ profile: null, meta: { createdProfile: false, notFound: true } });
+    }
+
+    if (profile?.ghost_ridin === true) {
+      const viewerIsOwner = Boolean(viewer?.id && viewer.id === profile.id);
+      if (!viewerIsAdmin && !viewerIsOwner) {
+        logWarn("profile/lookup", "Ghost profile hidden from non-admin viewer", {
+          ...requestContext,
+          username,
+          viewerUserId: viewer?.id ?? null,
+        });
+        return NextResponse.json({ profile: null, meta: { createdProfile: false, notFound: true, hidden: true } });
+      }
     }
 
     return NextResponse.json({

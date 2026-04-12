@@ -14,7 +14,26 @@ type InteractionProfileWithStatus = InteractionProfileRow & {
   voided_until?: string | null;
   shadow_banned?: boolean | null;
   shadow_banned_until?: string | null;
+  ghost_ridin?: boolean | null;
 };
+
+function maskGhostProfileIdentity(
+  profile: InteractionProfileWithStatus,
+  viewerId?: string | null,
+  viewerIsAdmin = false
+): InteractionProfileWithStatus {
+  if (!profile?.ghost_ridin || viewerIsAdmin || (viewerId && viewerId === profile.id)) {
+    return profile;
+  }
+
+  return {
+    ...profile,
+    username: null,
+    display_name: "Ghost Rider",
+    verified_badge: false,
+    member_number: null,
+  };
+}
 
 async function loadInteractionProfiles(adminClient: AdminClient, userIds: string[]) {
   if (!userIds.length) {
@@ -23,7 +42,7 @@ async function loadInteractionProfiles(adminClient: AdminClient, userIds: string
 
   const primaryProfileResponse = await adminClient
     .from("profiles")
-    .select("id, username, display_name, avatar_url, verified_badge, member_number, theme_settings, voided_until, shadow_banned, shadow_banned_until")
+    .select("id, username, display_name, avatar_url, verified_badge, member_number, theme_settings, voided_until, shadow_banned, shadow_banned_until, ghost_ridin")
     .in("id", userIds);
 
   const missingStatusColumns = String(primaryProfileResponse.error?.message || "").includes("Could not find the")
@@ -108,20 +127,27 @@ async function loadRelationalCommentReactions(adminClient: AdminClient, commentI
   return (data || []) as RelationalCommentReactionRow[];
 }
 
-export async function loadLegacyInteractions(adminClient: AdminClient, postIds: string[], viewerId?: string | null) {
+export async function loadLegacyInteractions(
+  adminClient: AdminClient,
+  postIds: string[],
+  viewerId?: string | null,
+  viewerIsAdmin = false
+) {
   const { data: profiles, error } = await adminClient
     .from("profiles")
-    .select("id, username, display_name, avatar_url, verified_badge, member_number, theme_settings");
+    .select("id, username, display_name, avatar_url, verified_badge, member_number, theme_settings, ghost_ridin");
 
   if (error) {
     throw error;
   }
 
-  return buildInteractionsByPost((profiles || []) as InteractionProfileRow[], postIds, viewerId);
+  const safeProfiles = (profiles || []) as InteractionProfileWithStatus[];
+  const maskedProfiles = safeProfiles.map((profile) => maskGhostProfileIdentity(profile, viewerId, viewerIsAdmin));
+  return buildInteractionsByPost(maskedProfiles as InteractionProfileRow[], postIds, viewerId);
 }
 
 export async function loadLegacyInteraction(adminClient: AdminClient, postId: string, viewerId?: string | null) {
-  return (await loadLegacyInteractions(adminClient, [postId], viewerId))[postId];
+  return (await loadLegacyInteractions(adminClient, [postId], viewerId, false))[postId];
 }
 
 export async function loadRelationalInteractions(
@@ -143,6 +169,7 @@ export async function loadRelationalInteractions(
   ];
 
   const profiles = await loadInteractionProfiles(adminClient, userIds);
+  const maskedProfiles = profiles.map((profile) => maskGhostProfileIdentity(profile, viewerId, viewerIsAdmin));
 
   if (!viewerIsAdmin) {
     const voidedAuthors = new Set(profiles.filter((profile) => isVoided(profile)).map((profile) => profile.id));
@@ -163,12 +190,12 @@ export async function loadRelationalInteractions(
       visibleComments,
       reactions.filter((reaction) => reaction.user_id === viewerId || !shadowBannedAuthors.has(reaction.user_id)),
       commentReactions.filter((reaction) => visibleCommentIds.has(reaction.comment_id) && (reaction.user_id === viewerId || !shadowBannedAuthors.has(reaction.user_id))),
-      profiles,
+      maskedProfiles,
       viewerId
     );
   }
 
-  return buildInteractionsFromRows(postIds, comments, reactions, commentReactions, profiles, viewerId);
+  return buildInteractionsFromRows(postIds, comments, reactions, commentReactions, maskedProfiles, viewerId);
 }
 
 export async function loadRelationalInteraction(

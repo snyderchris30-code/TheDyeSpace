@@ -143,12 +143,18 @@ export default function MainNavbar() {
     setUsersLoading(true);
     try {
       const supabase = createClient();
-      const { data, error } = await supabase
+      let query = supabase
         .from("profiles")
         .select("id,username,display_name,verified_badge,member_number")
         .not("username", "is", null)
         .order("display_name", { ascending: true })
         .limit(300);
+
+      if (!isAdmin) {
+        query = query.eq("ghost_ridin", false);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         setUsersList([]);
@@ -159,7 +165,7 @@ export default function MainNavbar() {
     } finally {
       setUsersLoading(false);
     }
-  }, []);
+  }, [isAdmin]);
 
   const loadUserCount = useCallback(async () => {
     const supabase = createClient();

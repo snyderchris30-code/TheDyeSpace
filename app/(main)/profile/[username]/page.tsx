@@ -1334,12 +1334,18 @@ export default function ProfileEditor() {
         return [];
       }
 
-      const { data, error } = await supabase
+      let mentionQuery = supabase
         .from("profiles")
         .select("username")
         .ilike("username", `${query}%`)
         .order("username", { ascending: true })
         .limit(6);
+
+      if (!isAdmin) {
+        mentionQuery = mentionQuery.eq("ghost_ridin", false);
+      }
+
+      const { data, error } = await mentionQuery;
 
       if (error) {
         console.error("Failed to load username suggestions:", error);
@@ -1350,7 +1356,7 @@ export default function ProfileEditor() {
         .map((item: any) => (typeof item?.username === "string" ? item.username : ""))
         .filter((name: string) => name.length > 0);
     },
-    [supabase]
+    [isAdmin, supabase]
   );
 
   const handleCommentInputChange = useCallback(
@@ -2442,6 +2448,11 @@ export default function ProfileEditor() {
                   Welcome! its time to make your profile your own space.
                 </div>
               ) : null}
+
+              <div className="mb-5 rounded-2xl border border-cyan-300/20 bg-black/30 px-4 py-3 text-sm text-cyan-100/90">
+                <p>To hide your profile from other users, go to Profile Settings and enable "Ghost Ridin".</p>
+                <p className="mt-2">To permanently delete your account, go to Profile Settings.</p>
+              </div>
 
 
 

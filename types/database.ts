@@ -39,6 +39,7 @@ export interface Profile {
   smoke_room_2_invited?: boolean | null;
   psychonautics_access?: boolean | null;
   admin_room_access?: boolean | null;
+  ghost_ridin?: boolean | null;
   created_at: string;
 }
 

@@ -6,7 +6,7 @@ import CustomEmojiImage from "@/app/CustomEmojiImage";
 import EmojiCategoryEditor from "@/app/EmojiCategoryEditor";
 import { useEffect, useMemo, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2, Lock } from "lucide-react";
+import { Lock, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { sanitizeUsernameInput } from "@/lib/profile-identity";
 import { APP_VERSION } from "@/lib/app-config";
@@ -37,10 +37,15 @@ function SettingsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isRecovery = searchParams.get("recovery") === "1";
+  const DELETE_CONFIRMATION = "DELETE MY ACCOUNT";
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [username, setUsername] = useState<string | null>(null);
+  const [ghostRidin, setGhostRidin] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -55,13 +60,14 @@ function SettingsContent() {
       }
       supabase
         .from("profiles")
-        .select("username, role")
+        .select("username, role, ghost_ridin")
         .eq("id", user.id)
         .maybeSingle()
         .then(async ({ data: profile }) => {
           setUsername(sanitizeUsernameInput(profile?.username ?? ""));
           const adminRole = hasAdminAccess(user.id, profile?.role ?? null);
           setIsAdmin(adminRole);
+          setGhostRidin(profile?.ghost_ridin === true);
 
           if (adminRole) {
             const response = await fetch("/api/emojis", { cache: "no-store" });
@@ -79,6 +85,61 @@ function SettingsContent() {
         });
     });
   }, [supabase, router]);
+
+  async function handleSaveProfileSettings(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setProfileSaving(true);
+    setMessage(null);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/profile/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ghostRidin }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body?.error || "Failed to save profile settings.");
+      }
+      setMessage(
+        ghostRidin
+          ? "Ghost Ridin is active. Your profile is now hidden from regular users."
+          : "Ghost Ridin is off. Your profile is visible again."
+      );
+    } catch (err: any) {
+      setError(typeof err?.message === "string" ? err.message : "Failed to save profile settings.");
+    } finally {
+      setProfileSaving(false);
+    }
+  }
+
+  async function handleDeleteAccount(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setDeleteBusy(true);
+    setMessage(null);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/profile/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmation: deleteConfirmation.trim() }),
+      });
+
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body?.error || "Failed to delete account.");
+      }
+
+      router.push("/signup");
+      router.refresh();
+    } catch (err: any) {
+      setError(typeof err?.message === "string" ? err.message : "Failed to delete account.");
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
 
   async function handleChangePassword(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -141,7 +202,7 @@ function SettingsContent() {
     <div className="mx-auto max-w-lg py-8">
       <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-cyan-100">Account Settings</h1>
+          <h1 className="text-3xl font-bold text-cyan-100">Profile Settings</h1>
           <p className="mt-1 text-sm text-cyan-300">Version {APP_VERSION}</p>
         </div>
         {username && username.length >= 3 && (
@@ -155,6 +216,33 @@ function SettingsContent() {
       </div>
 
       <section className="rounded-2xl border border-cyan-300/20 bg-black/40 p-6 backdrop-blur-sm">
+        <h2 className="text-xl font-semibold text-cyan-100">Profile Visibility</h2>
+        <p className="mt-2 text-sm text-cyan-200/85">
+          Enable <span className="font-semibold text-cyan-100">Ghost Ridin</span> to hide your profile from regular users while keeping your account active.
+        </p>
+
+        <form onSubmit={handleSaveProfileSettings} className="mt-5 flex flex-col gap-4">
+          <label className="flex items-center gap-3 rounded-xl border border-white/15 bg-black/30 px-4 py-3">
+            <input
+              type="checkbox"
+              checked={ghostRidin}
+              onChange={(e) => setGhostRidin(e.target.checked)}
+              className="h-4 w-4 rounded border-white/30 bg-black/40 text-cyan-300 focus:ring-cyan-300"
+            />
+            <span className="text-sm text-cyan-100">Ghost Ridin (hidden profile mode)</span>
+          </label>
+
+          <button
+            type="submit"
+            disabled={profileSaving}
+            className="rounded-full bg-gradient-to-r from-cyan-300 via-teal-300 to-emerald-300 px-6 py-3 text-sm font-semibold text-slate-950 shadow-lg transition hover:scale-[1.02] disabled:opacity-60"
+          >
+            {profileSaving ? "Saving..." : "Save Profile Settings"}
+          </button>
+        </form>
+      </section>
+
+      <section className="mt-6 rounded-2xl border border-cyan-300/20 bg-black/40 p-6 backdrop-blur-sm">
         <div className="mb-5 flex items-center gap-2">
           <Lock className="h-5 w-5 text-cyan-300" />
           <h2 className="text-xl font-semibold text-cyan-100">Change Password</h2>
@@ -207,6 +295,38 @@ function SettingsContent() {
             className="rounded-full bg-gradient-to-r from-cyan-300 via-teal-300 to-emerald-300 px-6 py-3 text-sm font-semibold text-slate-950 shadow-lg transition hover:scale-[1.02] disabled:opacity-60"
           >
             {saving ? "Updating..." : "Update Password"}
+          </button>
+        </form>
+      </section>
+
+      <section className="mt-6 rounded-2xl border border-rose-400/30 bg-rose-950/20 p-6 backdrop-blur-sm">
+        <div className="mb-3 flex items-center gap-2">
+          <Trash2 className="h-5 w-5 text-rose-300" />
+          <h2 className="text-xl font-semibold text-rose-100">Delete Account</h2>
+        </div>
+        <p className="text-sm text-rose-100/85">
+          This permanently deletes your account and cannot be undone.
+        </p>
+
+        <form onSubmit={handleDeleteAccount} className="mt-4 flex flex-col gap-3">
+          <label className="block">
+            <span className="mb-2 block text-sm text-rose-100">
+              Type <span className="font-semibold">{DELETE_CONFIRMATION}</span> to confirm
+            </span>
+            <input
+              value={deleteConfirmation}
+              onChange={(e) => setDeleteConfirmation(e.target.value)}
+              placeholder={DELETE_CONFIRMATION}
+              className="w-full rounded-xl border border-rose-300/30 bg-black/40 px-4 py-3 text-white outline-none focus:border-rose-300/60"
+            />
+          </label>
+
+          <button
+            type="submit"
+            disabled={deleteBusy || deleteConfirmation.trim() !== DELETE_CONFIRMATION}
+            className="rounded-full bg-gradient-to-r from-rose-400 via-red-400 to-orange-300 px-6 py-3 text-sm font-semibold text-slate-950 shadow-lg transition hover:scale-[1.02] disabled:opacity-60"
+          >
+            {deleteBusy ? "Deleting..." : "Delete My Account"}
           </button>
         </form>
       </section>

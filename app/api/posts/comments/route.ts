@@ -149,17 +149,24 @@ async function createMentionNotifications(
   actorId: string,
   actorName: string,
   postId: string,
-  mentionedUsernames: string[]
+  mentionedUsernames: string[],
+  actorIsAdmin = false
 ) {
   const uniqueUsernames = Array.from(new Set(mentionedUsernames.map((username) => username.toLowerCase())));
   if (!uniqueUsernames.length) {
     return;
   }
 
-  const { data: mentionedProfiles, error: mentionProfilesError } = await adminClient
+  let mentionQuery = adminClient
     .from("profiles")
-    .select("id, username")
+    .select("id, username, ghost_ridin")
     .in("username", uniqueUsernames);
+
+  if (!actorIsAdmin) {
+    mentionQuery = mentionQuery.eq("ghost_ridin", false);
+  }
+
+  const { data: mentionedProfiles, error: mentionProfilesError } = await mentionQuery;
 
   if (mentionProfilesError) {
     console.error("[notifications] Failed to resolve mentioned usernames", {
@@ -291,7 +298,7 @@ export async function POST(req: NextRequest) {
 
       await createCommentNotification(adminClient, post.user_id, user.id, actorName, body.postId, insertedComment.id);
       if (mentionedUsernames.length) {
-        await createMentionNotifications(adminClient, user.id, actorName, body.postId, mentionedUsernames);
+        await createMentionNotifications(adminClient, user.id, actorName, body.postId, mentionedUsernames, viewerIsAdmin);
       }
 
       console.info("[comments/create] Comment insert succeeded", {
@@ -381,7 +388,7 @@ export async function POST(req: NextRequest) {
     if (fallbackCommentId) {
       await createCommentNotification(adminClient, post.user_id, user.id, actorName, body.postId, fallbackCommentId, false);
       if (mentionedUsernames.length) {
-        await createMentionNotifications(adminClient, user.id, actorName, body.postId, mentionedUsernames);
+        await createMentionNotifications(adminClient, user.id, actorName, body.postId, mentionedUsernames, viewerIsAdmin);
       }
     }
 
