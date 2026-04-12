@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import FanChatRoomClient from "./FanChatRoomClient";
 import { fetchProfileLookupByUsername } from "@/lib/profile-fetch";
+import { resolveClientAuth } from "@/lib/client-auth";
 
 type FanChatProfile = {
   id: string;
@@ -61,8 +62,8 @@ export default function FanChatPage() {
       }
 
       const supabase = createClient();
-      const { data: sessionData } = await supabase.auth.getSession();
-      const currentUserId = sessionData?.session?.user?.id ?? null;
+      const authState = await resolveClientAuth(supabase);
+      const currentUserId = authState.user?.id ?? null;
 
       if (!active) {
         return;

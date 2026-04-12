@@ -15,8 +15,13 @@ export type ResolvedClientAuth = {
   errorMessage: string | null;
 };
 
+const CLIENT_AUTH_CACHE_TTL_MS = 5_000;
+const CLIENT_PROFILE_CACHE_TTL_MS = 30_000;
+
 const inFlightProfileInitByUserId = new Map<string, Promise<unknown>>();
-const cachedProfilePromiseByKey = new Map<string, Promise<unknown>>();
+const cachedProfilePromiseByKey = new Map<string, { expiresAt: number; promise: Promise<unknown> }>();
+let cachedResolvedClientAuth: { expiresAt: number; value: ResolvedClientAuth } | null = null;
+let inFlightResolvedClientAuth: Promise<ResolvedClientAuth> | null = null;
 
 function formatClientAuthError(error: unknown) {
   if (error instanceof Error) {
@@ -36,17 +41,34 @@ export async function resolveClientAuth(supabase: {
     getUser: () => Promise<any>;
   };
 }): Promise<ResolvedClientAuth> {
+  const now = Date.now();
+  if (cachedResolvedClientAuth && cachedResolvedClientAuth.expiresAt > now) {
+    return cachedResolvedClientAuth.value;
+  }
+
+  if (inFlightResolvedClientAuth) {
+    return inFlightResolvedClientAuth;
+  }
+
+  const authPromise = (async (): Promise<ResolvedClientAuth> => {
   let lastError: unknown = null;
 
   try {
     const { data, error } = await supabase.auth.getSession();
     if (!error && data?.session?.user) {
-      return {
+      const resolvedAuth: ResolvedClientAuth = {
         user: data.session.user as ClientAuthUser,
         session: data.session as ClientSessionLike,
         source: "session",
         errorMessage: null,
       };
+
+      cachedResolvedClientAuth = {
+        expiresAt: Date.now() + CLIENT_AUTH_CACHE_TTL_MS,
+        value: resolvedAuth,
+      };
+
+      return resolvedAuth;
     }
 
     if (error) {
@@ -59,12 +81,19 @@ export async function resolveClientAuth(supabase: {
   try {
     const { data, error } = await supabase.auth.getUser();
     if (!error && data?.user) {
-      return {
+      const resolvedAuth: ResolvedClientAuth = {
         user: data.user as ClientAuthUser,
         session: { user: data.user as ClientAuthUser },
         source: "user",
         errorMessage: formatClientAuthError(lastError),
       };
+
+      cachedResolvedClientAuth = {
+        expiresAt: Date.now() + CLIENT_AUTH_CACHE_TTL_MS,
+        value: resolvedAuth,
+      };
+
+      return resolvedAuth;
     }
 
     if (error) {
@@ -74,12 +103,29 @@ export async function resolveClientAuth(supabase: {
     lastError = error;
   }
 
-  return {
+  const resolvedAuth: ResolvedClientAuth = {
     user: null,
     session: null,
     source: "none",
     errorMessage: formatClientAuthError(lastError),
   };
+
+  cachedResolvedClientAuth = {
+    expiresAt: Date.now() + CLIENT_AUTH_CACHE_TTL_MS,
+    value: resolvedAuth,
+  };
+
+  return resolvedAuth;
+  })();
+
+  inFlightResolvedClientAuth = authPromise;
+  try {
+    return await authPromise;
+  } finally {
+    if (inFlightResolvedClientAuth === authPromise) {
+      inFlightResolvedClientAuth = null;
+    }
+  }
 }
 
 export async function fetchClientProfile<T>(
@@ -89,9 +135,13 @@ export async function fetchClientProfile<T>(
   options: { ensureProfile?: boolean } = {}
 ): Promise<T | null> {
   const cacheKey = `${userId}|${columns}|${options.ensureProfile ? "ensure" : "optional"}`;
-  const cachedPromise = cachedProfilePromiseByKey.get(cacheKey) as Promise<T | null> | undefined;
-  if (cachedPromise) {
-    return cachedPromise;
+  const cachedEntry = cachedProfilePromiseByKey.get(cacheKey);
+  if (cachedEntry && cachedEntry.expiresAt > Date.now()) {
+    return cachedEntry.promise as Promise<T | null>;
+  }
+
+  if (cachedEntry) {
+    cachedProfilePromiseByKey.delete(cacheKey);
   }
 
   const profilePromise = (async () => {
@@ -181,7 +231,10 @@ export async function fetchClientProfile<T>(
     return profile;
   })();
 
-  cachedProfilePromiseByKey.set(cacheKey, profilePromise as Promise<unknown>);
+  cachedProfilePromiseByKey.set(cacheKey, {
+    expiresAt: Date.now() + CLIENT_PROFILE_CACHE_TTL_MS,
+    promise: profilePromise as Promise<unknown>,
+  });
   profilePromise.catch(() => cachedProfilePromiseByKey.delete(cacheKey));
   return profilePromise;
 

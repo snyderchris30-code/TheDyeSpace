@@ -84,6 +84,7 @@ export interface Notification {
   id: string;
   user_id: string;
   actor_name: string;
+  actor_avatar_url: string | null;
   type: string;
   post_id: string | null;
   read: boolean;
