@@ -1601,8 +1601,8 @@ export default function ProfileEditor() {
           <div className="pointer-events-none fixed inset-0 -z-20 overflow-hidden" aria-hidden="true">
             <Image
               src={verifiedSellerBackgroundUrl}
-              alt=""
-              className="object-cover opacity-20"
+              alt="Verified Seller Background"
+              className="object-center object-contain opacity-40 drop-shadow-lg"
               fill
               priority
               sizes="100vw"
@@ -1610,7 +1610,7 @@ export default function ProfileEditor() {
             />
           </div>
           <div
-            className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(68,249,207,0.10),transparent_28%),linear-gradient(180deg,rgba(3,8,18,0.12),rgba(3,8,18,0.78))]"
+            className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(68,249,207,0.07),transparent_32%),linear-gradient(180deg,rgba(3,8,18,0.08),rgba(3,8,18,0.65))]"
             aria-hidden="true"
           />
         </>
