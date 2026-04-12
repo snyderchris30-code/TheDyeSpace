@@ -11,6 +11,8 @@ export type AdminProfileStatus = {
   shadow_banned?: boolean | null;
   shadow_banned_until?: string | null;
   smoke_room_2_invited?: boolean | null;
+  psychonautics_access?: boolean | null;
+  admin_room_access?: boolean | null;
 };
 
 export function createAdminClient() {
@@ -48,7 +50,7 @@ export async function userIsAdmin(adminClient: ReturnType<typeof createAdminClie
 export async function loadProfileStatus(adminClient: ReturnType<typeof createAdminClient>, userId: string) {
   const { data, error } = await adminClient
     .from("profiles")
-    .select("id,role,muted_until,voided_until,verified_badge,member_number,shadow_banned,shadow_banned_until,smoke_room_2_invited")
+    .select("id,role,muted_until,voided_until,verified_badge,member_number,shadow_banned,shadow_banned_until,smoke_room_2_invited,psychonautics_access,admin_room_access")
     .eq("id", userId)
     .limit(1)
     .maybeSingle<AdminProfileStatus>();

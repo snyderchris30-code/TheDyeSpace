@@ -36,7 +36,21 @@ export interface Profile {
   theme_settings: ProfileThemeSettings | null;
   verified_badge?: boolean | null;
   member_number?: number | null;
+  smoke_room_2_invited?: boolean | null;
+  psychonautics_access?: boolean | null;
+  admin_room_access?: boolean | null;
   created_at: string;
+}
+
+export interface RoomPost {
+  id: string;
+  room: "psychonautics" | "admin_room";
+  user_id: string;
+  content: string | null;
+  image_bucket: string | null;
+  image_path: string | null;
+  created_at: string;
+  expires_at: string;
 }
 
 export interface Post {
@@ -110,6 +124,7 @@ export interface Database {
       user_follows: UserFollow;
       reports: Report;
       suggestions: Suggestion;
+      room_posts: RoomPost;
     };
   };
 }

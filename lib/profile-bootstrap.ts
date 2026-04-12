@@ -27,7 +27,7 @@ export const PROFILE_LOOKUP_SELECT = [
   "shadow_banned_until",
 ].join(", ");
 
-const PROFILE_INIT_SELECT = `${PROFILE_LOOKUP_SELECT}, smoke_room_2_invited`;
+const PROFILE_INIT_SELECT = `${PROFILE_LOOKUP_SELECT}, smoke_room_2_invited, psychonautics_access, admin_room_access`;
 const PROFILE_BASE_SELECT = [
   "id",
   "username",
@@ -290,7 +290,7 @@ export async function ensureProfileForUser(
   const { data: existingProfile, error: existingProfileError } = await adminClient
     .from("profiles")
     .select(
-      "id, username, display_name, bio, avatar_url, banner_url, role, muted_until, voided_until, verified_badge, member_number, shadow_banned, shadow_banned_until, smoke_room_2_invited, theme_settings"
+      "id, username, display_name, bio, avatar_url, banner_url, role, muted_until, voided_until, verified_badge, member_number, shadow_banned, shadow_banned_until, smoke_room_2_invited, psychonautics_access, admin_room_access, theme_settings"
     )
     .eq("id", user.id)
     .limit(1)
@@ -324,6 +324,8 @@ export async function ensureProfileForUser(
         shadow_banned_until: safeExistingProfile?.shadow_banned_until ?? null,
         smoke_room_2_invited:
           safeExistingProfile?.verified_badge === true ? true : safeExistingProfile?.smoke_room_2_invited ?? false,
+        psychonautics_access: safeExistingProfile?.psychonautics_access ?? false,
+        admin_room_access: safeExistingProfile?.admin_room_access ?? false,
         theme_settings: {
           ...existingThemeSettings,
           background_color: existingThemeSettings.background_color ?? DEFAULT_BACKGROUND_COLOR,

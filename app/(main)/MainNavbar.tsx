@@ -9,6 +9,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AdminActionMenu from "@/app/AdminActionMenu";
 import UserIdentity from "@/app/UserIdentity";
 import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
+import { PRIVATE_ROOM_PROFILE_SELECT, canAccessPrivateRoom, type PrivateRoomAccessProfile } from "@/lib/private-rooms";
 import { createClient } from "@/lib/supabase/client";
 import { hasAdminAccess, runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 
@@ -61,6 +62,7 @@ export default function MainNavbar() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersList, setUsersList] = useState<DirectoryProfile[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [privateRoomAccess, setPrivateRoomAccess] = useState({ psychonautics: false, adminRoom: false });
   const [smokeInviteStatus, setSmokeInviteStatus] = useState<string | null>(null);
   const [copiedShareUrl, setCopiedShareUrl] = useState<string | null>(null);
 
@@ -73,22 +75,28 @@ export default function MainNavbar() {
       if (!user) {
         setProfileHref("/login");
         setIsAdmin(false);
+        setPrivateRoomAccess({ psychonautics: false, adminRoom: false });
         return;
       }
 
       setProfileHref("/profile");
 
       try {
-        const profileData = await fetchClientProfile<{ role?: string | null }>(supabase, user.id, "id, role", {
+        const profileData = await fetchClientProfile<PrivateRoomAccessProfile>(supabase, user.id, PRIVATE_ROOM_PROFILE_SELECT, {
           ensureProfile: true,
         });
         if (active) {
           setIsAdmin(hasAdminAccess(user.id, profileData?.role ?? null));
+          setPrivateRoomAccess({
+            psychonautics: canAccessPrivateRoom(profileData, "psychonautics"),
+            adminRoom: canAccessPrivateRoom(profileData, "admin_room"),
+          });
         }
       } catch {
         // Keep fallback route when profile lookup fails.
         if (active) {
           setIsAdmin(hasAdminAccess(user.id, null));
+          setPrivateRoomAccess({ psychonautics: false, adminRoom: false });
         }
       }
     };
@@ -107,6 +115,7 @@ export default function MainNavbar() {
         setSession(null);
         setProfileHref("/login");
         setIsAdmin(false);
+        setPrivateRoomAccess({ psychonautics: false, adminRoom: false });
         return;
       }
 
@@ -707,11 +716,14 @@ export default function MainNavbar() {
                   <Link href="/privacy" prefetch={false} className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Privacy Policy</Link>
                   <Link href="/guidelines" prefetch={false} className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Community Guidelines</Link>
                   <Link href="/suggestions" prefetch={false} className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Suggestions & Support</Link>
+                  {privateRoomAccess.psychonautics ? <Link href="/psychonautics" prefetch={false} className="block px-4 py-2 text-emerald-200 hover:bg-cyan-900/40 rounded">Psychonautics Society</Link> : null}
+                  {privateRoomAccess.adminRoom ? <Link href="/admin-room" prefetch={false} className="block px-4 py-2 text-amber-200 hover:bg-cyan-900/40 rounded">ADMINS ROOM</Link> : null}
                   {isAdmin ? (
                     <>
                       <div className="mx-2 my-2 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-500/5 px-3 py-3">
                         <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-fuchsia-200/80">Admin Tools</p>
                         <p className="mt-1 text-xs text-fuchsia-100/70">Mute, shadow ban, verified badge, and delete actions are available on profiles, posts, and the user directory.</p>
+                        <p className="mt-1 text-xs text-fuchsia-100/70">Psychonautics Society and ADMINS ROOM invites are available in those same admin menus.</p>
                         <button
                           type="button"
                           className="mt-3 flex w-full items-center gap-2 rounded-xl border border-fuchsia-300/25 px-3 py-2 text-left text-sm text-fuchsia-100 transition hover:bg-fuchsia-500/10"

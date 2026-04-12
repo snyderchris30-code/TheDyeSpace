@@ -30,8 +30,9 @@ import {
   type MusicQueueEntry,
 } from "@/lib/youtube-media";
 import { DEFAULT_PUBLIC_MUSIC_TITLE, DEFAULT_PUBLIC_MUSIC_URL } from "@/lib/app-config";
-import { useRouter } from "next/navigation";
 import { useMusicPlayerContext } from "@/app/MusicPlayerContext";
+
+const MUSIC_PLAYER_POSITION_KEY = "dyespace.music_player_position";
 
 type SpotifyQueueEntry = {
   rawUrl: string;
@@ -83,12 +84,14 @@ function ensureYouTubeApi(onReady: () => void) {
 }
 
 export default function GlobalMusicPlayer() {
-  const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const playerMountRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<any>(null);
   const readyRef = useRef(false);
   const loadedEntryKeyRef = useRef<string | null>(null);
+  const pendingPlayIntentRef = useRef(false);
+  const restoredPositionRef = useRef<{ key: string; time: number } | null>(null);
+  const lastPersistedSecondRef = useRef<number>(-1);
   const currentEntryRef = useRef<PlayerQueueEntry | null>(null);
   const queueLengthRef = useRef(0);
   const lastSessionUserIdRef = useRef<string | null>(null);
@@ -116,6 +119,23 @@ export default function GlobalMusicPlayer() {
   const [status, setStatus] = useState<string | null>(null);
   const [currentTitle, setCurrentTitle] = useState(DEFAULT_PUBLIC_MUSIC_TITLE);
   const [titleCache, setTitleCache] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(MUSIC_PLAYER_POSITION_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { key?: unknown; time?: unknown };
+      if (typeof parsed?.key !== "string") return;
+      const parsedTime = typeof parsed?.time === "number" ? parsed.time : Number(parsed?.time);
+      if (!Number.isFinite(parsedTime) || parsedTime < 0) return;
+      restoredPositionRef.current = {
+        key: parsed.key,
+        time: parsedTime,
+      };
+    } catch {
+      // Ignore malformed persisted playback snapshots.
+    }
+  }, []);
 
   const defaultPublicUrls = useMemo(() => normalizeMusicPlayerUrls([DEFAULT_PUBLIC_MUSIC_URL]), []);
   const defaultPublicUrl = defaultPublicUrls[0] || "";
@@ -311,6 +331,10 @@ export default function GlobalMusicPlayer() {
         onReady: () => {
           readyRef.current = true;
           setIsPlayerReady(true);
+          if (pendingPlayIntentRef.current) {
+            pendingPlayIntentRef.current = false;
+            setIsPlaying(true);
+          }
         },
         onStateChange: (event: any) => {
           const state = event?.data;
@@ -356,6 +380,13 @@ export default function GlobalMusicPlayer() {
     }
 
     if (loadedEntryKeyRef.current === currentEntry.key) {
+      if (currentEntry.kind === "video" || currentEntry.kind === "playlist") {
+        if (isPlaying) {
+          playerRef.current.playVideo?.();
+        } else {
+          playerRef.current.pauseVideo?.();
+        }
+      }
       return;
     }
 
@@ -375,6 +406,10 @@ export default function GlobalMusicPlayer() {
         });
       }
       setCurrentTitle(titleCache[currentEntry.key] || currentEntry.titleHint);
+      const restore = restoredPositionRef.current;
+      if (restore?.key === currentEntry.key && restore.time > 0) {
+        playerRef.current.seekTo?.(restore.time, true);
+      }
       return;
     }
 
@@ -385,8 +420,48 @@ export default function GlobalMusicPlayer() {
         playerRef.current.cueVideoById(currentEntry.videoId);
       }
       setCurrentTitle(titleCache[currentEntry.key] || currentEntry.titleHint);
+      const restore = restoredPositionRef.current;
+      if (restore?.key === currentEntry.key && restore.time > 0) {
+        playerRef.current.seekTo?.(restore.time, true);
+      }
     }
   }, [currentEntry, isPlayerReady, isPlaying, queue.length, titleCache]);
+
+  useEffect(() => {
+    if (!isPlayerReady || !playerRef.current || !currentEntry || currentEntry.kind === "spotify") {
+      return;
+    }
+
+    const persistPosition = () => {
+      try {
+        const currentTime = Number(playerRef.current?.getCurrentTime?.() ?? 0);
+        if (!Number.isFinite(currentTime) || currentTime < 0) {
+          return;
+        }
+
+        const second = Math.floor(currentTime);
+        if (second === lastPersistedSecondRef.current) {
+          return;
+        }
+        lastPersistedSecondRef.current = second;
+
+        window.localStorage.setItem(
+          MUSIC_PLAYER_POSITION_KEY,
+          JSON.stringify({
+            key: currentEntry.key,
+            time: currentTime,
+          })
+        );
+      } catch {
+        // Ignore storage failures.
+      }
+    };
+
+    const timer = window.setInterval(persistPosition, 1000);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [currentEntry, isPlayerReady]);
 
   useEffect(() => {
     const uncached = queue.filter((entry) => entry.kind === "video" && entry.videoId && !titleCache[entry.key]).slice(0, 8);
@@ -430,14 +505,23 @@ export default function GlobalMusicPlayer() {
       return;
     }
 
+    if (currentEntry.kind === "spotify") {
+      setStatus("Spotify items open in Spotify. Add YouTube links for in-player playback.");
+      return;
+    }
+
     if (!isApiReady) {
       setStatus("Preparing the YouTube player...");
+      pendingPlayIntentRef.current = true;
+      setIsPlaying(true);
       ensureYouTubeApiReady();
       return;
     }
 
     if (!playerRef.current) {
       setStatus("Preparing the YouTube player...");
+      pendingPlayIntentRef.current = true;
+      setIsPlaying(true);
       ensureYouTubeApiReady();
       return;
     }
@@ -648,7 +732,7 @@ export default function GlobalMusicPlayer() {
                       type="button"
                       className="flex h-12 w-12 items-center justify-center rounded-full border border-cyan-300/45 bg-cyan-300/15 text-cyan-50 hover:bg-cyan-300/25 disabled:opacity-40"
                       onClick={handleTogglePlayback}
-                      disabled={!currentEntry || !isPlayerReady}
+                      disabled={!currentEntry}
                       aria-label={isPlaying ? "Pause" : "Play"}
                     >
                       {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="ml-0.5 h-5 w-5" />}
@@ -795,6 +879,7 @@ export default function GlobalMusicPlayer() {
                             setCurrentIndex(index);
                             setIsPlaying(false);
                             loadedEntryKeyRef.current = null;
+                            lastPersistedSecondRef.current = -1;
                             setCurrentTitle(label);
                           }}
                         >
@@ -836,6 +921,7 @@ export default function GlobalMusicPlayer() {
                             const label = titleCache[entry.key] || entry.titleHint;
                             const videoId = extractYoutubeVideoId(url);
                             const isDefault = url === defaultPublicUrl;
+                            const mediaType = entry.kind === "spotify" ? "Spotify playlist" : videoId ? "YouTube video" : "YouTube playlist";
                             return (
                               <div key={entry.key} className="flex items-center justify-between gap-3 rounded-2xl border border-cyan-300/12 bg-slate-950/55 px-3 py-2">
                                 <button
@@ -845,12 +931,13 @@ export default function GlobalMusicPlayer() {
                                     setCurrentIndex(index);
                                     setIsPlaying(false);
                                     loadedEntryKeyRef.current = null;
+                                    lastPersistedSecondRef.current = -1;
                                     setCurrentTitle(label);
                                   }}
                                 >
                                   <p className="truncate text-sm font-medium text-cyan-50">{isDefault ? `${label} (Public)` : label}</p>
                                   <p className="truncate text-[11px] text-cyan-100/55">
-                                    {videoId ? "YouTube video" : "YouTube playlist"}
+                                    {mediaType}
                                   </p>
                                 </button>
                                 {isDefault ? (

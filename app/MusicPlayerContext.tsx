@@ -16,6 +16,7 @@ type MusicPlayerContextValue = {
 const MUSIC_PLAYER_MINIMIZED_KEY = "dyespace.music_player_minimized";
 const MUSIC_PLAYER_VISIBLE_KEY = "dyespace.music_player_visible";
 const MUSIC_PLAYER_INDEX_KEY = "dyespace.music_player_index";
+const MUSIC_PLAYER_PLAYING_KEY = "dyespace.music_player_playing";
 
 const MusicPlayerContext = createContext<MusicPlayerContextValue | null>(null);
 
@@ -30,6 +31,7 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
       const minimizedValue = window.localStorage.getItem(MUSIC_PLAYER_MINIMIZED_KEY);
       const visibleValue = window.localStorage.getItem(MUSIC_PLAYER_VISIBLE_KEY);
       const indexValue = window.localStorage.getItem(MUSIC_PLAYER_INDEX_KEY);
+      const playingValue = window.localStorage.getItem(MUSIC_PLAYER_PLAYING_KEY);
 
       if (minimizedValue === "true") {
         setIsMinimized(true);
@@ -42,6 +44,9 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
         if (Number.isFinite(parsed) && parsed >= 0) {
           setCurrentIndex(parsed);
         }
+      }
+      if (playingValue === "true") {
+        setIsPlaying(true);
       }
     } catch {
       // Ignore localStorage failures on hydration.
@@ -74,6 +79,15 @@ export function MusicPlayerProvider({ children }: { children: React.ReactNode })
       // Ignore localStorage failures.
     }
   }, [currentIndex]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(MUSIC_PLAYER_PLAYING_KEY, isPlaying ? "true" : "false");
+    } catch {
+      // Ignore localStorage failures.
+    }
+  }, [isPlaying]);
 
   const value = useMemo(
     () => ({

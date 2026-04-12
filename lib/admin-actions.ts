@@ -7,7 +7,11 @@ export type AdminActionName =
   | "give_verified_badge"
   | "remove_verified_badge"
   | "invite_smoke_room_2"
-  | "revoke_smoke_room_2";
+  | "revoke_smoke_room_2"
+  | "invite_psychonautics"
+  | "revoke_psychonautics"
+  | "invite_admin_room"
+  | "revoke_admin_room";
 
 export type AdminActionRequest = {
   targetUserId: string;
@@ -43,6 +47,10 @@ export const ADMIN_ACTION_MENU_ITEMS: AdminActionMenuItem[] = [
   { label: "Remove Verified Badge", action: "remove_verified_badge", tone: "slate" },
   { label: "Invite to The Smoke Room 2.0", action: "invite_smoke_room_2", tone: "emerald" },
   { label: "Revoke 2.0 Invite", action: "revoke_smoke_room_2", tone: "slate" },
+  { label: "Invite to Psychonautics Society", action: "invite_psychonautics", tone: "emerald" },
+  { label: "Revoke Psychonautics Access", action: "revoke_psychonautics", tone: "slate" },
+  { label: "Invite to ADMINS ROOM", action: "invite_admin_room", tone: "amber" },
+  { label: "Revoke ADMINS ROOM Access", action: "revoke_admin_room", tone: "slate" },
 ];
 
 export async function runAdminUserAction(payload: AdminActionRequest) {

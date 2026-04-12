@@ -9,7 +9,7 @@ type AdminActionBody = {
   durationHours?: number;
 };
 
-const VALID_ACTIONS: AdminActionName[] = ["mute", "cosmic_timeout", "send_to_void", "shadow_ban", "clear_shadow_ban", "give_verified_badge", "remove_verified_badge", "invite_smoke_room_2", "revoke_smoke_room_2"];
+const VALID_ACTIONS: AdminActionName[] = ["mute", "cosmic_timeout", "send_to_void", "shadow_ban", "clear_shadow_ban", "give_verified_badge", "remove_verified_badge", "invite_smoke_room_2", "revoke_smoke_room_2", "invite_psychonautics", "revoke_psychonautics", "invite_admin_room", "revoke_admin_room"];
 const MUTE_DURATIONS = [4, 8, 12];
 const SHADOW_BAN_DURATIONS = [4, 8, 12, 24];
 const VOID_DURATION_HOURS = 24;
@@ -118,6 +118,26 @@ export async function POST(req: NextRequest) {
     if (action === "revoke_smoke_room_2") {
       updates = { smoke_room_2_invited: false };
       message = "User removed from The Smoke Room 2.0 invite list.";
+    }
+
+    if (action === "invite_psychonautics") {
+      updates = { psychonautics_access: true };
+      message = "User invited to Psychonautics Society.";
+    }
+
+    if (action === "revoke_psychonautics") {
+      updates = { psychonautics_access: false };
+      message = "User removed from Psychonautics Society.";
+    }
+
+    if (action === "invite_admin_room") {
+      updates = { admin_room_access: true };
+      message = "User invited to ADMINS ROOM.";
+    }
+
+    if (action === "revoke_admin_room") {
+      updates = { admin_room_access: false };
+      message = "User removed from ADMINS ROOM.";
     }
 
     const { error: updateError } = await adminClient.from("profiles").update(updates).eq("id", targetUserId);

@@ -9,6 +9,7 @@ export type MusicQueueEntry = {
 
 const YOUTUBE_VIDEO_URL_REGEX = /(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
 const YOUTUBE_PLAYLIST_URL_REGEX = /[?&]list=([a-zA-Z0-9_-]+)/;
+const SPOTIFY_PLAYLIST_URL_REGEX = /https?:\/\/(?:open\.)?spotify\.com\/playlist\/([a-zA-Z0-9]+)(\?.*)?$/i;
 
 export function extractYoutubeVideoId(url: string) {
   const match = url.match(YOUTUBE_VIDEO_URL_REGEX);
@@ -55,6 +56,15 @@ export function normalizeMusicPlayerUrls(input: unknown): string[] {
     const playlistId = extractYoutubePlaylistId(trimmed);
     if (playlistId) {
       uniqueUrls.add(`https://www.youtube.com/playlist?list=${playlistId}`);
+      if (uniqueUrls.size >= 25) {
+        break;
+      }
+      continue;
+    }
+
+    const spotifyMatch = trimmed.match(SPOTIFY_PLAYLIST_URL_REGEX);
+    if (spotifyMatch) {
+      uniqueUrls.add(`https://open.spotify.com/playlist/${spotifyMatch[1]}`);
       if (uniqueUrls.size >= 25) {
         break;
       }
