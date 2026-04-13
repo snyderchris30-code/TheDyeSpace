@@ -250,6 +250,9 @@ export default function MainNavbar() {
   const notifDrop = openDropdown === "notifications";
   const shareOpen = openDropdown === "share";
   const settingsOpen = openDropdown === "settings";
+  const closeDropdowns = useCallback(() => {
+    setOpenDropdown(null);
+  }, []);
 
   useEffect(() => {
     seenNotificationIdsRef.current.clear();
@@ -635,7 +638,7 @@ export default function MainNavbar() {
                 </span>
               </button>
               {notifDrop && (
-                <div data-dropdown-box="true" className={`fixed left-1/2 top-[5.5rem] z-50 -translate-x-1/2 w-[min(26rem,calc(100vw-2rem))] rounded-3xl border border-[#00f5ff]/70 bg-black/95 p-4 shadow-2xl animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
+                <div data-dropdown-box="true" className={`fixed left-1/2 top-[5.5rem] z-50 -translate-x-1/2 w-[min(26rem,calc(100vw-2rem))] rounded-3xl border border-[#00f5ff]/70 bg-black/85 p-4 shadow-2xl backdrop-blur-sm animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
                   <div className="mb-3 flex items-center justify-between">
                     <span className="font-semibold text-cyan-200">Notifications</span>
                     <button onClick={markAllRead} className="text-xs text-green-200 hover:text-white">Mark all read</button>
@@ -645,7 +648,7 @@ export default function MainNavbar() {
                       <p className="text-sm text-slate-300">No new notifications yet.</p>
                     ) : (
                       notifications.map((note) => (
-                        <button key={note.id} className={`w-full text-left p-2 rounded-lg transition ${note.read ? "bg-slate-900/40 text-slate-200" : "bg-[#00323c]/90 text-white"}`} onClick={() => setOpenDropdown(null)}>
+                        <button key={note.id} className={`w-full text-left p-2 rounded-lg transition ${note.read ? "bg-slate-900/40 text-slate-200" : "bg-[#00323c]/90 text-white"}`} onClick={closeDropdowns}>
                           <div className="flex items-center justify-between text-xs text-slate-300">
                             <span>{note.type.toUpperCase()}</span>
                             <span>{new Date(note.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
@@ -674,7 +677,7 @@ export default function MainNavbar() {
                 </span>
               </button>
               {shareOpen ? (
-                <div data-dropdown-box="true" className={`fixed left-1/2 top-[5.5rem] z-50 -translate-x-1/2 w-[min(26rem,calc(100vw-2rem))] rounded-3xl border border-[#00f5ff]/70 bg-black/95 p-3 shadow-2xl animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
+                <div data-dropdown-box="true" className={`fixed left-1/2 top-[5.5rem] z-50 -translate-x-1/2 w-[min(26rem,calc(100vw-2rem))] rounded-3xl border border-[#00f5ff]/70 bg-black/85 p-3 shadow-2xl backdrop-blur-sm animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
                   <p className="mb-3 text-sm text-cyan-100">Share TheDyeSpace with your friends!</p>
                   <div className="space-y-2">
                     {shareLinks.map((shareLink) => (
@@ -710,20 +713,20 @@ export default function MainNavbar() {
                 </span>
               </button>
               {settingsOpen && (
-                <div data-dropdown-box="true" className={`fixed left-1/2 top-[5.5rem] z-50 -translate-x-1/2 w-[min(26rem,calc(100vw-2rem))] rounded-3xl border border-[#00f5ff]/70 bg-black/95 p-2 shadow-2xl animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
+                <div data-dropdown-box="true" className={`fixed left-1/2 top-[5.5rem] z-50 -translate-x-1/2 w-[min(26rem,calc(100vw-2rem))] rounded-3xl border border-[#00f5ff]/70 bg-black/85 p-2 shadow-2xl backdrop-blur-sm animate-fade-in ${NAV_DROPDOWN_LAYER_CLASS}`}>
                   <div className="flex justify-end mb-1">
-                    <button data-dropdown-trigger="true" aria-label="Close" title="Close" className="text-[#00f5ff] hover:text-white p-1" onClick={() => setOpenDropdown(null)}>
+                    <button data-dropdown-trigger="true" aria-label="Close" title="Close" className="text-[#00f5ff] hover:text-white p-1" onClick={closeDropdowns}>
                       <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M6 6l8 8M6 14L14 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                     </button>
                   </div>
-                  <Link href="/settings" prefetch={false} className="flex items-center gap-2 px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded"><Settings size={16} /> Settings</Link>
-                  <Link href="/settings" prefetch={false} className="flex items-center gap-2 px-4 py-2 text-red-400 hover:bg-cyan-900/40 rounded"><Trash2 size={16} /> Manage Account</Link>
-                  <Link href="/terms" prefetch={false} className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Terms of Service</Link>
-                  <Link href="/privacy" prefetch={false} className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Privacy Policy</Link>
-                  <Link href="/guidelines" prefetch={false} className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Community Guidelines</Link>
-                  <Link href="/suggestions" prefetch={false} className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Suggestions & Support</Link>
-                  {privateRoomAccess.psychonautics ? <Link href="/psychonautics" prefetch={false} className="block px-4 py-2 text-emerald-200 hover:bg-cyan-900/40 rounded">Psychonautics Society</Link> : null}
-                  {privateRoomAccess.adminRoom ? <Link href="/admin-room" prefetch={false} className="block px-4 py-2 text-amber-200 hover:bg-cyan-900/40 rounded">ADMINS ROOM</Link> : null}
+                  <Link href="/settings" prefetch={false} onClick={closeDropdowns} className="flex items-center gap-2 px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded"><Settings size={16} /> Settings</Link>
+                  <Link href="/settings" prefetch={false} onClick={closeDropdowns} className="flex items-center gap-2 px-4 py-2 text-red-400 hover:bg-cyan-900/40 rounded"><Trash2 size={16} /> Manage Account</Link>
+                  <Link href="/terms" prefetch={false} onClick={closeDropdowns} className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Terms of Service</Link>
+                  <Link href="/privacy" prefetch={false} onClick={closeDropdowns} className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Privacy Policy</Link>
+                  <Link href="/guidelines" prefetch={false} onClick={closeDropdowns} className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Community Guidelines</Link>
+                  <Link href="/suggestions" prefetch={false} onClick={closeDropdowns} className="block px-4 py-2 text-cyan-200 hover:bg-cyan-900/40 rounded">Suggestions & Support</Link>
+                  {privateRoomAccess.psychonautics ? <Link href="/psychonautics" prefetch={false} onClick={closeDropdowns} className="block px-4 py-2 text-emerald-200 hover:bg-cyan-900/40 rounded">Psychonautics Society</Link> : null}
+                  {privateRoomAccess.adminRoom ? <Link href="/admin-room" prefetch={false} onClick={closeDropdowns} className="block px-4 py-2 text-amber-200 hover:bg-cyan-900/40 rounded">ADMINS ROOM</Link> : null}
                   {isAdmin ? (
                     <>
                       <div className="mx-2 my-2 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-500/5 px-3 py-3">
@@ -743,16 +746,16 @@ export default function MainNavbar() {
                           Open User Directory Tools
                         </button>
                       </div>
-                      <Link href="/admin/reports" prefetch={false} className="block px-4 py-2 text-cyan-100 hover:bg-cyan-900/40 rounded">Moderation Queue</Link>
-                      <Link href="/deleted-items" prefetch={false} className="block px-4 py-2 text-amber-200 hover:bg-cyan-900/40 rounded">Deleted Items</Link>
+                      <Link href="/admin/reports" prefetch={false} onClick={closeDropdowns} className="block px-4 py-2 text-cyan-100 hover:bg-cyan-900/40 rounded">Moderation Queue</Link>
+                      <Link href="/deleted-items" prefetch={false} onClick={closeDropdowns} className="block px-4 py-2 text-amber-200 hover:bg-cyan-900/40 rounded">Deleted Items</Link>
                     </>
                   ) : null}
                   {isLoggedIn ? (
-                    <button onClick={handleSignOut} className="w-full text-left px-4 py-2 text-pink-300 hover:bg-cyan-900/40 rounded flex items-center gap-2">
+                    <button onClick={() => { closeDropdowns(); void handleSignOut(); }} className="w-full text-left px-4 py-2 text-pink-300 hover:bg-cyan-900/40 rounded flex items-center gap-2">
                       <LogOut size={18} /> Logout
                     </button>
                   ) : (
-                    <Link href="/login" prefetch={false} className="w-full block px-4 py-2 text-green-300 hover:bg-cyan-900/40 rounded flex items-center gap-2">
+                    <Link href="/login" prefetch={false} onClick={closeDropdowns} className="w-full block px-4 py-2 text-green-300 hover:bg-cyan-900/40 rounded flex items-center gap-2">
                       <User size={18} /> Sign In
                     </Link>
                   )}

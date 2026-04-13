@@ -7,6 +7,7 @@ import { Store } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { resolveClientAuth } from "@/lib/client-auth";
 import { dedupeFetchJson } from "@/lib/dedupe-fetch";
+import { invalidateProfileLookupByUsername } from "@/lib/profile-fetch";
 import { normalizeSellerProducts } from "@/lib/verified-seller";
 import { sanitizeUsernameInput } from "@/lib/profile-identity";
 import type { SellerProduct } from "@/types/database";
@@ -277,6 +278,22 @@ export default function ShopManagePage() {
       if (!response.ok) {
         throw new Error(body?.error || "Failed to save your shop.");
       }
+
+      const savedProducts = normalizeSellerProducts(shopProducts);
+      setShopProducts(savedProducts);
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              theme_settings: {
+                ...(prev.theme_settings ?? {}),
+                shop_products: savedProducts,
+              },
+            }
+          : prev
+      );
+      invalidateProfileLookupByUsername(username);
+      invalidateProfileLookupByUsername(profile.username);
 
       setStatus({ type: "success", text: "Shop saved successfully." });
     } catch (error: any) {

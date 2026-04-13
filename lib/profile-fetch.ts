@@ -15,6 +15,16 @@ type CachedProfileLookupResponse = {
 const profileLookupCache = new Map<string, Promise<ProfileLookupResponse>>();
 const resolvedProfileLookupCache = new Map<string, CachedProfileLookupResponse>();
 
+export function invalidateProfileLookupByUsername(username: string | null | undefined): void {
+  const key = (username || "").trim().toLowerCase();
+  if (!key) {
+    return;
+  }
+
+  profileLookupCache.delete(key);
+  resolvedProfileLookupCache.delete(key);
+}
+
 export async function fetchProfileLookupByUsername<T = unknown>(
   username: string,
   signal?: AbortSignal

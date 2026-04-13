@@ -25,7 +25,8 @@ const CAPTCHA_TTL_MS = 10 * 60 * 1000;
 const QUESTION_BANK: CaptchaQuestion[] = [
   { prompt: "Select the peace signs", prefixes: ["peace-"] },
   { prompt: "Pick the trippy mushrooms", prefixes: ["mushroom-"] },
-  { prompt: "Choose the groovy items", prefixes: ["groovy-item-", "psychedelic-"] },
+  { prompt: "Pick the Ricks and bongs bro", prefixes: ["groovy-item-", "psychedelic-"] },
+  { prompt: "Pick the leaf", prefixes: ["leaf-"] },
 ];
 
 function shuffle<T>(items: T[]) {

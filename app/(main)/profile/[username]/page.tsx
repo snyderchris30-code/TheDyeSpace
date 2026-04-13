@@ -1402,6 +1402,10 @@ export default function ProfileEditor() {
   const usernameSavePreview = resolveProfileUsername(draft.username, form.username, session?.user?.email, session?.user?.id);
   const isUsernameFallback = typedUsername.length < 3 && usernameSavePreview !== typedUsername;
   const playlistSongs = useMemo(() => buildPlaylist(profileDisplay.youtube_urls || []), [profileDisplay.youtube_urls]);
+  const visibleShopProducts = useMemo(
+    () => normalizeSellerProducts(profileDisplay.shop_products),
+    [profileDisplay.shop_products]
+  );
 
   useEffect(() => {
     const uncachedSongs = playlistSongs.filter((song) => !videoTitles[song.videoId]).slice(0, 8);
@@ -1831,6 +1835,17 @@ export default function ProfileEditor() {
                             Join The Smoke Lounge 2.0
                           </Link>
                         ) : null}
+                      </div>
+                    ) : null}
+                    {profileIsVerified && visibleShopProducts.length > 0 ? (
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        {visibleShopProducts.slice(0, 4).map((product) => (
+                          <div key={product.id} className="rounded-2xl border border-cyan-300/20 bg-black/25 px-3 py-3 text-xs text-cyan-100 shadow-lg backdrop-blur-md">
+                            <p className="text-sm font-semibold text-cyan-50">{product.title}</p>
+                            {product.price ? <p className="mt-1 text-cyan-200/85">${product.price}</p> : null}
+                            {product.description ? <p className="mt-1 line-clamp-2 text-cyan-100/80">{product.description}</p> : null}
+                          </div>
+                        ))}
                       </div>
                     ) : null}
                     {profileIsVerified && !isOwner && session?.user && !viewerIsVerifiedSeller ? (

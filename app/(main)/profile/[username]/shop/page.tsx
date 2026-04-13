@@ -10,7 +10,7 @@ import { fetchProfileLookupByUsername, type ProfileLookupResponse } from "@/lib/
 import { normalizePostImageUrls } from "@/lib/post-media";
 import { normalizeSellerProducts } from "@/lib/verified-seller";
 import { sanitizeUsernameInput } from "@/lib/profile-identity";
-import type { ProfileThemeSettings } from "@/types/database";
+import type { ProfileThemeSettings, SellerProduct } from "@/types/database";
 
 const shopProfileLoadPromises = new Map<string, Promise<ProfileLookupResponse<ShopProfile>>>();
 const shopPostLoadPromises = new Map<string, Promise<ForSalePost[]>>();
@@ -47,6 +47,7 @@ export default function ShopPage() {
   const username = resolveParamUsername(params?.username);
   const [profile, setProfile] = useState<ShopProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [shopProducts, setShopProducts] = useState<SellerProduct[]>([]);
   const [salePosts, setSalePosts] = useState<ForSalePost[]>([]);
   const [postsLoading, setPostsLoading] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
@@ -85,10 +86,13 @@ export default function ShopPage() {
 
         const body = await profilePromise;
         if (!active || controller.signal.aborted) return;
-        setProfile(body.profile ?? null);
+        const nextProfile = body.profile ?? null;
+        setProfile(nextProfile);
+        setShopProducts(normalizeSellerProducts(nextProfile?.theme_settings?.shop_products));
       } catch {
         if (!active || controller.signal.aborted) return;
         setProfile(null);
+        setShopProducts([]);
       } finally {
         if (active && !controller.signal.aborted) setLoading(false);
       }
@@ -193,6 +197,16 @@ export default function ShopPage() {
   const sellerName = profile?.username || username || profile?.display_name || "Seller";
   const profileHref = username ? `/profile/${encodeURIComponent(username)}` : "/profile";
   const fanChatHref = username ? `/profile/${encodeURIComponent(username)}/fan-chat` : "/profile";
+  const visibleListings = shopProducts.length > 0
+    ? shopProducts.map((product) => ({
+        id: product.id,
+        content: [product.title, product.price ? `$${product.price}` : null, product.description]
+          .filter(Boolean)
+          .join(" • "),
+        image_urls: product.photo_urls || null,
+        created_at: "",
+      }))
+    : salePosts;
 
   return (
     <div className="min-h-[70vh] px-4 py-8 sm:px-6 lg:px-8">
@@ -237,15 +251,17 @@ export default function ShopPage() {
           </div>
         ) : (
           <div>
-            {salePosts.length > 0 ? (
+            {visibleListings.length > 0 ? (
               <div className="grid gap-4 md:grid-cols-2">
-                {salePosts.map((post) => (
+                {visibleListings.map((post) => (
                   <div key={post.id} className="rounded-[1.5rem] border border-cyan-300/10 bg-slate-950/80 p-4 shadow-xl">
                     {getPreviewImage(post.image_urls) ? (
                       <img src={getPreviewImage(post.image_urls) ?? ""} alt="Sale item" className="mb-3 w-full rounded-2xl object-cover" />
                     ) : null}
                     <p className="text-sm text-slate-200">{post.content || "No description"}</p>
-                    <p className="mt-3 text-xs uppercase tracking-[0.24em] text-cyan-300/70">Posted {new Date(post.created_at).toLocaleDateString()}</p>
+                    {post.created_at ? (
+                      <p className="mt-3 text-xs uppercase tracking-[0.24em] text-cyan-300/70">Posted {new Date(post.created_at).toLocaleDateString()}</p>
+                    ) : null}
                   </div>
                 ))}
               </div>
