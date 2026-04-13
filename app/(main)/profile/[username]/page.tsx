@@ -17,7 +17,7 @@ import UserIdentity from "@/app/UserIdentity";
 import AsyncStateCard from "@/app/AsyncStateCard";
 import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
 import { fetchProfileLookupByUsername } from "@/lib/profile-fetch";
-import { dedupeFetchJson } from "@/lib/dedupe-fetch";
+import { dedupeApiFetchJson, dedupeFetchJson } from "@/lib/dedupe-fetch";
 import { normalizePostImageUrls } from "@/lib/post-media";
 import { countInteractionReactions, type AggregatedPostInteraction, type ReactionEmoji } from "@/lib/post-interactions";
 import { hasAdminAccess, runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
@@ -560,10 +560,9 @@ export default function ProfileEditor() {
       return;
     }
 
-    const body = await dedupeFetchJson<{ interactionsByPostId?: InteractionMap }>(
+    const body = await dedupeApiFetchJson<{ interactionsByPostId?: InteractionMap }>(
       `/api/posts/interactions?postIds=${encodeURIComponent(postIds.join(","))}`,
-      { cache: "no-store" },
-      { cacheTtlMs: 3000 }
+      { cache: "no-store" }
     );
     setInteractions(body.interactionsByPostId || {});
   }, []);

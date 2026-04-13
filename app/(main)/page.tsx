@@ -4,7 +4,7 @@ import Image from "next/image";
 
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import { dedupeFetchJson } from "@/lib/dedupe-fetch";
+import { dedupeApiFetchJson } from "@/lib/dedupe-fetch";
 import { Heart, MessageCircle, Send, SquarePen } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useEffect, useState, useCallback } from "react";
@@ -108,7 +108,7 @@ function getCategoryMeta(content: string | null): { value: FeedCategory; label: 
 
 async function fetchPosts({ pageParam }: { pageParam?: string | null }) {
   const url = `/api/posts/feed${pageParam ? `?before=${encodeURIComponent(pageParam)}` : ""}`;
-  const body = await dedupeFetchJson<{ posts?: Post[] }>(url, { cache: "no-store" }, { cacheTtlMs: 3000 });
+  const body = await dedupeApiFetchJson<{ posts?: Post[] }>(url, { cache: "no-store" });
   return (body.posts || []) as Post[];
 }
 
@@ -175,10 +175,9 @@ export default function MainFeedPage() {
     queryKey: ["mainFeedInteractions", postIdsKey],
     queryFn: async () => {
       if (!postIds.length) return {};
-      const body = await dedupeFetchJson<{ interactionsByPostId?: InteractionMap }>(
+      const body = await dedupeApiFetchJson<{ interactionsByPostId?: InteractionMap }>(
         `/api/posts/interactions?postIds=${encodeURIComponent(postIds.join(","))}`,
-        { cache: "no-store" },
-        { cacheTtlMs: 3000 }
+        { cache: "no-store" }
       );
       return body.interactionsByPostId || {};
     },

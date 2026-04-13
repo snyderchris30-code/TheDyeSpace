@@ -7,7 +7,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import { dedupeFetchJson } from "@/lib/dedupe-fetch";
+import { dedupeApiFetchJson, dedupeFetchJson } from "@/lib/dedupe-fetch";
 import AdminActionMenu from "@/app/AdminActionMenu";
 import Link from "next/link";
 import { fontClass, resolveProfileAppearance, type ProfileAppearance } from "@/lib/profile-theme";
@@ -310,10 +310,9 @@ export default function ExplorePage() {
     queryKey: ["exploreInteractions", postIdsKey],
     queryFn: async () => {
       if (!postIds.length) return EMPTY_INTERACTIONS;
-      const body = await dedupeFetchJson<{ interactionsByPostId?: InteractionMap }>(
+      const body = await dedupeApiFetchJson<{ interactionsByPostId?: InteractionMap }>(
         `/api/posts/interactions?postIds=${encodeURIComponent(postIds.join(","))}`,
-        { cache: "no-store" },
-        { cacheTtlMs: 3000 }
+        { cache: "no-store" }
       );
       return body.interactionsByPostId || EMPTY_INTERACTIONS;
     },

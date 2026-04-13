@@ -1,4 +1,4 @@
-import { dedupeFetchJson } from '@/lib/dedupe-fetch';
+import { dedupeApiFetchJson } from '@/lib/dedupe-fetch';
 
 export type ProfileLookupResponse<T = unknown> = {
   profile: T | null;
@@ -49,14 +49,11 @@ export async function fetchProfileLookupByUsername<T = unknown>(
   }
 
   const promise = (async (): Promise<ProfileLookupResponse<T>> => {
-    const body = await dedupeFetchJson<ProfileLookupResponse<T>>(
+    const body = await dedupeApiFetchJson<ProfileLookupResponse<T>>(
       `/api/profile/lookup?username=${encodeURIComponent(username)}`,
       {
         cache: 'no-store',
         signal,
-      },
-      {
-        cacheTtlMs: PROFILE_LOOKUP_CACHE_TTL_MS,
       }
     );
 

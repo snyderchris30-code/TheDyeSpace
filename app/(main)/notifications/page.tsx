@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AsyncStateCard from "@/app/AsyncStateCard";
 import { createClient } from "@/lib/supabase/client";
-import { dedupeFetchJson } from "@/lib/dedupe-fetch";
+import { dedupeApiFetchJson, dedupeFetchJson } from "@/lib/dedupe-fetch";
 import { Bell } from "lucide-react";
 import Link from "next/link";
 
@@ -45,10 +45,9 @@ export default function NotificationsPage() {
   } = useQuery<Notification[]>({
     queryKey: ["notificationsPage", userId],
     queryFn: async () => {
-      const body = await dedupeFetchJson<{ notifications?: Notification[] }>(
+      const body = await dedupeApiFetchJson<{ notifications?: Notification[] }>(
         "/api/notifications",
-        { cache: "no-store" },
-        { cacheTtlMs: 3000 }
+        { cache: "no-store" }
       );
       return Array.isArray(body.notifications) ? body.notifications : [];
     },
@@ -159,7 +158,6 @@ export default function NotificationsPage() {
 
         lastAuthUserIdRef.current = currentUserId;
         setUserId(currentUserId);
-        void Promise.all([refetchNotifications(), refetchPendingContactRequests()]);
       };
       void load();
 
@@ -179,8 +177,6 @@ export default function NotificationsPage() {
           setError(null);
           return;
         }
-
-        void Promise.all([refetchNotifications(), refetchPendingContactRequests()]);
       });
 
     return () => {

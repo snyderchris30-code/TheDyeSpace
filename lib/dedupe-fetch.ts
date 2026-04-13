@@ -24,6 +24,20 @@ function createNormalizedRequestKey(input: RequestInfo | URL, init?: RequestInit
   return `${method}:${normalized.pathname}${normalized.search}`;
 }
 
+const ROUTE_DEDUPE_TTL_MS: Record<string, number> = {
+  '/api/posts/feed': 3000,
+  '/api/posts/interactions': 3000,
+  '/api/notifications': 3000,
+  '/api/profile/lookup': 30000,
+};
+
+function getRouteDedupeTtl(input: RequestInfo | URL, init?: RequestInit): number | undefined {
+  const request = input instanceof Request ? input : null;
+  const rawUrl = typeof input === 'string' ? input : input instanceof URL ? input.toString() : request?.url || '';
+  const url = new URL(rawUrl, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+  return ROUTE_DEDUPE_TTL_MS[url.pathname];
+}
+
 function shouldDedupeRequest(input: RequestInfo | URL, init?: RequestInit): boolean {
   if (typeof window === 'undefined') {
     return false;
@@ -116,4 +130,9 @@ export async function dedupeFetchJson<T>(input: RequestInfo | URL, init?: Reques
   } catch (error) {
     throw new Error('Failed to parse JSON response.');
   }
+}
+
+export async function dedupeApiFetchJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
+  const cacheTtlMs = getRouteDedupeTtl(input, init);
+  return dedupeFetchJson<T>(input, init, cacheTtlMs ? { cacheTtlMs } : undefined);
 }
