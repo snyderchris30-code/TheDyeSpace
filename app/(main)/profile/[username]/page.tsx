@@ -39,11 +39,9 @@ import {
 import { resolveProfileUsername, sanitizeUsernameInput } from "@/lib/profile-identity";
 import { canAccessSmokeLounge, normalizeSellerProducts, type VerifiedSellerContactRequestStatus } from "@/lib/verified-seller";
 import type { SellerProduct } from "@/types/database";
-import VerifiedSellerShopEditor from "./VerifiedSellerShopEditor";
 const LightboxModal = dynamic(() => import("../../../LightboxModal"), { ssr: false });
 
 const DEFAULT_BANNER_URL = "https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=1400&q=80";
-const MAX_SHOP_PRODUCT_PHOTOS = 6;
 const PROFILE_PALETTE_SWATCH_CLASS: Record<string, string> = {
   "Teal Aurora": "bg-[#061621]",
   "Blue Nova": "bg-[#0B1533]",
@@ -158,19 +156,6 @@ function stripCategoryTag(content: string | null) {
   return content.replace(/^\[(tutorial|new_boot_goofin|sold|unavailable)\]\s*/i, "").trim();
 }
 
-function createEmptyShopProduct(): SellerProduct {
-  return {
-    id:
-      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-        ? crypto.randomUUID()
-        : `seller-product-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    title: "",
-    price: null,
-    description: null,
-    photo_urls: [],
-  };
-}
-
 type FeedCategory = "all" | "following" | "tutorial" | "new_boot_goofin" | "for_sale" | "sold_unavailable";
 
 function parsePostCategory(content: string | null): FeedCategory {
@@ -205,6 +190,12 @@ function applyProfileThemeVars(element: HTMLElement | null, appearance?: Profile
   const resolved = resolveProfileAppearance(appearance);
   element.style.setProperty("--profile-text", resolved.text_color);
   element.style.setProperty("--profile-highlight", resolved.highlight_color);
+  const bg = resolved.background_color;
+  const opacity = typeof resolved.background_opacity === "number" ? resolved.background_opacity : 0.7;
+  let c = bg.replace("#", "");
+  if (c.length === 3) c = c.split("").map((x) => x + x).join("");
+  const num = parseInt(c, 16);
+  element.style.setProperty("--profile-bg-rgba", `rgba(${(num >> 16) & 255},${(num >> 8) & 255},${num & 255},${opacity})`);
 }
 
 function normalizeYoutubeUrls(values: string[]) {
@@ -931,131 +922,6 @@ export default function ProfileEditor() {
     e.target.value = "";
   };
 
-  const addShopProductToDraft = useCallback(() => {
-    setDraft((prev) => ({
-      ...prev,
-      shop_products: [...prev.shop_products, createEmptyShopProduct()],
-    }));
-  }, []);
-
-  const updateShopProductInDraft = useCallback(
-    (productId: string, field: "title" | "price" | "description", value: string) => {
-      setDraft((prev) => ({
-        ...prev,
-        shop_products: prev.shop_products.map((product) =>
-          product.id === productId
-            ? {
-                ...product,
-                [field]: field === "title" ? value : value || null,
-              }
-            : product
-        ),
-      }));
-    },
-    []
-  );
-
-  const removeShopProductFromDraft = useCallback((productId: string) => {
-    setDraft((prev) => ({
-      ...prev,
-      shop_products: prev.shop_products.filter((product) => product.id !== productId),
-    }));
-  }, []);
-
-  const removeShopProductPhoto = useCallback((productId: string, photoUrl: string) => {
-    setDraft((prev) => ({
-      ...prev,
-      shop_products: prev.shop_products.map((product) =>
-        product.id === productId
-          ? {
-              ...product,
-              photo_urls: (product.photo_urls || []).filter((url) => url !== photoUrl),
-            }
-          : product
-      ),
-    }));
-  }, []);
-
-  const handleShopProductPhotosUpload = useCallback(
-    async (productId: string, event: React.ChangeEvent<HTMLInputElement>) => {
-      const input = event.currentTarget;
-      const files = Array.from(input.files || []);
-      input.value = "";
-
-      if (!files.length) {
-        return;
-      }
-
-      const userId = session?.user?.id || profileUserId;
-      if (!userId) {
-        setStatus({ type: "error", text: "Please sign in again before uploading product photos." });
-        return;
-      }
-
-      const currentProduct = draft.shop_products.find((product) => product.id === productId);
-      const existingPhotos = currentProduct?.photo_urls || [];
-      const remainingSlots = Math.max(0, MAX_SHOP_PRODUCT_PHOTOS - existingPhotos.length);
-
-      if (remainingSlots <= 0) {
-        setStatus({ type: "error", text: `Each product can have up to ${MAX_SHOP_PRODUCT_PHOTOS} photos.` });
-        return;
-      }
-
-      const selectedFiles = files.slice(0, remainingSlots);
-      setIsUploading(true);
-      setStatus(null);
-
-      try {
-        await ensureProfileBuckets();
-
-        const uploadedUrls: string[] = [];
-
-        for (const file of selectedFiles) {
-          const uploadBody = new FormData();
-          uploadBody.append("bucket", "posts");
-          uploadBody.append("file", file);
-
-          const uploadResponse = await fetch("/api/profile/upload", {
-            method: "POST",
-            body: uploadBody,
-          });
-
-          const uploadPayload = await uploadResponse.json().catch(() => ({}));
-          if (!uploadResponse.ok || typeof uploadPayload?.publicUrl !== "string") {
-            throw new Error(uploadPayload?.error || "Failed to upload your product photos.");
-          }
-
-          uploadedUrls.push(uploadPayload.publicUrl);
-        }
-
-        setDraft((prev) => ({
-          ...prev,
-          shop_products: prev.shop_products.map((product) =>
-            product.id === productId
-              ? {
-                  ...product,
-                  photo_urls: [...(product.photo_urls || []), ...uploadedUrls],
-                }
-              : product
-          ),
-        }));
-
-        setStatus({
-          type: "success",
-          text: `${uploadedUrls.length} product photo${uploadedUrls.length === 1 ? "" : "s"} uploaded.`,
-        });
-      } catch (error: any) {
-        setStatus({
-          type: "error",
-          text: typeof error?.message === "string" ? error.message : "Failed to upload your product photos.",
-        });
-      } finally {
-        setIsUploading(false);
-      }
-    },
-    [draft.shop_products, ensureProfileBuckets, profileUserId, session?.user?.id]
-  );
-
   const openEditor = () => {
     setDraft(form);
     setSongInput("");
@@ -1581,6 +1447,23 @@ export default function ProfileEditor() {
     setEditorAutoOpened(true);
   }, [editing, editorAutoOpened, form, isOwner, loading, shouldAutoOpenEditor]);
 
+  // Apply profile theme CSS variables to the visible profile section whenever colors change
+  useEffect(() => {
+    const el = viewRef.current;
+    if (!el) return;
+    const bg = profileDisplay.background_color || DEFAULT_BACKGROUND_COLOR;
+    const text = profileDisplay.text_color || DEFAULT_TEXT_COLOR;
+    const highlight = profileDisplay.highlight_color || DEFAULT_HIGHLIGHT_COLOR;
+    const opacity = typeof profileDisplay.background_opacity === "number" ? profileDisplay.background_opacity : 0.7;
+    el.style.setProperty("--profile-bg", bg);
+    el.style.setProperty("--profile-text", text);
+    el.style.setProperty("--profile-highlight", highlight);
+    let c = bg.replace("#", "");
+    if (c.length === 3) c = c.split("").map((x) => x + x).join("");
+    const num = parseInt(c, 16);
+    el.style.setProperty("--profile-bg-rgba", `rgba(${(num >> 16) & 255},${(num >> 8) & 255},${num & 255},${opacity})`);
+  }, [profileDisplay.background_color, profileDisplay.background_opacity, profileDisplay.text_color, profileDisplay.highlight_color]);
+
   // Set seller background as CSS variable if verified and has a background
   useEffect(() => {
     document.documentElement.style.removeProperty("--seller-background-image");
@@ -1927,6 +1810,14 @@ export default function ProfileEditor() {
                         >
                           My For Sale Listings
                         </Link>
+                        {isOwner ? (
+                          <Link
+                            href={`/profile/${encodeURIComponent(displayUsername)}/shop/manage`}
+                            className="inline-flex items-center justify-center rounded-2xl border border-emerald-300/60 bg-emerald-400/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-400/15 hover:text-emerald-50"
+                          >
+                            Manage My Shop
+                          </Link>
+                        ) : null}
                         <Link
                           href={`/profile/${encodeURIComponent(displayUsername)}/fan-chat`}
                           className="inline-flex items-center justify-center rounded-2xl border border-fuchsia-300/60 bg-fuchsia-400/10 px-4 py-2 text-sm font-semibold text-fuchsia-100 transition hover:bg-fuchsia-400/15 hover:text-fuchsia-50"
@@ -2079,7 +1970,7 @@ export default function ProfileEditor() {
                     return (
                       <article
                         key={post.id}
-                        className={`rounded-[1.5rem] border border-cyan-300/20 bg-[linear-gradient(180deg,rgba(9,19,37,0.82),rgba(7,12,24,0.88))] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-cyan-300/35 sm:rounded-[1.75rem] sm:p-6 ${fontClass(profileDisplay.font_style)}`}
+                        className={`rounded-[1.5rem] border border-cyan-300/20 bg-[var(--profile-bg-rgba,rgba(7,12,24,0.88))] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-cyan-300/35 sm:rounded-[1.75rem] sm:p-6 ${fontClass(profileDisplay.font_style)}`}
                         ref={(element) => applyProfileThemeVars(element, profileDisplay)}
                       >
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -2520,15 +2411,6 @@ export default function ProfileEditor() {
                       </div>
                     </div>
 
-                    <VerifiedSellerShopEditor
-                      products={draft.shop_products}
-                      isUploading={isUploading}
-                      onAddProduct={addShopProductToDraft}
-                      onDeleteProduct={removeShopProductFromDraft}
-                      onProductFieldChange={updateShopProductInDraft}
-                      onProductPhotosUpload={handleShopProductPhotosUpload}
-                      onRemoveProductPhoto={removeShopProductPhoto}
-                    />
                   </>
                 ) : null}
 

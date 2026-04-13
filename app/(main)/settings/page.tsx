@@ -2,8 +2,6 @@
 
 import { createClient } from "@/lib/supabase/client";
 import AsyncStateCard from "@/app/AsyncStateCard";
-import CustomEmojiImage from "@/app/CustomEmojiImage";
-import EmojiCategoryEditor from "@/app/EmojiCategoryEditor";
 import { useEffect, useMemo, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Lock, Trash2 } from "lucide-react";
@@ -49,7 +47,6 @@ function SettingsContent() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [customEmojiUrls, setCustomEmojiUrls] = useState<string[]>([]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -68,19 +65,6 @@ function SettingsContent() {
           const adminRole = hasAdminAccess(user.id, profile?.role ?? null);
           setIsAdmin(adminRole);
           setGhostRidin(profile?.ghost_ridin === true);
-
-          if (adminRole) {
-            const response = await fetch("/api/emojis", { cache: "no-store" });
-            const body = await response.json().catch(() => ({}));
-            if (response.ok) {
-              setCustomEmojiUrls(
-                Array.isArray(body?.emojiUrls)
-                  ? body.emojiUrls.filter((value: unknown): value is string => typeof value === "string")
-                  : []
-              );
-            }
-          }
-
           setLoading(false);
         });
     });
@@ -332,34 +316,18 @@ function SettingsContent() {
 
       {isAdmin ? (
         <section className="mt-6 rounded-2xl border border-fuchsia-300/20 bg-black/40 p-6 backdrop-blur-sm">
-          <div className="mb-4">
-            <h2 className="text-xl font-semibold text-fuchsia-100">Emoji Manager</h2>
-            <p className="mt-1 text-sm text-fuchsia-200/80">
-              Custom emojis are loaded automatically from the public/emojis folder for comment text, post reactions, and comment reactions.
-            </p>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold text-fuchsia-100">Emoji Manager</h2>
+              <p className="mt-1 text-sm text-fuchsia-200/80">
+                Manage auto-imported emojis and category assignments from one unified admin page.
+              </p>
+            </div>
+            <Link href="/emojis" className="rounded-full border border-fuchsia-300/20 bg-fuchsia-900/20 px-4 py-2 text-sm font-semibold text-fuchsia-100 transition hover:bg-fuchsia-900/30">
+              Open Emoji Manager
+            </Link>
           </div>
-
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <p className="text-xs text-fuchsia-200/80">{customEmojiUrls.length} auto-imported</p>
-            <p className="text-xs text-fuchsia-200/60">Drop new .png or .gif files into public/emojis and reload.</p>
-          </div>
-
-          <div className="grid grid-cols-6 gap-2 sm:grid-cols-8 md:grid-cols-10">
-            {customEmojiUrls.map((url) => (
-              <div
-                key={url}
-                className="rounded-xl border border-fuchsia-300/20 bg-black/25 p-1"
-              >
-                <CustomEmojiImage src={url} alt="custom emoji" className="h-10 w-10 rounded-lg object-contain" />
-              </div>
-            ))}
-          </div>
-
-          {/* Emoji Category Editor for admin only */}
-          <EmojiCategoryEditor
-            emojis={customEmojiUrls.map((url, i) => ({ id: url, name: url.split("/").pop() || url, url, fileName: url.split("/").pop() || url }))}
-            isAdmin={isAdmin}
-          />
+          <p className="text-xs text-fuchsia-200/60">Drop new .png or .gif files into public/emojis and reload.</p>
         </section>
       ) : null}
     </div>

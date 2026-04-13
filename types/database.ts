@@ -102,6 +102,9 @@ export interface Report {
   id: string;
   reporter_id: string | null;
   reported_user_id: string | null;
+  reported_id?: string | null;
+  reported_by?: string | null;
+  type?: string | null;
   reason: string;
   created_at: string;
 }

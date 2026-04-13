@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { MessageCircle, Store } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { resolveClientAuth } from "@/lib/client-auth";
 import { fetchProfileLookupByUsername, type ProfileLookupResponse } from "@/lib/profile-fetch";
 import { normalizePostImageUrls } from "@/lib/post-media";
 import { normalizeSellerProducts } from "@/lib/verified-seller";
@@ -48,6 +49,7 @@ export default function ShopPage() {
   const [loading, setLoading] = useState(true);
   const [salePosts, setSalePosts] = useState<ForSalePost[]>([]);
   const [postsLoading, setPostsLoading] = useState(false);
+  const [isOwner, setIsOwner] = useState(false);
   const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
@@ -160,6 +162,32 @@ export default function ShopPage() {
     };
   }, [profile?.id, supabase]);
 
+  useEffect(() => {
+    let active = true;
+    const profileUserId = profile?.id;
+    if (!profileUserId) {
+      setIsOwner(false);
+      return;
+    }
+
+    const loadOwnerStatus = async () => {
+      try {
+        const auth = await resolveClientAuth(supabase);
+        if (!active) return;
+        setIsOwner(Boolean(auth.user?.id && auth.user.id === profileUserId));
+      } catch {
+        if (!active) return;
+        setIsOwner(false);
+      }
+    };
+
+    void loadOwnerStatus();
+
+    return () => {
+      active = false;
+    };
+  }, [profile?.id, supabase]);
+
   const sellerName = profile?.username || username || profile?.display_name || "Seller";
   const profileHref = username ? `/profile/${encodeURIComponent(username)}` : "/profile";
   const fanChatHref = username ? `/profile/${encodeURIComponent(username)}/fan-chat` : "/profile";
@@ -189,6 +217,14 @@ export default function ShopPage() {
                 <MessageCircle className="h-4 w-4" />
                 Fan Chat
               </Link>
+              {profile?.verified_badge === true && isOwner ? (
+                <Link
+                  href={`/profile/${encodeURIComponent(username)}/shop/manage`}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-emerald-300/60 bg-emerald-400/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-400/20"
+                >
+                  Manage My Shop
+                </Link>
+              ) : null}
             </div>
           </div>
         </header>

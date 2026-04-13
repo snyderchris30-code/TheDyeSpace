@@ -5,6 +5,7 @@ import Image from "next/image";
 import dynamic from "next/dynamic";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import AdminActionMenu from "@/app/AdminActionMenu";
 import Link from "next/link";
@@ -53,6 +54,8 @@ type ProfileRow = {
   shadow_banned?: boolean | null;
   shadow_banned_until?: string | null;
 };
+
+const EMPTY_INTERACTIONS: InteractionMap = Object.freeze({}) as InteractionMap;
 
 const exploreLoadPromises = new Map<string, Promise<void>>();
 
@@ -104,6 +107,92 @@ function isEmailLike(value: string | null | undefined) {
   return value.includes("@");
 }
 
+async function fetchExplorePosts({ queryKey }: { queryKey: unknown[] }) {
+  const [, tab, search, marketplaceOnly, sessionUserId, viewerIsAdmin] = queryKey as [string, FeedCategory, string, boolean, string | null, boolean];
+  const supabase = createClient();
+  let followingIds: string[] = [];
+
+  if (tab === "following") {
+    const followingRes = await fetch("/api/profile/following", { cache: "no-store" });
+    const followingBody = await followingRes.json().catch(() => ({}));
+    if (!followingRes.ok) {
+      throw new Error(followingBody?.error || "Failed to load Following feed.");
+    }
+
+    followingIds = Array.isArray(followingBody?.followingIds)
+      ? followingBody.followingIds.filter((id: unknown): id is string => typeof id === "string")
+      : [];
+
+    if (!followingIds.length) {
+      return [];
+    }
+  }
+
+  let query = supabase
+    .from("posts")
+    .select("id,user_id,content,image_urls,likes,comments_count,is_for_sale,created_at")
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false });
+
+  if (tab === "following") {
+    query = query.in("user_id", followingIds);
+  }
+
+  if (search.trim()) {
+    query = query.ilike("content", `%${search.trim()}%`);
+  }
+
+  const { data, error: fetchError } = await query;
+  if (fetchError) {
+    throw fetchError;
+  }
+
+  const rows = ((data || []) as ExplorePost[]).map((post) => ({
+    ...post,
+    image_urls: normalizePostImageUrls(post.image_urls).length ? normalizePostImageUrls(post.image_urls) : null,
+  }));
+
+  const userIds = [...new Set(rows.map((post) => post.user_id).filter(Boolean))];
+  const profilesById = new Map<string, ProfileRow>();
+
+  if (userIds.length) {
+    const { data: profilesData, error: profilesError } = await supabase
+      .from("profiles")
+      .select("id,username,display_name,theme_settings,verified_badge,member_number,shadow_banned,shadow_banned_until")
+      .in("id", userIds);
+
+    if (!profilesError) {
+      (profilesData || []).forEach((profile) => {
+        profilesById.set(profile.id, profile as ProfileRow);
+      });
+    }
+  }
+
+  return rows
+    .map((post) => {
+      const profile = profilesById.get(post.user_id);
+      return {
+        ...post,
+        author_display_name: formatDisplayName(profile),
+        author_at_name: formatAtName(profile),
+        author_username: profile?.username ?? null,
+        author_theme: profile?.theme_settings ?? null,
+        author_verified_badge: profile?.verified_badge === true,
+        author_member_number: profile?.member_number ?? null,
+      };
+    })
+    .filter((post) => {
+      const author = profilesById.get(post.user_id);
+      if (!viewerIsAdmin && post.user_id !== sessionUserId && isShadowBanned(author)) return false;
+      if (marketplaceOnly && !post.is_for_sale) return false;
+      if (tab === "following") return true;
+      if (tab === "all") return true;
+      if (tab === "for_sale") return post.is_for_sale;
+      if (tab === "sold_unavailable") return !post.is_for_sale && parsePostCategory(post.content) === "sold_unavailable";
+      return parsePostCategory(post.content) === tab;
+    });
+}
+
 function formatAtName(profile?: ProfileRow) {
   if (!profile) return "dyespace-user";
   if (profile.display_name) return profile.display_name;
@@ -139,6 +228,28 @@ function applyPostThemeVars(element: HTMLElement | null, appearance?: ProfileApp
   element.style.setProperty("--post-bg", hexToRgba(bg, opacity));
 }
 
+function isSameInteractionMap(prev: InteractionMap, next: InteractionMap) {
+  if (prev === next) return true;
+
+  const prevKeys = Object.keys(prev);
+  const nextKeys = Object.keys(next);
+  if (prevKeys.length !== nextKeys.length) return false;
+
+  for (const key of nextKeys) {
+    if (!(key in prev)) return false;
+
+    const prevValue = prev[key];
+    const nextValue = next[key];
+    if (prevValue === nextValue) continue;
+
+    if (JSON.stringify(prevValue) !== JSON.stringify(nextValue)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function ReportPostButton({ postId }: { postId: string }) {
   const handleReport = useCallback(async () => {
     const reason = prompt("Reason for reporting this post?");
@@ -172,19 +283,53 @@ export default function ExplorePage() {
   const [lightbox, setLightbox] = useState<{ open: boolean; images: string[]; index: number }>({ open: false, images: [], index: 0 });
   const [tab, setTab] = useState<FeedCategory>("all");
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [posts, setPosts] = useState<ExplorePost[]>([]);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [viewerIsAdmin, setViewerIsAdmin] = useState(false);
   const [marketplaceOnly, setMarketplaceOnly] = useState(false);
   const [adminActionStatus, setAdminActionStatus] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const [interactions, setInteractions] = useState<InteractionMap>({});
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [interactionBusyPostId, setInteractionBusyPostId] = useState<string | null>(null);
   const [interactionStatus, setInteractionStatus] = useState<string | null>(null);
+
+  const { data: posts = [], isLoading, error, refetch } = useQuery({
+    queryKey: ["explorePosts", tab, search.trim(), marketplaceOnly, sessionUserId, viewerIsAdmin, reloadKey],
+    queryFn: fetchExplorePosts,
+    staleTime: 1000 * 30,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    retry: 1,
+  });
+
+  const postIds = useMemo(() => posts.map((post) => post.id), [posts]);
+  const postIdsKey = useMemo(() => postIds.join(","), [postIds]);
+
+  const { data: interactionData = EMPTY_INTERACTIONS, refetch: refetchInteractions } = useQuery({
+    queryKey: ["exploreInteractions", postIdsKey],
+    queryFn: async () => {
+      if (!postIds.length) return EMPTY_INTERACTIONS;
+      const response = await fetch(`/api/posts/interactions?postIds=${encodeURIComponent(postIds.join(","))}`);
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body?.error || "Failed to load post interactions.");
+      }
+      const body = await response.json();
+      return body.interactionsByPostId || EMPTY_INTERACTIONS;
+    },
+    enabled: postIds.length > 0,
+    staleTime: 1000 * 15,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    retry: 1,
+  });
+
+  const [interactions, setInteractions] = useState<InteractionMap>(EMPTY_INTERACTIONS);
+
+  useEffect(() => {
+    const nextInteractions = interactionData ?? EMPTY_INTERACTIONS;
+    setInteractions((prev) => (isSameInteractionMap(prev, nextInteractions) ? prev : nextInteractions));
+  }, [interactionData]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -246,154 +391,13 @@ export default function ExplorePage() {
     };
   }, []);
 
-  useEffect(() => {
-    let active = true;
-    const loadKey = JSON.stringify({ tab, search, marketplaceOnly, sessionUserId, viewerIsAdmin, reloadKey });
-
-    if (exploreLoadPromises.has(loadKey)) {
-      return () => {
-        active = false;
-      };
-    }
-
-    const loadPosts = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const supabase = createClient();
-        let followingIds: string[] = [];
-
-        if (tab === "following") {
-          const followingRes = await fetch("/api/profile/following", { cache: "no-store" });
-          const followingBody = await followingRes.json().catch(() => ({}));
-          if (!followingRes.ok) {
-            throw new Error(followingBody?.error || "Failed to load Following feed.");
-          }
-
-          followingIds = Array.isArray(followingBody?.followingIds)
-            ? followingBody.followingIds.filter((id: unknown): id is string => typeof id === "string")
-            : [];
-
-          if (!followingIds.length) {
-            if (!active) return;
-            setPosts([]);
-            setLoading(false);
-            return;
-          }
-        }
-
-        let query = supabase
-          .from("posts")
-          .select("id,user_id,content,image_urls,likes,comments_count,is_for_sale,created_at")
-          .is("deleted_at", null)
-          .order("created_at", { ascending: false });
-
-        if (tab === "following") {
-          query = query.in("user_id", followingIds);
-        }
-
-        if (search.trim()) {
-          query = query.ilike("content", `%${search.trim()}%`);
-        }
-
-        const { data, error: fetchError } = await query;
-        if (fetchError) throw fetchError;
-
-        if (!active) return;
-        const rows = ((data || []) as ExplorePost[]).map((post) => {
-          const imageUrls = normalizePostImageUrls(post.image_urls);
-          return {
-            ...post,
-            image_urls: imageUrls.length ? imageUrls : null,
-          };
-        });
-
-        const userIds = [...new Set(rows.map((post) => post.user_id).filter(Boolean))];
-        const profilesById = new Map<string, ProfileRow>();
-
-        if (userIds.length) {
-          const { data: profilesData, error: profilesError } = await supabase
-            .from("profiles")
-            .select("id,username,display_name,theme_settings,verified_badge,member_number,shadow_banned,shadow_banned_until")
-            .in("id", userIds);
-
-          if (profilesError) {
-            // Suppress noisy profile loading error
-          } else {
-            (profilesData || []).forEach((profile) => {
-              profilesById.set(profile.id, profile as ProfileRow);
-            });
-          }
-        }
-
-        const withAuthorNames = rows.map((post) => {
-          const profile = profilesById.get(post.user_id);
-          return {
-            ...post,
-            author_display_name: formatDisplayName(profile),
-            author_at_name: formatAtName(profile),
-            author_username: profile?.username ?? null,
-            author_theme: profile?.theme_settings ?? null,
-            author_verified_badge: profile?.verified_badge === true,
-            author_member_number: profile?.member_number ?? null,
-          };
-        });
-
-        const filtered = withAuthorNames.filter((post) => {
-          const author = profilesById.get(post.user_id);
-          if (!viewerIsAdmin && post.user_id !== sessionUserId && isShadowBanned(author)) return false;
-          if (marketplaceOnly && !post.is_for_sale) return false;
-          if (tab === "following") return true;
-          if (tab === "all") return true;
-          if (tab === "for_sale") return post.is_for_sale;
-          if (tab === "sold_unavailable") return !post.is_for_sale && parsePostCategory(post.content) === "sold_unavailable";
-          return parsePostCategory(post.content) === tab;
-        });
-        setPosts(filtered);
-      } catch (e: any) {
-        if (!active) return;
-        setError(typeof e?.message === "string" ? e.message : "Failed to load posts.");
-      } finally {
-        if (active) setLoading(false);
-      }
-    };
-
-    const loadPromise = loadPosts();
-    exploreLoadPromises.set(loadKey, loadPromise);
-    loadPromise.finally(() => {
-      if (exploreLoadPromises.get(loadKey) === loadPromise) {
-        exploreLoadPromises.delete(loadKey);
-      }
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [marketplaceOnly, reloadKey, search, sessionUserId, tab, viewerIsAdmin]);
-
-  const loadInteractions = useCallback(async (postIds: string[]) => {
-    if (!postIds.length) {
-      setInteractions({});
-      return;
-    }
-
-    const response = await fetch(`/api/posts/interactions?postIds=${encodeURIComponent(postIds.join(","))}`);
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      throw new Error(body?.error || "Failed to load post interactions.");
-    }
-
-    const body = await response.json();
-    setInteractions(body.interactionsByPostId || {});
-  }, []);
-
-  useEffect(() => {
-    void loadInteractions(posts.map((post) => post.id));
-  }, [loadInteractions, posts]);
+  const queryClient = useQueryClient();
 
   const updatePostCounters = useCallback((postId: string, updates: Partial<Pick<ExplorePost, "likes" | "comments_count">>) => {
-    setPosts((prev) => prev.map((post) => (post.id === postId ? { ...post, ...updates } : post)));
-  }, []);
+    queryClient.setQueryData<ExplorePost[]>(["explorePosts", tab, search.trim(), marketplaceOnly, sessionUserId, viewerIsAdmin, reloadKey], (currentPosts) =>
+      (currentPosts || []).map((post) => (post.id === postId ? { ...post, ...updates } : post))
+    );
+  }, [queryClient, reloadKey, search, sessionUserId, tab, viewerIsAdmin, marketplaceOnly]);
 
   const handleReactionSelect = useCallback(
     async (postId: string, emoji: ReactionEmoji) => {
@@ -501,10 +505,12 @@ export default function ExplorePage() {
       const body = await runAdminUserAction({ targetUserId, action, durationHours });
       setAdminActionStatus(body?.message || "Admin action applied successfully.");
       setReloadKey((value) => value + 1);
+      void refetch();
+      void refetchInteractions();
     } catch (error: any) {
       setAdminActionStatus(typeof error?.message === "string" ? error.message : "Admin action failed.");
     }
-  }, []);
+  }, [refetch, refetchInteractions]);
 
   const handleDeletePost = useCallback(async (postId: string) => {
     if (!confirm("Delete this post? This cannot be undone.")) {
@@ -518,8 +524,10 @@ export default function ExplorePage() {
       return;
     }
 
-    setPosts((prev) => prev.filter((post) => post.id !== postId));
-  }, []);
+    queryClient.setQueryData<ExplorePost[]>(["explorePosts", tab, search.trim(), marketplaceOnly, sessionUserId, viewerIsAdmin, reloadKey], (currentPosts) =>
+      (currentPosts || []).filter((post) => post.id !== postId)
+    );
+  }, [queryClient, reloadKey, search, sessionUserId, tab, viewerIsAdmin, marketplaceOnly]);
 
   const handleDeleteComment = useCallback(async (commentId: string, postId: string) => {
     if (!confirm("Delete this comment?")) {
@@ -563,9 +571,11 @@ export default function ExplorePage() {
         throw new Error(json.error || "Failed to update listing status.");
       }
 
-      setPosts((prev) => prev.filter((item) => item.id !== post.id));
+      queryClient.setQueryData<ExplorePost[]>(["explorePosts", tab, search.trim(), marketplaceOnly, sessionUserId, viewerIsAdmin, reloadKey], (currentPosts) =>
+        (currentPosts || []).filter((item) => item.id !== post.id)
+      );
     } catch (e: any) {
-      setError(typeof e?.message === "string" ? e.message : "Failed to update listing status.");
+      setInteractionStatus(typeof e?.message === "string" ? e.message : "Failed to update listing status.");
     }
   };
 
@@ -621,7 +631,7 @@ export default function ExplorePage() {
 
         <h2 className="mb-4 text-2xl font-semibold text-cyan-50">{title}</h2>
 
-        {loading ? (
+        {isLoading ? (
           <AsyncStateCard
             compact
             loading
@@ -635,7 +645,7 @@ export default function ExplorePage() {
             compact
             tone="error"
             title="Couldn\'t load explore"
-            message={error}
+            message={typeof error === "string" ? error : error?.message || "Failed to load explore."}
             actionLabel="Retry explore"
             onAction={() => setReloadKey((current) => current + 1)}
             className="mb-4"
@@ -644,7 +654,7 @@ export default function ExplorePage() {
         {interactionStatus ? <p className="mb-4 text-sm text-rose-200">{interactionStatus}</p> : null}
         {adminActionStatus ? <p className="mb-4 text-sm text-cyan-100">{adminActionStatus}</p> : null}
 
-        {!loading && !error && posts.length === 0 && (
+        {!isLoading && !error && posts.length === 0 && (
           <div className="rounded-2xl border border-cyan-300/20 bg-slate-950/45 p-8 text-cyan-100/75">
             {tab === "following"
               ? "No posts in Following yet. Follow artists to build your feed."

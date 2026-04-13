@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AsyncStateCard from "@/app/AsyncStateCard";
 import { createClient } from "@/lib/supabase/client";
 import { Bell } from "lucide-react";
@@ -32,12 +33,50 @@ export default function NotificationsPage() {
   const auth = useMemo(() => supabase.auth, [supabase]);
   const lastAuthUserIdRef = useRef<string | null>(null);
   const lastRealtimeSyncRef = useRef(0);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [pendingContactRequests, setPendingContactRequests] = useState<PendingContactRequest[]>([]);
-  const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [requestActionId, setRequestActionId] = useState<string | null>(null);
+
+  const {
+    data: notifications = [],
+    refetch: refetchNotifications,
+    isLoading: notificationsLoading,
+  } = useQuery<Notification[]>({
+    queryKey: ["notificationsPage", userId],
+    queryFn: async () => {
+      const response = await fetch("/api/notifications", { cache: "no-store" });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body?.error || "Failed to load notifications.");
+      }
+      return Array.isArray(body?.notifications) ? body.notifications : [];
+    },
+    enabled: Boolean(userId),
+    staleTime: 1000 * 30,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    retry: 1,
+  });
+
+  const {
+    data: pendingContactRequests = [],
+    refetch: refetchPendingContactRequests,
+  } = useQuery<PendingContactRequest[]>({
+    queryKey: ["pendingContactRequests", userId],
+    queryFn: async () => {
+      const response = await fetch("/api/profile/contact-requests", { cache: "no-store" });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body?.error || "Failed to load contact requests.");
+      }
+      return Array.isArray(body?.pendingRequests) ? body.pendingRequests : [];
+    },
+    enabled: Boolean(userId),
+    staleTime: 1000 * 30,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    retry: 1,
+  });
 
   const formatMessage = (notif: Notification) => {
     const actor = (notif.actor_name || "someone").replace(/^@+/, "");
@@ -47,6 +86,8 @@ export default function NotificationsPage() {
     if (notif.type === "follow") return `@${actor} started following you`;
     return `@${actor} interacted with your account`;
   };
+
+  const queryClient = useQueryClient();
 
   const markAllAsRead = useCallback(async () => {
     const response = await fetch("/api/notifications", {
@@ -61,41 +102,12 @@ export default function NotificationsPage() {
       return;
     }
 
-    setNotifications((prev) => prev.map((item) => ({ ...item, read: true })));
-  }, []);
-
-  const fetchNotifications = useCallback(async () => {
-    const response = await fetch("/api/notifications", { cache: "no-store" });
-    const body = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      setError(body?.error || "Failed to load notifications.");
-      setNotifications([]);
-      return;
+    if (userId) {
+      queryClient.setQueryData<Notification[]>(["notificationsPage", userId], (current) =>
+        (current || []).map((item) => ({ ...item, read: true }))
+      );
     }
-
-    setError(null);
-    const list = Array.isArray(body?.notifications) ? body.notifications : [];
-    setNotifications(list as Notification[]);
-  }, []);
-
-  const fetchPendingContactRequests = useCallback(async () => {
-    const response = await fetch("/api/profile/contact-requests", { cache: "no-store" });
-    const body = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      setPendingContactRequests([]);
-      return;
-    }
-
-    setPendingContactRequests(
-      Array.isArray(body?.pendingRequests) ? (body.pendingRequests as PendingContactRequest[]) : []
-    );
-  }, []);
-
-  const loadNotificationState = useCallback(async () => {
-    await Promise.all([fetchNotifications(), fetchPendingContactRequests()]);
-  }, [fetchNotifications, fetchPendingContactRequests]);
+  }, [queryClient, userId]);
 
   const loadNotificationStateThrottled = useCallback(() => {
     const now = Date.now();
@@ -103,8 +115,8 @@ export default function NotificationsPage() {
       return;
     }
     lastRealtimeSyncRef.current = now;
-    void loadNotificationState();
-  }, [loadNotificationState]);
+    void Promise.all([refetchNotifications(), refetchPendingContactRequests()]);
+  }, [refetchNotifications, refetchPendingContactRequests]);
 
   useEffect(() => {
     if (!userId) {
@@ -134,27 +146,20 @@ export default function NotificationsPage() {
 
         if (userError) {
           setError(userError.message || "Failed to load your session.");
-          setLoading(false);
           return;
         }
 
         if (!currentUserId) {
           lastAuthUserIdRef.current = null;
           setUserId(null);
-          setNotifications([]);
-          setPendingContactRequests([]);
           setError(null);
-          setLoading(false);
           return;
         }
 
         lastAuthUserIdRef.current = currentUserId;
         setUserId(currentUserId);
-        await loadNotificationState();
-        if (!isMounted) return;
-        setLoading(false);
+        void Promise.all([refetchNotifications(), refetchPendingContactRequests()]);
       };
-
       void load();
 
       const {
@@ -170,20 +175,18 @@ export default function NotificationsPage() {
         setUserId(nextUserId);
 
         if (!nextUserId) {
-          setNotifications([]);
-          setPendingContactRequests([]);
           setError(null);
           return;
         }
 
-        void loadNotificationState();
+        void Promise.all([refetchNotifications(), refetchPendingContactRequests()]);
       });
 
     return () => {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, [auth, loadNotificationState]);
+  }, [auth, refetchNotifications, refetchPendingContactRequests]);
 
   useEffect(() => {
     if (!userId) {
@@ -231,7 +234,9 @@ export default function NotificationsPage() {
   const markAsRead = async (notifId: string) => {
     if (!userId) return;
 
-    setNotifications((prev) => prev.map((item) => (item.id === notifId ? { ...item, read: true } : item)));
+    queryClient.setQueryData<Notification[]>(["notificationsPage", userId], (current) =>
+      (current || []).map((item) => (item.id === notifId ? { ...item, read: true } : item))
+    );
 
     const response = await fetch("/api/notifications", {
       method: "PATCH",
@@ -242,7 +247,7 @@ export default function NotificationsPage() {
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
       setError(body?.error || "Failed to mark notification as read.");
-      await fetchNotifications();
+      void refetchNotifications();
     }
   };
 
@@ -261,11 +266,9 @@ export default function NotificationsPage() {
       }
 
       setError(null);
-      setPendingContactRequests(
-        Array.isArray(body?.pendingRequests) ? (body.pendingRequests as PendingContactRequest[]) : []
-      );
+      void refetchPendingContactRequests();
       if (userId) {
-        void fetchNotifications();
+        void refetchNotifications();
       }
     } catch (actionError: any) {
       setError(typeof actionError?.message === "string" ? actionError.message : "Failed to update contact request.");
@@ -337,7 +340,7 @@ export default function NotificationsPage() {
           </div>
         ) : null}
 
-        {loading ? (
+        {notificationsLoading ? (
           <AsyncStateCard
             loading
             title="Loading notifications"
@@ -350,10 +353,9 @@ export default function NotificationsPage() {
             message={error}
             actionLabel="Retry notifications"
             onAction={() => {
-              setLoading(true);
               setError(null);
               if (userId) {
-                void loadNotificationState().finally(() => setLoading(false));
+                void Promise.all([refetchNotifications(), refetchPendingContactRequests()]);
               } else {
                 window.location.reload();
               }

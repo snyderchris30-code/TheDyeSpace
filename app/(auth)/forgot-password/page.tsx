@@ -5,13 +5,12 @@ import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
 
-const LIVE_SITE_URL = "https://thedyespace.app";
-
 export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const resetRedirectBase = typeof window !== "undefined" ? window.location.origin : "";
 
   async function handleForgotPassword(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -25,7 +24,7 @@ export default function ForgotPasswordPage() {
 
     try {
       const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${LIVE_SITE_URL}/reset-password`,
+        redirectTo: `${resetRedirectBase}/reset-password`,
       });
 
       if (err) {

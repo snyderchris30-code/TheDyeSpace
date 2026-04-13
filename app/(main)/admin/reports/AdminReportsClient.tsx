@@ -8,7 +8,7 @@ import { hasAdminAccess } from "@/lib/admin-actions";
 
 type ModerationReport = {
   id: string;
-  type: "post" | "comment";
+  type: "post" | "comment" | "user";
   reason: string;
   createdAt: string;
   targetId: string;
@@ -282,6 +282,22 @@ export default function AdminReportsClient() {
     setStatus(null);
 
     try {
+      if (report.type === "user") {
+        const dismissResponse = await fetch("/api/admin/reports", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "dismiss_target", targetId: report.targetId, reportType: report.type }),
+        });
+        const dismissBody = await parseApiResponse(dismissResponse);
+        if (!dismissResponse.ok) {
+          throw new Error(dismissBody?.error || "Failed to clear profile reports.");
+        }
+
+        setReports((current) => current.filter((item) => !(item.type === report.type && item.targetId === report.targetId)));
+        setStatus({ type: "success", text: "Profile reports cleared from the queue." });
+        return;
+      }
+
       const deleteUrl = report.type === "post"
         ? `/api/posts/manage?postId=${encodeURIComponent(report.targetId)}`
         : report.postId
@@ -644,21 +660,23 @@ export default function AdminReportsClient() {
                   </div>
 
                   <div className="flex flex-row gap-2 lg:flex-col lg:justify-start">
-                    <button
-                      type="button"
-                      className="rounded-full border border-rose-300/35 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                      onClick={() => void deleteReportedContent(report)}
-                      disabled={isBusy || report.targetMissing || Boolean(report.deletedAt)}
-                    >
-                      {isBusy ? "Working..." : report.deletedAt ? "Already deleted" : "Delete content"}
-                    </button>
+                    {report.type !== "user" ? (
+                      <button
+                        type="button"
+                        className="rounded-full border border-rose-300/35 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-100 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        onClick={() => void deleteReportedContent(report)}
+                        disabled={isBusy || report.targetMissing || Boolean(report.deletedAt)}
+                      >
+                        {isBusy ? "Working..." : report.deletedAt ? "Already deleted" : "Delete content"}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       className="rounded-full border border-cyan-300/35 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-400/20 disabled:cursor-not-allowed disabled:opacity-60"
-                      onClick={() => void dismissReport(report.id)}
+                      onClick={() => void (report.type === "user" ? deleteReportedContent(report) : dismissReport(report.id))}
                       disabled={isBusy}
                     >
-                      {isBusy ? "Working..." : "Dismiss report"}
+                      {isBusy ? "Working..." : report.type === "user" ? "Dismiss profile reports" : "Dismiss report"}
                     </button>
                   </div>
                 </div>

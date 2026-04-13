@@ -9,12 +9,13 @@ type ApiErrorCode =
   | "BAD_REQUEST"
   | "INTERNAL_ERROR";
 
-type ModerationReportType = "post" | "comment";
+type ModerationReportType = "post" | "comment" | "user";
 
 type RawReportRecord = {
   id: string;
   reporter_id: string | null;
   reported_id: string | null;
+  reported_user_id: string | null;
   reason: string;
   created_at: string;
   type: ModerationReportType | string;
@@ -24,6 +25,7 @@ type ProfileSummary = {
   id: string;
   username: string | null;
   display_name: string | null;
+  bio?: string | null;
 };
 
 type PostSummary = {
@@ -131,9 +133,7 @@ export async function GET(req: NextRequest) {
 
     const { data: rawReports, error: reportsError } = await adminClient
       .from("reports")
-      .select("id, reporter_id, reported_id, reason, created_at, type")
-      .in("type", ["post", "comment"])
-      .not("reported_id", "is", null)
+      .select("id, reporter_id, reported_id, reported_user_id, reason, created_at, type")
       .order("created_at", { ascending: false });
 
     if (reportsError) {
@@ -144,14 +144,35 @@ export async function GET(req: NextRequest) {
       return jsonError(reportsError.message, 500, "INTERNAL_ERROR");
     }
 
-    const reports = ((rawReports || []) as RawReportRecord[]).filter(
-      (report): report is RawReportRecord & { reported_id: string; type: ModerationReportType } =>
-        Boolean(report.reported_id) && (report.type === "post" || report.type === "comment")
-    );
+    const reports = ((rawReports || []) as RawReportRecord[])
+      .map((report) => {
+        const normalizedType: ModerationReportType | null =
+          report.type === "post" || report.type === "comment" || report.type === "user"
+            ? report.type
+            : report.reported_user_id
+              ? "user"
+              : null;
+
+        const normalizedTargetId = normalizedType === "user"
+          ? report.reported_user_id
+          : report.reported_id;
+
+        if (!normalizedType || !normalizedTargetId) {
+          return null;
+        }
+
+        return {
+          ...report,
+          type: normalizedType,
+          reported_id: normalizedTargetId,
+        };
+      })
+      .filter((report): report is RawReportRecord & { reported_id: string; type: ModerationReportType } => Boolean(report));
 
     const reporterIds = [...new Set(reports.map((report) => report.reporter_id).filter((value): value is string => Boolean(value)))];
     const commentIds = reports.filter((report) => report.type === "comment").map((report) => report.reported_id);
     const directPostIds = reports.filter((report) => report.type === "post").map((report) => report.reported_id);
+    const reportedUserIds = reports.filter((report) => report.type === "user").map((report) => report.reported_id);
 
     const [{ data: commentsData, error: commentsError }] = await Promise.all([
       commentIds.length
@@ -195,6 +216,7 @@ export async function GET(req: NextRequest) {
     const posts = (postsData || []) as PostSummary[];
     const authorIds = [...new Set([
       ...reporterIds,
+      ...reportedUserIds,
       ...posts.map((post) => post.user_id).filter((value): value is string => Boolean(value)),
       ...comments.map((comment) => comment.user_id).filter((value): value is string => Boolean(value)),
     ])];
@@ -203,7 +225,7 @@ export async function GET(req: NextRequest) {
       authorIds.length
         ? adminClient
             .from("profiles")
-            .select("id, username, display_name")
+            .select("id, username, display_name, bio")
             .in("id", authorIds)
         : Promise.resolve({ data: [], error: null }),
     ]);
@@ -225,12 +247,19 @@ export async function GET(req: NextRequest) {
       const reporter = report.reporter_id ? profilesById.get(report.reporter_id) : null;
       const targetPost = report.type === "post" ? postsById.get(report.reported_id) : null;
       const targetComment = report.type === "comment" ? commentsById.get(report.reported_id) : null;
-      const targetAuthorId = report.type === "post" ? targetPost?.user_id ?? null : targetComment?.user_id ?? null;
+      const targetUserProfile = report.type === "user" ? profilesById.get(report.reported_id) : null;
+      const targetAuthorId = report.type === "post"
+        ? targetPost?.user_id ?? null
+        : report.type === "comment"
+          ? targetComment?.user_id ?? null
+          : report.reported_id;
       const targetAuthor = targetAuthorId ? profilesById.get(targetAuthorId) : null;
       const parentPost = report.type === "comment" && targetComment?.post_id ? postsById.get(targetComment.post_id) : null;
       const preview = report.type === "post"
         ? truncateText(targetPost?.content, 240) || "Image-only post"
-        : truncateText(targetComment?.content, 200) || "Comment content unavailable";
+        : report.type === "comment"
+          ? truncateText(targetComment?.content, 200) || "Comment content unavailable"
+          : truncateText(targetUserProfile?.bio, 200) || `Profile report for ${targetUserProfile?.display_name ?? targetUserProfile?.username ?? "Unknown user"}`;
 
       return {
         id: report.id,
@@ -238,9 +267,9 @@ export async function GET(req: NextRequest) {
         reason: report.reason,
         createdAt: report.created_at,
         targetId: report.reported_id,
-        postId: report.type === "post" ? report.reported_id : targetComment?.post_id ?? null,
-        deletedAt: report.type === "post" ? targetPost?.deleted_at ?? null : targetComment?.deleted_at ?? null,
-        targetMissing: report.type === "post" ? !targetPost : !targetComment,
+        postId: report.type === "post" ? report.reported_id : report.type === "comment" ? targetComment?.post_id ?? null : null,
+        deletedAt: report.type === "post" ? targetPost?.deleted_at ?? null : report.type === "comment" ? targetComment?.deleted_at ?? null : null,
+        targetMissing: report.type === "post" ? !targetPost : report.type === "comment" ? !targetComment : !targetUserProfile,
         preview,
         parentPostPreview: report.type === "comment" ? truncateText(parentPost?.content, 160) || "Original post unavailable" : null,
         reporter: {
@@ -327,6 +356,31 @@ export async function PATCH(req: NextRequest) {
       }
 
       logInfo("admin/reports", "Dismissed reports for target", {
+        ...requestContext,
+        adminUserId: user.id,
+        targetId: body.targetId,
+        reportType: body.reportType,
+      });
+      return jsonOk({ success: true });
+    }
+
+    if (body.action === "dismiss_target" && body.targetId && body.reportType === "user") {
+      const { error } = await adminClient
+        .from("reports")
+        .delete()
+        .or(`and(type.eq.user,reported_id.eq.${body.targetId}),reported_user_id.eq.${body.targetId}`);
+
+      if (error) {
+        logError("admin/reports", "Failed to dismiss all user reports for target", error, {
+          ...requestContext,
+          adminUserId: user.id,
+          targetId: body.targetId,
+          reportType: body.reportType,
+        });
+        return jsonError(error.message, 500, "INTERNAL_ERROR");
+      }
+
+      logInfo("admin/reports", "Dismissed user reports for target", {
         ...requestContext,
         adminUserId: user.id,
         targetId: body.targetId,

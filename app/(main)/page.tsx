@@ -2,7 +2,7 @@
 "use client";
 import Image from "next/image";
 
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { Heart, MessageCircle, Send, SquarePen } from "lucide-react";
 import Link from "next/link";
@@ -28,6 +28,7 @@ import {
 } from "@/lib/post-affiliate-products";
 
 const PAGE_SIZE = 8;
+const EMPTY_INTERACTIONS: InteractionMap = Object.freeze({}) as InteractionMap;
 
 type Post = {
   id: string;
@@ -128,6 +129,41 @@ function applyPostThemeVars(element: HTMLElement | null, appearance?: ProfileApp
   const resolved = resolveProfileAppearance(appearance);
   element.style.setProperty("--post-text", resolved.text_color);
   element.style.setProperty("--post-highlight", resolved.highlight_color);
+  const bg = resolved.background_color;
+  const opacity = typeof resolved.background_opacity === "number" ? resolved.background_opacity : 0.7;
+  function hexToRgba(hex: string, alpha: number) {
+    let c = hex.replace("#", "");
+    if (c.length === 3) c = c.split("").map((x) => x + x).join("");
+    const num = parseInt(c, 16);
+    const r = (num >> 16) & 255;
+    const g = (num >> 8) & 255;
+    const b = num & 255;
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+  element.style.setProperty("--post-bg", hexToRgba(bg, opacity));
+}
+
+function isSameInteractionMap(prev: InteractionMap, next: InteractionMap) {
+  if (prev === next) return true;
+
+  const prevKeys = Object.keys(prev);
+  const nextKeys = Object.keys(next);
+  if (prevKeys.length !== nextKeys.length) return false;
+
+  for (const key of nextKeys) {
+    if (!(key in prev)) return false;
+
+    const prevValue = prev[key];
+    const nextValue = next[key];
+    if (prevValue === nextValue) continue;
+
+    // Fallback deep check to avoid replacing state with equivalent payloads.
+    if (JSON.stringify(prevValue) !== JSON.stringify(nextValue)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 export default function MainFeedPage() {
@@ -143,6 +179,29 @@ export default function MainFeedPage() {
     },    initialPageParam: undefined,  });
 
   const posts = useMemo(() => (data?.pages.flat() ?? []) as Post[], [data]);
+  const queryClient = useQueryClient();
+  const postIds = useMemo(() => posts.map((post) => post.id), [posts]);
+  const postIdsKey = useMemo(() => postIds.join(","), [postIds]);
+
+  const { data: interactionData = EMPTY_INTERACTIONS, refetch: refetchInteractions } = useQuery({
+    queryKey: ["mainFeedInteractions", postIdsKey],
+    queryFn: async () => {
+      if (!postIds.length) return {};
+      const response = await fetch(`/api/posts/interactions?postIds=${encodeURIComponent(postIds.join(","))}`);
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body?.error || "Failed to load post interactions.");
+      }
+      const body = await response.json();
+      return body.interactionsByPostId || {};
+    },
+    enabled: postIds.length > 0,
+    staleTime: 1000 * 15,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    retry: 1,
+  });
+
   const [interactions, setInteractions] = useState<InteractionMap>({});
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
@@ -208,25 +267,10 @@ export default function MainFeedPage() {
     return () => { listener?.subscription.unsubscribe(); };
   }, [loadUserRole]);
 
-  const loadInteractions = useCallback(async (postIds: string[]) => {
-    if (!postIds.length) {
-      setInteractions({});
-      return;
-    }
-
-    const response = await fetch(`/api/posts/interactions?postIds=${encodeURIComponent(postIds.join(","))}`);
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      throw new Error(body?.error || "Failed to load post interactions.");
-    }
-
-    const body = await response.json();
-    setInteractions(body.interactionsByPostId || {});
-  }, []);
-
   useEffect(() => {
-    void loadInteractions(posts.map((post) => post.id));
-  }, [loadInteractions, posts]);
+    const nextInteractions = interactionData ?? EMPTY_INTERACTIONS;
+    setInteractions((prev) => (isSameInteractionMap(prev, nextInteractions) ? prev : nextInteractions));
+  }, [interactionData]);
 
   const [postOverrides, setPostOverrides] = useState<Record<string, Partial<Pick<Post, "likes" | "comments_count">>>>({});
 
@@ -269,17 +313,12 @@ export default function MainFeedPage() {
 
         const body = await response.json().catch(() => ({}));
         if (!response.ok) {
-          // Log error details for debugging
-          // eslint-disable-next-line no-console
-          console.error("[Reaction Save] API error:", body?.error, { postId, emoji, response });
           throw new Error(body?.error || "Failed to save reaction.");
         }
 
         setInteractions((prev) => ({ ...prev, [postId]: body.interaction }));
         setPostCounts(postId, { likes: body.likesCount ?? 0 });
       } catch (interactionError) {
-        // eslint-disable-next-line no-console
-        console.error("[Reaction Save] Exception:", interactionError, { postId, emoji });
         setInteractionStatus("Could not save your reaction. Please try again.");
       } finally {
         setInteractionBusyPostId(null);
@@ -409,12 +448,12 @@ export default function MainFeedPage() {
         const body = await runAdminUserAction({ targetUserId, action, durationHours });
         setAdminActionStatus(body?.message || "Admin action applied successfully.");
         await refetch();
-        await loadInteractions(posts.map((post) => post.id));
+        await refetchInteractions();
       } catch (error: any) {
         setAdminActionStatus(typeof error?.message === "string" ? error.message : "Admin action failed.");
       }
     },
-    [loadInteractions, posts, refetch, session?.user]
+    [refetch, refetchInteractions, session?.user]
   );
 
   const handleSaveCommentEdit = useCallback(async (commentId: string, postId: string) => {
@@ -541,7 +580,7 @@ export default function MainFeedPage() {
           return (
           <article
             key={post.id}
-            className={`bg-gradient-to-br from-teal-900/40 via-blue-950/40 to-emerald-900/40 border fractal-border rounded-[1.5rem] p-5 transition hover:-translate-y-1 hover:shadow-2xl sm:rounded-3xl sm:p-6 ${fontClass(post.author_theme?.font_style)}`}
+            className={`bg-[var(--post-bg,rgba(7,17,31,0.7))] border fractal-border rounded-[1.5rem] p-5 transition hover:-translate-y-1 hover:shadow-2xl sm:rounded-3xl sm:p-6 ${fontClass(post.author_theme?.font_style)}`}
             ref={(element) => applyPostThemeVars(element, post.author_theme)}
           >
             <header className="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:justify-between sm:gap-4">

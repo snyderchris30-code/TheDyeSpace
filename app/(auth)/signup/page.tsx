@@ -7,8 +7,6 @@ import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import CaptchaChallenge from "@/app/CaptchaChallenge";
 
-const LIVE_SITE_URL = "https://thedyespace.app";
-
 export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [failedAttempts, setFailedAttempts] = useState(0);
@@ -29,6 +27,7 @@ export default function SignupPage() {
   );
   const router = useRouter();
   const isCaptchaReady = Boolean(captchaState.token && captchaState.selectedIds.length > 0);
+  const emailRedirectBase = typeof window !== "undefined" ? window.location.origin : "";
 
   async function fetchJsonWithTimeout(url: string, init: RequestInit, timeoutMs = 8000) {
     const controller = new AbortController();
@@ -127,7 +126,7 @@ export default function SignupPage() {
         email,
         password,
         options: {
-          emailRedirectTo: `${LIVE_SITE_URL}/confirm`,
+          emailRedirectTo: `${emailRedirectBase}/confirm`,
         },
       });
 

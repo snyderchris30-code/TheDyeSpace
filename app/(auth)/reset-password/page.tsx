@@ -7,7 +7,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 const INVALID_RESET_LINK_MESSAGE = "This reset link is invalid or has expired. Please request a new one.";
-const LIVE_SITE_ORIGIN = "https://thedyespace.app";
 
 export default function ResetPasswordPage() {
   const supabase = useMemo(() => createClient(), []);
@@ -21,12 +20,6 @@ export default function ResetPasswordPage() {
     async function initializeRecoverySession() {
       setInitializing(true);
       setError(null);
-
-      const currentOrigin = window.location.origin;
-      if (currentOrigin !== LIVE_SITE_ORIGIN) {
-        window.location.replace(`${LIVE_SITE_ORIGIN}/reset-password${window.location.search}${window.location.hash}`);
-        return;
-      }
 
       const urlParams = new URLSearchParams(window.location.search);
       const hash = window.location.hash.startsWith("#")

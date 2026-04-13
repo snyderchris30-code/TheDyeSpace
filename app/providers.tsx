@@ -35,7 +35,11 @@ function FreshDataRuntime() {
         const isApiCall = url.pathname.startsWith('/api/');
         const isStaticAsset = /\.(?:js|css|png|jpg|jpeg|gif|webp|svg|ico|json|webmanifest|mp4|woff2?)$/i.test(url.pathname);
         const method = (init?.method || request?.method || 'GET').toUpperCase();
-        const isSafeApiRequest = sameOrigin && isApiCall && (method === 'GET' || method === 'HEAD') && !init?.signal;
+        const isSafeApiRequest =
+          sameOrigin &&
+          isApiCall &&
+          ((method === 'GET' || method === 'HEAD') || (method === 'POST' && url.pathname === '/api/profile/init')) &&
+          !init?.signal;
 
         if (sameOrigin && (isApiCall || isStaticAsset)) {
           url.searchParams.set('v', APP_VERSION);
