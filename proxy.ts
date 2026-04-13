@@ -8,6 +8,7 @@ const PUBLIC_ROUTES = new Set(['/login', '/forgot-password', '/reset-password'])
 const PROTECTED_ROUTE_PREFIXES = ['/create', '/notifications'];
 const PROTECTED_EXACT_ROUTES = new Set<string>(['/profile']);
 const BLOCKED_ATTACK_PATHS = new Set(['/xmlrpc.php', '/wp-admin', '/wp-login.php', '/wp-json', '/.env', '/phpinfo.php']);
+const BLOCKED_RECON_PATH_PREFIXES = ['/.env', '/.ssh', '/dump', '/.aws', '/.docker', '/_zz_catchall'] as const;
 
 function clearSupabaseCookies(request: NextRequest, response: NextResponse) {
   for (const cookie of request.cookies.getAll()) {
@@ -39,6 +40,10 @@ function isProtectedPath(pathname: string) {
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const ip = getClientIp(request);
+
+  if (BLOCKED_RECON_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+    return new NextResponse('Not found', { status: 404 });
+  }
 
   if (BLOCKED_ATTACK_PATHS.has(pathname) || pathname.startsWith('/wp-admin/') || pathname.startsWith('/wp-json/')) {
     return new NextResponse('Not found', { status: 404 });
