@@ -9,6 +9,10 @@ const PROTECTED_ROUTE_PREFIXES = ['/create', '/notifications'];
 const PROTECTED_EXACT_ROUTES = new Set<string>(['/profile']);
 const BLOCKED_ATTACK_PATHS = new Set(['/xmlrpc.php', '/wp-admin', '/wp-login.php', '/wp-json', '/.env', '/phpinfo.php']);
 const BLOCKED_RECON_PATH_PREFIXES = ['/.env', '/.ssh', '/dump', '/.aws', '/.docker', '/_zz_catchall'] as const;
+const BURST_RATE_LIMIT_EXACT = new Set(['/', '/explore', '/login', '/create']);
+const BURST_RATE_LIMIT_PREFIXES = ['/profile'];
+const BURST_RATE_LIMIT_WINDOW_MS = 10_000;
+const BURST_RATE_LIMIT_MAX = 8;
 
 function clearSupabaseCookies(request: NextRequest, response: NextResponse) {
   for (const cookie of request.cookies.getAll()) {
@@ -47,6 +51,25 @@ export async function proxy(request: NextRequest) {
 
   if (BLOCKED_ATTACK_PATHS.has(pathname) || pathname.startsWith('/wp-admin/') || pathname.startsWith('/wp-json/')) {
     return new NextResponse('Not found', { status: 404 });
+  }
+
+  const isBurstRoute = BURST_RATE_LIMIT_EXACT.has(pathname) || BURST_RATE_LIMIT_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+  if (isBurstRoute) {
+    const routeKey = BURST_RATE_LIMIT_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)) ? '/profile' : pathname;
+    const limiter = applyRateLimit({
+      key: `proxy:burst:${routeKey}:${ip}`,
+      windowMs: BURST_RATE_LIMIT_WINDOW_MS,
+      max: BURST_RATE_LIMIT_MAX,
+      blockMs: BURST_RATE_LIMIT_WINDOW_MS,
+    });
+
+    if (!limiter.allowed) {
+      console.warn('[proxy] Burst rate limit exceeded', { pathname, ip, routeKey, retryAfterSeconds: limiter.retryAfterSeconds });
+      return new NextResponse('Too many requests', {
+        status: 429,
+        headers: { 'Retry-After': String(limiter.retryAfterSeconds) },
+      });
+    }
   }
 
   const suspiciousSource = `${pathname}${request.nextUrl.search || ''}`;
