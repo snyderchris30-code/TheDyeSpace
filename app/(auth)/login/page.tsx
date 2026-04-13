@@ -42,7 +42,7 @@ export default function LoginPage() {
   const router = useRouter();
   const isCaptchaReady = Boolean(captchaState.token && captchaState.selectedIds.length > 0);
 
-  async function fetchJsonWithTimeout(url: string, init: RequestInit, timeoutMs = 8000) {
+  async function fetchJsonWithTimeout(url: string, init: RequestInit, timeoutMs = 10000) {
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
 
@@ -51,6 +51,9 @@ export default function LoginPage() {
       const body = await response.json().catch(() => ({}));
       return { response, body };
     } catch (error) {
+      if ((error as any)?.name === "AbortError") {
+        return { response: null, body: {} };
+      }
       console.error("[FETCH] timeout or error", url, error);
       return { response: null, body: {} };
     } finally {
@@ -156,11 +159,9 @@ export default function LoginPage() {
       let { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
       if (error && (error as { status?: number }).status === 400) {
-        console.error("[LOGIN] signInWithPassword returned 400:", error.message);
-        await new Promise((resolve) => window.setTimeout(resolve, 400));
-        const retryResult = await supabase.auth.signInWithPassword({ email, password });
-        data = retryResult.data;
-        error = retryResult.error;
+        setMessage("Invalid login credentials. Please check your email and password.");
+        setLoading(false);
+        return;
       }
 
       if (error) {

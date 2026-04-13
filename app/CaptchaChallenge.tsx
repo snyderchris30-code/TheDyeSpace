@@ -36,10 +36,10 @@ export default function CaptchaChallenge({ onStateChange, reloadKey = 0 }: Captc
     setOptions([]);
     setToken(null);
     setSelectedIds([]);
-    onStateChange({ token: null, selectedIds: [] });
 
     const cacheKey = String(reloadKey);
     let challengePromise = captchaLoadPromises.get(cacheKey);
+
     if (!challengePromise) {
       challengePromise = (async (): Promise<CaptchaChallengeResponse> => {
         const response = await fetch(`/api/captcha?cacheBust=${Date.now()}`, { cache: "no-store" });
@@ -65,29 +65,36 @@ export default function CaptchaChallenge({ onStateChange, reloadKey = 0 }: Captc
       setPrompt(body.prompt);
       setOptions(body.options);
       setToken(body.token);
-      onStateChange({ token: body.token, selectedIds: [] });
+      setSelectedIds([]);
     } catch (challengeError: any) {
       setError(typeof challengeError?.message === "string" ? challengeError.message : "Could not load the Stoned CAPTCHA.");
     } finally {
       setLoading(false);
     }
-  }, [onStateChange, reloadKey]);
+  }, [reloadKey]);
 
   useEffect(() => {
     void loadChallenge();
-  }, [loadChallenge, reloadKey]);
+  }, [loadChallenge]);
+
+  const handleReload = useCallback(() => {
+    onStateChange({ token: null, selectedIds: [] });
+    void loadChallenge();
+  }, [loadChallenge, onStateChange]);
 
   const toggleSelection = useCallback(
     (imageId: string) => {
-      setSelectedIds((previous) => {
-        const next = previous.includes(imageId)
-          ? previous.filter((value) => value !== imageId)
-          : [...previous, imageId];
-        onStateChange({ token, selectedIds: next });
-        return next;
-      });
+      const nextSelectedIds = selectedIds.includes(imageId)
+        ? selectedIds.filter((value) => value !== imageId)
+        : [...selectedIds, imageId];
+
+      setSelectedIds(nextSelectedIds);
+
+      if (token) {
+        onStateChange({ token, selectedIds: nextSelectedIds });
+      }
     },
-    [onStateChange, token]
+    [onStateChange, selectedIds, token]
   );
 
   const selectionCountLabel = useMemo(() => `${selectedIds.length} selected`, [selectedIds.length]);
@@ -102,7 +109,7 @@ export default function CaptchaChallenge({ onStateChange, reloadKey = 0 }: Captc
         </div>
         <button
           type="button"
-          onClick={() => void loadChallenge()}
+          onClick={handleReload}
           className="inline-flex items-center gap-2 rounded-full border border-cyan-300/30 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:border-cyan-200/60 hover:bg-cyan-400/10"
           aria-label="Load a new Stoned CAPTCHA challenge"
         >
