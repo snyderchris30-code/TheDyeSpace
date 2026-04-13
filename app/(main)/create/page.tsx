@@ -151,9 +151,6 @@ export default function CreatePostPage() {
           <option value="for_sale">For Sale</option>
         </select>
       </label>
-
-      {/* For Sale checkbox removed; now part of Post Type */}
-
       <label className="block mb-4">
         <span className="text-cyan-300">Image upload (optional, up to 10)</span>
         <input

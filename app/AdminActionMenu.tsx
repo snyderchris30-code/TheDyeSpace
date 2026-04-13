@@ -27,31 +27,42 @@ export default function AdminActionMenu({
   align = "right",
   className = "",
 }: AdminActionMenuProps) {
-  const menuAlignment = align === "left" ? "left-0" : "right-0";
+  void align;
 
   return (
     <details className={`relative ${className}`.trim()}>
       <summary className="inline-flex cursor-pointer items-center rounded-full border border-violet-300/25 bg-black/20 px-3 py-1 text-xs font-semibold text-violet-200 transition hover:bg-violet-900/30">
         {label}
       </summary>
-      <div className={`absolute ${menuAlignment} z-[2147483650] mt-2 w-72 rounded-2xl border border-violet-300/20 bg-slate-950/95 p-3 shadow-[0_20px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl`}>
-        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.28em] text-violet-300/80">Admin Actions</p>
-        <div className="grid gap-2">
-          {ADMIN_ACTION_MENU_ITEMS.map((item) => (
-            <button
-              key={`${item.action}-${item.durationHours ?? "base"}`}
-              type="button"
-              className={`w-full rounded-xl border px-3 py-2 text-left text-xs font-semibold transition ${TONE_CLASS_NAMES[item.tone]}`}
-              onClick={(event) => {
-                const details = event.currentTarget.closest("details") as HTMLDetailsElement | null;
-                const result = onAction(targetUserId, item.action, item.durationHours);
-                details?.removeAttribute("open");
-                void Promise.resolve(result);
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
+      <div className="fixed inset-0 z-[2147483650] flex items-center justify-center p-4">
+        <button
+          type="button"
+          aria-label="Close admin actions"
+          className="absolute inset-0 bg-black/65 backdrop-blur-[1px]"
+          onClick={(event) => {
+            const details = event.currentTarget.closest("details") as HTMLDetailsElement | null;
+            details?.removeAttribute("open");
+          }}
+        />
+        <div className="relative z-10 w-full max-w-sm rounded-2xl border border-violet-300/30 bg-slate-950/95 p-3 shadow-[0_20px_40px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+          <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.28em] text-violet-300/80">Admin Actions</p>
+          <div className="grid gap-2">
+            {ADMIN_ACTION_MENU_ITEMS.map((item) => (
+              <button
+                key={`${item.action}-${item.durationHours ?? "base"}`}
+                type="button"
+                className={`w-full rounded-xl border px-3 py-2 text-left text-xs font-semibold transition ${TONE_CLASS_NAMES[item.tone]}`}
+                onClick={(event) => {
+                  const details = event.currentTarget.closest("details") as HTMLDetailsElement | null;
+                  const result = onAction(targetUserId, item.action, item.durationHours);
+                  details?.removeAttribute("open");
+                  void Promise.resolve(result);
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </details>

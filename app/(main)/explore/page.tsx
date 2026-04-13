@@ -29,6 +29,7 @@ import {
   extractAffiliateProductIds,
   stripAffiliateProductTokens,
 } from "@/lib/post-affiliate-products";
+import { normalizeSellerProducts } from "@/lib/verified-seller";
 
 type ExplorePost = {
   id: string;
@@ -45,6 +46,7 @@ type ExplorePost = {
   author_theme?: ProfileAppearance | null;
   author_verified_badge?: boolean;
   author_member_number?: number | null;
+  is_shop_listing?: boolean;
 };
 
 type InteractionMap = Record<string, AggregatedPostInteraction>;
@@ -53,6 +55,7 @@ type ProfileRow = {
   id: string;
   username: string | null;
   display_name: string | null;
+  created_at?: string | null;
   theme_settings?: ProfileAppearance | null;
   verified_badge?: boolean | null;
   member_number?: number | null;
@@ -154,6 +157,7 @@ async function fetchExplorePosts({ queryKey }: { queryKey: unknown[] }) {
 
   const rows = ((data || []) as ExplorePost[]).map((post) => ({
     ...post,
+    is_shop_listing: false,
     image_urls: normalizePostImageUrls(post.image_urls).length ? normalizePostImageUrls(post.image_urls) : null,
   }));
 
@@ -163,7 +167,7 @@ async function fetchExplorePosts({ queryKey }: { queryKey: unknown[] }) {
   if (userIds.length) {
     const { data: profilesData, error: profilesError } = await supabase
       .from("profiles")
-      .select("id,username,display_name,theme_settings,verified_badge,member_number,shadow_banned,shadow_banned_until")
+      .select("id,username,display_name,created_at,theme_settings,verified_badge,member_number,shadow_banned,shadow_banned_until")
       .in("id", userIds);
 
     if (!profilesError) {
@@ -173,8 +177,68 @@ async function fetchExplorePosts({ queryKey }: { queryKey: unknown[] }) {
     }
   }
 
-  return rows
+  let sellerProfilesQuery = supabase
+    .from("profiles")
+    .select("id,username,display_name,created_at,theme_settings,verified_badge,member_number,shadow_banned,shadow_banned_until")
+    .eq("verified_badge", true)
+    .limit(200);
+
+  if (tab === "following") {
+    sellerProfilesQuery = sellerProfilesQuery.in("id", followingIds);
+  }
+
+  const { data: sellerProfilesData } = await sellerProfilesQuery;
+  const sellerProfiles = (sellerProfilesData || []) as ProfileRow[];
+  sellerProfiles.forEach((profile) => {
+    profilesById.set(profile.id, profile);
+  });
+
+  const shopListingRows: ExplorePost[] = [];
+  for (const profile of sellerProfiles) {
+    if (profile.verified_badge !== true) {
+      continue;
+    }
+
+    const userId = profile.id;
+
+    const normalizedProducts = normalizeSellerProducts(profile.theme_settings?.shop_products);
+    for (const [index, product] of normalizedProducts.entries()) {
+      const descriptionParts = [product.title?.trim(), product.price ? `$${product.price}` : null, product.description?.trim()]
+        .filter(Boolean)
+        .map(String);
+      const imageUrls = normalizePostImageUrls(product.photo_urls || null);
+
+      shopListingRows.push({
+        id: `shop-product-${userId}-${product.id}`,
+        user_id: userId,
+        content: descriptionParts.join(" • ") || product.title || "Verified Seller Listing",
+        image_urls: imageUrls.length ? imageUrls : null,
+        likes: 0,
+        comments_count: 0,
+        is_for_sale: true,
+        created_at: new Date(Date.now() - index * 1000).toISOString(),
+        author_display_name: formatDisplayName(profile),
+        author_at_name: formatAtName(profile),
+        author_username: profile.username ?? null,
+        author_theme: profile.theme_settings ?? null,
+        author_verified_badge: true,
+        author_member_number: profile.member_number ?? null,
+        is_shop_listing: true,
+      });
+    }
+  }
+
+  const mergedRows = [...rows, ...shopListingRows].sort((a, b) => {
+    const aTime = Date.parse(a.created_at || "");
+    const bTime = Date.parse(b.created_at || "");
+    return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
+  });
+
+  return mergedRows
     .map((post) => {
+      if (post.is_shop_listing) {
+        return post;
+      }
       const profile = profilesById.get(post.user_id);
       return {
         ...post,
@@ -189,6 +253,12 @@ async function fetchExplorePosts({ queryKey }: { queryKey: unknown[] }) {
     .filter((post) => {
       const author = profilesById.get(post.user_id);
       if (!viewerIsAdmin && post.user_id !== sessionUserId && isShadowBanned(author)) return false;
+      if (search.trim()) {
+        const text = (post.content || "").toLowerCase();
+        if (!text.includes(search.trim().toLowerCase())) {
+          return false;
+        }
+      }
       if (marketplaceOnly && !post.is_for_sale) return false;
       if (tab === "following") return true;
       if (tab === "all") return true;
@@ -703,11 +773,12 @@ export default function ExplorePage() {
             const selectedPostReaction = postInteraction.viewerReaction ? buildCustomEmojiAsset(postInteraction.viewerReaction) : null;
             const totalPostReactions = countInteractionReactions(postInteraction);
             const visibleContent = stripCategoryTag(stripAffiliateProductTokens(post.content));
+            const hasImage = Boolean(post.image_urls?.length);
 
             return (
             <article
               key={post.id}
-              className={`rounded-3xl border-4 border-gradient-tiedye bg-[var(--post-bg,rgba(7,17,31,0.7))] p-4 shadow-[0_0_0_4px_rgba(0,0,0,0.18),0_8px_32px_0_rgba(0,0,0,0.25)] backdrop-blur-xl sm:p-5 ${post.author_verified_badge ? "ring-2 ring-amber-300/30" : ""} ${fontClass(post.author_theme?.font_style)}`}
+              className={`rounded-3xl border-4 bg-[var(--post-bg,rgba(7,17,31,0.7))] p-4 shadow-[0_0_0_4px_rgba(0,0,0,0.18),0_8px_32px_0_rgba(0,0,0,0.25)] backdrop-blur-xl sm:p-5 ${post.author_verified_badge ? "border-amber-400 ring-2 ring-amber-400" : "border-gradient-tiedye"} ${fontClass(post.author_theme?.font_style)}`}
               ref={(element) => applyPostThemeVars(element, post.author_theme)}
             >
               {post.image_urls?.[0] ? (
@@ -721,8 +792,42 @@ export default function ExplorePage() {
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent px-3 py-4 text-left text-xs text-cyan-50/85 sm:text-sm">Tap to expand</div>
                   </button>
               ) : null}
+                <div className="space-y-3 rounded-2xl border border-cyan-800/40 bg-slate-950/45 px-4 py-3">
+                  <UserIdentity
+                    displayName={post.author_display_name || "DyeSpace User"}
+                    username={post.author_username || null}
+                    verifiedBadge={post.author_verified_badge === true}
+                    memberNumber={post.author_member_number ?? null}
+                    className="min-w-0"
+                    nameClassName="text-sm font-semibold text-[color:var(--post-text)] hover:text-[color:var(--post-highlight)] hover:underline"
+                    usernameClassName="text-xs text-[color:var(--post-highlight)]/85 hover:text-[color:var(--post-highlight)] hover:underline"
+                    metaClassName="text-xs text-[color:var(--post-text)]/55"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    {post.is_for_sale ? (
+                      <span className="rounded-full border border-emerald-300/40 bg-emerald-500/20 px-2 py-1 text-xs font-semibold text-emerald-100">
+                        For Sale
+                      </span>
+                    ) : null}
+                    {parsePostCategory(post.content) === "sold_unavailable" ? (
+                      <span className="rounded-full border border-amber-300/40 bg-amber-500/20 px-2 py-1 text-xs font-semibold text-amber-100">
+                        {post.content?.toLowerCase().startsWith("[sold]") ? "Sold" : "No Longer Available"}
+                      </span>
+                    ) : null}
+                    {getCategoryMeta(post.content) ? (
+                      <Link
+                        href={`/explore?tab=${encodeURIComponent(getCategoryMeta(post.content)!.value)}`}
+                        className="inline-flex rounded-full border border-cyan-300/45 bg-cyan-300/15 px-2 py-0.5 text-[11px] font-semibold text-cyan-100 hover:border-cyan-200/70 hover:bg-cyan-300/30"
+                      >
+                        {getCategoryMeta(post.content)!.label}
+                      </Link>
+                    ) : null}
+                  </div>
+                  <div className="text-xs text-[color:var(--post-text)]/75">{new Date(post.created_at).toLocaleString()}</div>
+                </div>
+
                 {editingPostId === post.id ? (
-                <div className="mb-3 space-y-3 rounded-3xl border border-cyan-300/20 bg-slate-950/40 p-4">
+                <div className="space-y-3 rounded-3xl border border-cyan-300/20 bg-slate-950/40 p-4">
                   <label className="block text-sm font-semibold text-cyan-100">Edit post</label>
                   <textarea
                     value={editPostContent}
@@ -750,89 +855,11 @@ export default function ExplorePage() {
               ) : (
                 <InlineEmojiText
                   text={visibleContent || "No description provided."}
-                  className="mb-3 block whitespace-pre-wrap text-sm leading-6 text-[color:var(--post-text)]/92 sm:text-base sm:leading-7"
+                  className={`block whitespace-pre-wrap text-[color:var(--post-text)]/92 ${hasImage ? "text-sm leading-6 sm:text-base sm:leading-7" : "rounded-2xl border border-cyan-300/15 bg-black/15 px-4 py-4 text-base leading-8 sm:text-lg"}`}
                 />
               )}
-              <div className="mb-3">
-                <UserIdentity
-                  displayName={post.author_display_name || "DyeSpace User"}
-                  username={post.author_username || null}
-                  verifiedBadge={post.author_verified_badge === true}
-                  memberNumber={post.author_member_number ?? null}
-                  className="min-w-0"
-                  nameClassName="text-sm font-semibold text-[color:var(--post-text)] hover:text-[color:var(--post-highlight)] hover:underline"
-                  usernameClassName="text-xs text-[color:var(--post-highlight)]/85 hover:text-[color:var(--post-highlight)] hover:underline"
-                  metaClassName="text-xs text-[color:var(--post-text)]/55"
-                />
-                {getCategoryMeta(post.content) ? (
-                  <Link
-                    href={`/explore?tab=${encodeURIComponent(getCategoryMeta(post.content)!.value)}`}
-                    className="ml-2 inline-flex rounded-full border border-cyan-300/45 bg-cyan-300/15 px-2 py-0.5 text-[11px] font-semibold text-cyan-100 hover:border-cyan-200/70 hover:bg-cyan-300/30"
-                  >
-                    {getCategoryMeta(post.content)!.label}
-                  </Link>
-                ) : null}
-              </div>
-              <div className="mb-3 flex flex-wrap gap-2">
-                {post.is_for_sale ? (
-                  <span className="rounded-full border border-emerald-300/40 bg-emerald-500/20 px-2 py-1 text-xs font-semibold text-emerald-100">
-                    For Sale
-                  </span>
-                ) : null}
-                {parsePostCategory(post.content) === "sold_unavailable" ? (
-                  <span className="rounded-full border border-amber-300/40 bg-amber-500/20 px-2 py-1 text-xs font-semibold text-amber-100">
-                    {post.content?.toLowerCase().startsWith("[sold]") ? "Sold" : "No Longer Available"}
-                  </span>
-                ) : null}
-              </div>
-
-              {post.is_for_sale && sessionUserId && post.user_id === sessionUserId ? (
-                <div className="mb-3 flex flex-wrap gap-2">
-                  <button
-                    className="rounded-full border border-emerald-300/50 bg-emerald-500/25 px-3 py-1 text-xs font-semibold text-emerald-50 hover:bg-emerald-500/35"
-                    onClick={() => markListingStatus(post, "sold")}
-                  >
-                    Mark as Sold
-                  </button>
-                  <button
-                    className="rounded-full border border-amber-300/50 bg-amber-500/25 px-3 py-1 text-xs font-semibold text-amber-50 hover:bg-amber-500/35"
-                    onClick={() => markListingStatus(post, "unavailable")}
-                  >
-                    Mark Unavailable
-                  </button>
-                </div>
-              ) : null}
-
-              <div className="flex items-center justify-between text-xs text-[color:var(--post-text)]/75 mb-2">
-                <span>{new Date(post.created_at).toLocaleString()}</span>
-                <span>{totalPostReactions} reactions • {post.comments_count} comments</span>
-              </div>
-              {(viewerIsAdmin || sessionUserId === post.user_id) ? (
-                <div className="mb-3 flex flex-wrap items-center gap-2">
-                  {sessionUserId === post.user_id && editingPostId !== post.id ? (
-                    <button
-                      type="button"
-                      className="rounded-full border border-cyan-300/25 bg-black/20 px-3 py-1 text-xs text-cyan-300 hover:bg-cyan-900/30 transition"
-                      onClick={() => {
-                        setEditingPostId(post.id);
-                        setEditPostContent(stripAffiliateProductTokens(post.content));
-                        setEditPostAffiliateProductIds(extractAffiliateProductIds(post.content));
-                      }}
-                    >
-                      Edit
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="rounded-full border border-rose-300/25 bg-black/20 px-3 py-1 text-xs text-rose-300 transition hover:bg-rose-900/30"
-                    onClick={() => void handleDeletePost(post.id)}
-                  >
-                    Delete
-                  </button>
-                  {viewerIsAdmin ? <AdminActionMenu targetUserId={post.user_id} onAction={handleAdminAction} /> : null}
-                </div>
-              ) : null}
               {sessionUserId ? (
+                !post.is_shop_listing ? (
                 <div className="flex flex-wrap items-center gap-3">
                   <EmojiPicker
                     mode="reaction"
@@ -866,12 +893,56 @@ export default function ExplorePage() {
                   </button>
                   <ReportPostButton postId={post.id} />
                 </div>
+                ) : null
               ) : (
                 <p className="text-sm italic text-cyan-300/80">Sign in to interact with posts.</p>
               )}
+              <div className="flex flex-wrap items-center gap-3 border-t border-cyan-300/10 pt-4">
+                {!post.is_shop_listing && (viewerIsAdmin || sessionUserId === post.user_id) ? (
+                  <>
+                    {sessionUserId === post.user_id && editingPostId !== post.id ? (
+                      <button
+                        type="button"
+                        className="rounded-full border border-cyan-300/25 bg-black/20 px-3 py-1 text-xs text-cyan-300 hover:bg-cyan-900/30 transition"
+                        onClick={() => {
+                          setEditingPostId(post.id);
+                          setEditPostContent(stripAffiliateProductTokens(post.content));
+                          setEditPostAffiliateProductIds(extractAffiliateProductIds(post.content));
+                        }}
+                      >
+                        Edit
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="rounded-full border border-rose-300/25 bg-black/20 px-3 py-1 text-xs text-rose-300 transition hover:bg-rose-900/30"
+                      onClick={() => void handleDeletePost(post.id)}
+                    >
+                      Delete
+                    </button>
+                    {viewerIsAdmin ? <AdminActionMenu targetUserId={post.user_id} onAction={handleAdminAction} /> : null}
+                  </>
+                ) : null}
+                {post.is_for_sale && !post.is_shop_listing && sessionUserId && post.user_id === sessionUserId ? (
+                  <>
+                    <button
+                      className="rounded-full border border-emerald-300/50 bg-emerald-500/25 px-3 py-1 text-xs font-semibold text-emerald-50 hover:bg-emerald-500/35"
+                      onClick={() => markListingStatus(post, "sold")}
+                    >
+                      Mark as Sold
+                    </button>
+                    <button
+                      className="rounded-full border border-amber-300/50 bg-amber-500/25 px-3 py-1 text-xs font-semibold text-amber-50 hover:bg-amber-500/35"
+                      onClick={() => markListingStatus(post, "unavailable")}
+                    >
+                      Mark Unavailable
+                    </button>
+                  </>
+                ) : null}
+              </div>
               <PostAffiliateProducts content={post.content} className="mt-3" />
 
-              {postInteraction.reactions.length > 0 ? (
+              {!post.is_shop_listing && postInteraction.reactions.length > 0 ? (
                 <div className="mt-4 flex flex-wrap gap-2">
                   {postInteraction.reactions.map((reaction) => (
                     <button
@@ -892,7 +963,7 @@ export default function ExplorePage() {
                 </div>
               ) : null}
 
-              {isCommentsOpen ? (
+              {!post.is_shop_listing && isCommentsOpen ? (
                 <div className="mt-5 rounded-[1.5rem] border border-cyan-300/15 bg-black/20 p-4 backdrop-blur-xl sm:p-5">
                   <div className="space-y-4">
                     {postInteraction.comments.length === 0 ? (

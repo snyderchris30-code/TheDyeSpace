@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { hasAdminAccess } from "@/lib/admin-actions";
 import type { ProfileAppearance } from "@/lib/profile-theme";
 import { normalizePostImageUrls } from "@/lib/post-media";
+import { normalizeSellerProducts } from "@/lib/verified-seller";
 
 const PAGE_SIZE = 8;
 const FEED_CACHE_TTL_MS = 10_000;
@@ -30,6 +31,7 @@ type FeedPost = {
   author_voided_until: string | null;
   author_verified_badge: boolean;
   author_member_number: number | null;
+  is_shop_listing?: boolean;
 };
 
 type PostRow = {
@@ -47,6 +49,7 @@ type ProfileRow = {
   id: string;
   username: string | null;
   display_name: string | null;
+  created_at?: string | null;
   theme_settings?: ProfileAppearance | null;
   voided_until?: string | null;
   verified_badge?: boolean | null;
@@ -182,7 +185,7 @@ export async function GET(request: NextRequest) {
     if (userIds.length) {
       const { data: profilesData, error: profilesError } = await supabase
         .from("profiles")
-        .select("id,username,display_name,theme_settings,voided_until,verified_badge,member_number,shadow_banned,shadow_banned_until,ghost_ridin")
+        .select("id,username,display_name,created_at,theme_settings,voided_until,verified_badge,member_number,shadow_banned,shadow_banned_until,ghost_ridin")
         .in("id", userIds);
 
       let safeProfilesData = profilesData;
@@ -213,6 +216,45 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    const { data: sellerProfilesData } = await supabase
+      .from("profiles")
+      .select("id,username,display_name,created_at,theme_settings,voided_until,verified_badge,member_number,shadow_banned,shadow_banned_until,ghost_ridin")
+      .eq("verified_badge", true)
+      .limit(200);
+
+    const sellerProfiles = (sellerProfilesData || []) as ProfileRow[];
+    sellerProfiles.forEach((profile) => {
+      profilesById.set(profile.id, profile);
+    });
+
+    const shopListingPosts: FeedPost[] = sellerProfiles.flatMap((profile) => {
+      const products = normalizeSellerProducts(profile.theme_settings?.shop_products);
+      return products.map((product, index) => {
+        const descriptionParts = [product.title?.trim(), product.price ? `$${product.price}` : null, product.description?.trim()]
+          .filter(Boolean)
+          .map(String);
+        const imageUrls = normalizePostImageUrls(product.photo_urls || null);
+        return {
+          id: `shop-product-${profile.id}-${product.id}`,
+          user_id: profile.id,
+          content: descriptionParts.join(" • ") || product.title || "Verified Seller Listing",
+          image_urls: imageUrls.length ? imageUrls : null,
+          likes: 0,
+          comments_count: 0,
+          is_for_sale: true,
+          created_at: new Date(Date.now() - index * 1000).toISOString(),
+          author_display_name: formatDisplayName(profile),
+          author_at_name: formatAtName(profile),
+          author_username: profile.username ?? null,
+          author_theme: profile.theme_settings ?? null,
+          author_voided_until: profile.voided_until ?? null,
+          author_verified_badge: true,
+          author_member_number: profile.member_number ?? null,
+          is_shop_listing: true,
+        } as FeedPost;
+      });
+    });
+
     const visiblePosts = posts.filter((post) => {
       const profile = profilesById.get(post.user_id);
       if (viewerIsAdmin) return true;
@@ -220,7 +262,7 @@ export async function GET(request: NextRequest) {
       return !isShadowBanned(profile);
     });
 
-    const result = visiblePosts.map((post) => {
+    const standardFeedPosts = visiblePosts.map((post) => {
       const profile = profilesById.get(post.user_id);
       const viewerOwnPost = Boolean(user?.id && post.user_id === user.id);
       const showGhostIdentity = profile?.ghost_ridin === true && !viewerIsAdmin && !viewerOwnPost;
@@ -237,6 +279,17 @@ export async function GET(request: NextRequest) {
         author_member_number: profile?.member_number ?? null,
       };
     });
+
+    const visibleShopListings = shopListingPosts.filter((post) => {
+      const profile = profilesById.get(post.user_id);
+      if (viewerIsAdmin) return true;
+      if (user?.id && post.user_id === user.id) return true;
+      return !isShadowBanned(profile);
+    });
+
+    const result = [...standardFeedPosts, ...visibleShopListings]
+      .sort((a, b) => Date.parse(b.created_at || "") - Date.parse(a.created_at || ""))
+      .slice(0, PAGE_SIZE);
 
     const payload = { posts: result };
     feedCache.set(cacheKey, { createdAt: now, payload });

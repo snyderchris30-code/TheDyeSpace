@@ -138,6 +138,7 @@ type ProfilePost = {
   comments_count: number;
   is_for_sale: boolean;
   created_at: string;
+  is_shop_listing?: boolean;
 };
 
 type InteractionMap = Record<string, AggregatedPostInteraction>;
@@ -586,6 +587,7 @@ export default function ProfileEditor() {
           const imageUrls = normalizePostImageUrls(post.image_urls);
           return {
             ...post,
+            is_shop_listing: false,
             image_urls: imageUrls.length ? imageUrls : null,
           };
         });
@@ -1424,9 +1426,15 @@ export default function ProfileEditor() {
         comments_count: 0,
         is_for_sale: true,
         created_at: new Date().toISOString(),
+        is_shop_listing: true,
       } as ProfilePost;
     });
   }, [profileIsVerified, profileUserId, visibleShopProducts]);
+
+  const combinedPosts = useMemo(
+    () => [...shopProductPosts, ...posts].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)),
+    [posts, shopProductPosts]
+  );
 
   useEffect(() => {
     const uncachedSongs = playlistSongs.filter((song) => !videoTitles[song.videoId]).slice(0, 8);
@@ -1858,17 +1866,6 @@ export default function ProfileEditor() {
                         ) : null}
                       </div>
                     ) : null}
-                    {profileIsVerified && visibleShopProducts.length > 0 ? (
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        {visibleShopProducts.slice(0, 4).map((product) => (
-                          <div key={product.id} className="rounded-2xl border border-cyan-300/20 bg-black/25 px-3 py-3 text-xs text-cyan-100 shadow-lg backdrop-blur-md">
-                            <p className="text-sm font-semibold text-cyan-50">{product.title}</p>
-                            {product.price ? <p className="mt-1 text-cyan-200/85">${product.price}</p> : null}
-                            {product.description ? <p className="mt-1 line-clamp-2 text-cyan-100/80">{product.description}</p> : null}
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
                     {profileIsVerified && !isOwner && session?.user ? (
                       <div className="mt-4 flex flex-wrap items-center gap-3">
                         <button
@@ -1973,7 +1970,7 @@ export default function ProfileEditor() {
                   <h2 className="mt-2 text-3xl font-bold text-cyan-50">Posts</h2>
                 </div>
                 <div className="rounded-full border border-cyan-300/20 bg-slate-950/45 px-4 py-2 text-sm text-cyan-100/80 backdrop-blur-xl">
-                  {posts.length + shopProductPosts.length} {(posts.length + shopProductPosts.length) === 1 ? "post" : "posts"}
+                  {combinedPosts.length} {combinedPosts.length === 1 ? "post" : "posts"}
                 </div>
               </div>
 
@@ -1988,130 +1985,30 @@ export default function ProfileEditor() {
                 <div className="rounded-[1.75rem] border border-violet-300/20 bg-violet-950/45 p-8 text-violet-100 shadow-xl backdrop-blur-xl">
                   This user is currently hidden from public discovery. Their posts are not visible right now.
                 </div>
-              ) : posts.length + shopProductPosts.length === 0 ? (
+              ) : combinedPosts.length === 0 ? (
                 <div className="rounded-[1.75rem] border border-cyan-300/20 bg-slate-950/45 p-8 text-cyan-100/75 shadow-xl backdrop-blur-xl">
                   No posts yet.
                 </div>
               ) : (
                 <div className="space-y-6">
-                  {shopProductPosts.map((product) => (
-                    <article
-                      key={product.id}
-                      className="rounded-[1.5rem] border border-amber-300/30 bg-slate-950/85 p-5 shadow-[0_0_0_1px_rgba(245,158,11,0.18)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_0_0_2px_rgba(245,158,11,0.28)] sm:rounded-[1.75rem] sm:p-6"
-                    >
-                      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:justify-between sm:gap-4">
-                        <div>
-                          <p className="text-xs text-cyan-100/70">Verified Seller Listing</p>
-                          <UserIdentity
-                            displayName={displayName}
-                            username={displayUsername}
-                            verifiedBadge={profileIsVerified}
-                            memberNumber={profileStatus?.member_number ?? null}
-                            className="min-w-0"
-                            nameClassName="font-bold text-[color:var(--profile-text)] hover:text-[color:var(--profile-highlight)] hover:underline"
-                            usernameClassName="text-xs text-[color:var(--profile-highlight)]/85 hover:text-[color:var(--profile-highlight)] hover:underline"
-                            metaClassName="text-xs text-[color:var(--profile-text)]/70"
-                          />
-                        </div>
-                        <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-100">For Sale</span>
-                      </div>
-                      <p className="text-base leading-7 text-[color:var(--profile-text)]/92">{product.content}</p>
-                      {product.image_urls && product.image_urls.length > 0 ? (
-                        <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                          {product.image_urls.map((imageUrl, imageIndex) => (
-                            <button
-                              key={`${product.id}-${imageIndex}`}
-                              type="button"
-                              className="group relative aspect-[4/5] w-full overflow-hidden rounded-[1.5rem] cursor-zoom-in sm:aspect-square"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setLightbox({ open: true, images: product.image_urls || [], index: imageIndex });
-                              }}
-                            >
-                              <Image
-                                src={imageUrl}
-                                alt={`Listing image ${imageIndex + 1}`}
-                                className="absolute inset-0 h-full w-full object-cover transition duration-200 group-hover:scale-105"
-                                loading="lazy"
-                                fill
-                                unoptimized
-                              />
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
-                    </article>
-                  ))}
-                  {posts.map((post) => {
+                  {combinedPosts.map((post) => {
                     const postInteraction = interactions[post.id] || { comments: [], reactions: [], viewerReaction: null };
                     const isCommentsOpen = Boolean(expandedComments[post.id]);
                     const isBusy = interactionBusyPostId === post.id;
+                    const isShopListing = post.is_shop_listing === true;
                     const categoryMeta = getCategoryMeta(post.content);
                     const selectedPostReaction = postInteraction.viewerReaction ? buildCustomEmojiAsset(postInteraction.viewerReaction) : null;
                     const totalPostReactions = countInteractionReactions(postInteraction);
+                    const hasImage = Boolean(post.image_urls && post.image_urls.length > 0);
 
                     return (
                       <article
                         key={post.id}
-                        className={`rounded-[1.5rem] border border-cyan-300/20 bg-[var(--profile-bg-rgba,rgba(7,12,24,0.88))] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-cyan-300/35 sm:rounded-[1.75rem] sm:p-6 ${fontClass(profileDisplay.font_style)}`}
+                        className={`rounded-3xl border-4 bg-[var(--profile-bg-rgba,rgba(7,12,24,0.88))] p-4 shadow-[0_0_0_4px_rgba(0,0,0,0.18),0_8px_32px_0_rgba(0,0,0,0.25)] backdrop-blur-xl sm:p-5 ${profileIsVerified ? "border-amber-400 ring-2 ring-amber-400" : "border-gradient-tiedye"} ${fontClass(profileDisplay.font_style)}`}
                         ref={(element) => applyProfileThemeVars(element, profileDisplay)}
                       >
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                          <div>
-                            <p className="text-sm text-[color:var(--profile-text)]/70">{formatPostDate(post.created_at)}</p>
-                            <UserIdentity
-                              displayName={profileDisplay.display_name}
-                              username={profileDisplay.username}
-                              verifiedBadge={profileIsVerified}
-                              memberNumber={profileStatus?.member_number ?? null}
-                              className="mt-2"
-                              nameClassName="font-semibold text-[color:var(--profile-text)] hover:text-[color:var(--profile-highlight)] hover:underline"
-                              usernameClassName="text-xs text-[color:var(--profile-highlight)]/80 hover:text-[color:var(--profile-highlight)] hover:underline"
-                              metaClassName="text-xs text-[color:var(--profile-text)]/55"
-                            />
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              {post.is_for_sale ? (
-                                <span className="inline-flex rounded-full border border-emerald-300/40 bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-100">
-                                  For Sale
-                                </span>
-                              ) : null}
-                              {categoryMeta ? (
-                                <Link
-                                  href={`/explore?tab=${encodeURIComponent(categoryMeta.value)}`}
-                                  className="inline-flex rounded-full border border-cyan-300/45 bg-cyan-300/15 px-3 py-1 text-xs font-semibold text-cyan-100 hover:border-cyan-200/70 hover:bg-cyan-300/30"
-                                >
-                                  {categoryMeta.label}
-                                </Link>
-                              ) : null}
-                            </div>
-                          </div>
-                          <div className="rounded-full border border-cyan-300/20 bg-black/25 px-3 py-1 text-xs text-[color:var(--profile-text)]/75">
-                            {totalPostReactions} reactions • {post.comments_count} comments
-                          </div>
-                        </div>
-
-                        {(isOwner || isAdmin) ? (
-                          <div className="mt-4 flex justify-end items-center gap-2">
-                            <button
-                              type="button"
-                              className="rounded-full border border-rose-300/25 bg-black/20 px-4 py-2 text-xs text-rose-300 hover:bg-rose-900/30 transition"
-                              onClick={() => void handleDeletePost(post.id)}
-                            >
-                              Delete
-                            </button>
-                            {isAdmin ? (
-                              <AdminActionMenu targetUserId={post.user_id} onAction={handleAdminAction} />
-                            ) : null}
-                          </div>
-                        ) : null}
-
-                        <InlineEmojiText
-                          text={stripCategoryTag(stripAffiliateProductTokens(post.content)) || "No description provided."}
-                          className="mt-4 block whitespace-pre-wrap text-base leading-7 text-[color:var(--profile-text)]/92 sm:text-lg sm:leading-8"
-                        />
-
                         {post.image_urls && post.image_urls.length > 0 ? (
-                          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                          <div className="grid gap-3 sm:grid-cols-2">
                             {post.image_urls.map((imageUrl, imageIndex) => (
                               <button key={`${post.id}-${imageIndex}`} type="button" className="group relative aspect-[4/5] w-full overflow-hidden rounded-[1.5rem] cursor-zoom-in sm:aspect-square" onClick={(e) => {
                                 e.stopPropagation();
@@ -2132,8 +2029,42 @@ export default function ProfileEditor() {
                           </div>
                         ) : null}
 
+                        <div className="mt-4 space-y-3 rounded-2xl border border-cyan-300/15 bg-black/20 px-4 py-3">
+                          <UserIdentity
+                            displayName={profileDisplay.display_name}
+                            username={profileDisplay.username}
+                            verifiedBadge={profileIsVerified}
+                            memberNumber={profileStatus?.member_number ?? null}
+                            className="min-w-0"
+                            nameClassName="font-semibold text-[color:var(--profile-text)] hover:text-[color:var(--profile-highlight)] hover:underline"
+                            usernameClassName="text-xs text-[color:var(--profile-highlight)]/80 hover:text-[color:var(--profile-highlight)] hover:underline"
+                            metaClassName="text-xs text-[color:var(--profile-text)]/55"
+                          />
+                          <div className="flex flex-wrap gap-2">
+                            {post.is_for_sale ? (
+                              <span className="inline-flex rounded-full border border-emerald-300/40 bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-100">
+                                For Sale
+                              </span>
+                            ) : null}
+                            {categoryMeta ? (
+                              <Link
+                                href={`/explore?tab=${encodeURIComponent(categoryMeta.value)}`}
+                                className="inline-flex rounded-full border border-cyan-300/45 bg-cyan-300/15 px-3 py-1 text-xs font-semibold text-cyan-100 hover:border-cyan-200/70 hover:bg-cyan-300/30"
+                              >
+                                {categoryMeta.label}
+                              </Link>
+                            ) : null}
+                          </div>
+                          <p className="text-sm text-[color:var(--profile-text)]/70">{formatPostDate(post.created_at)}</p>
+                        </div>
+
+                        <InlineEmojiText
+                          text={stripCategoryTag(stripAffiliateProductTokens(post.content)) || "No description provided."}
+                          className={`mt-4 block whitespace-pre-wrap text-[color:var(--profile-text)]/92 ${hasImage ? "text-base leading-7 sm:text-lg sm:leading-8" : "rounded-2xl border border-cyan-300/15 bg-black/15 px-4 py-4 text-base leading-8 sm:text-lg"}`}
+                        />
+
                         <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-cyan-300/10 pt-4">
-                          {session?.user ? (
+                          {session?.user && !isShopListing ? (
                             <EmojiPicker
                               mode="reaction"
                               reactionLayout="floating-inline"
@@ -2168,13 +2099,18 @@ export default function ProfileEditor() {
                           <button
                             className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-black/25 px-4 py-2 text-sm text-cyan-100 transition hover:border-cyan-300/40 hover:bg-black/40"
                             type="button"
-                            onClick={() => setExpandedComments((prev) => ({ ...prev, [post.id]: !prev[post.id] }))}
+                            onClick={() => {
+                              if (!isShopListing) {
+                                setExpandedComments((prev) => ({ ...prev, [post.id]: !prev[post.id] }));
+                              }
+                            }}
                             aria-label={isCommentsOpen ? "Hide comments" : "Show comments"}
+                            disabled={isShopListing}
                           >
                             <MessageCircle className="h-4 w-4" />
                             <span className="text-sm">{post.comments_count}</span>
                           </button>
-                          {session?.user ? (
+                          {session?.user && !isShopListing ? (
                             <button
                               className="inline-flex items-center gap-2 rounded-full border border-pink-400/45 bg-pink-900/30 px-4 py-2 text-sm text-pink-200 transition hover:bg-pink-900/50"
                               type="button"
@@ -2183,11 +2119,25 @@ export default function ProfileEditor() {
                               <span>Report</span>
                             </button>
                           ) : null}
+                          {!isShopListing && (isOwner || isAdmin) ? (
+                            <>
+                              <button
+                                type="button"
+                                className="rounded-full border border-rose-300/25 bg-black/20 px-4 py-2 text-xs text-rose-300 hover:bg-rose-900/30 transition"
+                                onClick={() => void handleDeletePost(post.id)}
+                              >
+                                Delete
+                              </button>
+                              {isAdmin ? (
+                                <AdminActionMenu targetUserId={post.user_id} onAction={handleAdminAction} />
+                              ) : null}
+                            </>
+                          ) : null}
                         </div>
 
                         <PostAffiliateProducts content={post.content} className="mt-4" />
 
-                        {postInteraction.reactions.length > 0 ? (
+                        {!isShopListing && postInteraction.reactions.length > 0 ? (
                           <div className="mt-4 flex flex-wrap gap-2">
                             {postInteraction.reactions.map((reaction) => (
                               <button
@@ -2208,7 +2158,7 @@ export default function ProfileEditor() {
                           </div>
                         ) : null}
 
-                        {isCommentsOpen ? (
+                        {!isShopListing && isCommentsOpen ? (
                           <div className="mt-5 rounded-[1.5rem] border border-cyan-300/15 bg-black/20 p-4 backdrop-blur-xl sm:p-5">
                             <div className="space-y-4">
                               {postInteraction.comments.length === 0 ? (
@@ -2397,7 +2347,7 @@ export default function ProfileEditor() {
               ) : null}
 
               <div className="mb-5 rounded-2xl border border-cyan-300/20 bg-black/30 px-4 py-3 text-sm text-cyan-100/90">
-                <p>To hide your profile from other users, go to Profile Settings and enable "Ghost Ridin".</p>
+                <p>To hide your profile from other users, go to Profile Settings and enable &quot;Ghost Ridin&quot;.</p>
                 <p className="mt-2">To permanently delete your account, go to Profile Settings.</p>
               </div>
 

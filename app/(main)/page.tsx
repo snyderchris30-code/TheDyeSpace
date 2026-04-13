@@ -47,6 +47,7 @@ type Post = {
   author_verified_badge?: boolean;
   author_member_number?: number | null;
   author_voided_until?: string | null;
+  is_shop_listing?: boolean;
 };
 
 type InteractionMap = Record<string, AggregatedPostInteraction>;
@@ -513,9 +514,7 @@ export default function MainFeedPage() {
           Create Post
         </Link>
       </div>
-      <p className="mb-5 text-base cosmic-subtext sm:mb-8 sm:text-xl">
-        {/* Removed placeholder text. */}
-      </p>
+      <p className="mb-5 text-base cosmic-subtext sm:mb-8 sm:text-xl" />
 
       {interactionStatus ? (
         <div className="mb-4 rounded-xl border border-rose-300/30 bg-rose-500/15 px-4 py-2 text-sm text-rose-100">
@@ -532,7 +531,7 @@ export default function MainFeedPage() {
         <AsyncStateCard
           compact
           loading
-          title="Loading cosmic posts"
+          title="Loading posts"
           message="Refreshing the main feed with the latest posts and interactions."
           className="mb-4"
         />
@@ -557,87 +556,21 @@ export default function MainFeedPage() {
           const isCommentsOpen = Boolean(expandedComments[post.id]);
           const isBusy = interactionBusyPostId === post.id;
           const isOwner = !!session?.user && session.user.id === post.user_id;
+          const isShopListing = post.is_shop_listing === true;
           const displayContent = editedPostContent[post.id] ?? post.content;
           const categoryMeta = getCategoryMeta(displayContent);
           const visibleContent = stripCategoryTag(stripAffiliateProductTokens(displayContent));
           const selectedPostReaction = postInteraction.viewerReaction ? buildCustomEmojiAsset(postInteraction.viewerReaction) : null;
           const totalPostReactions = countInteractionReactions(postInteraction);
+          const hasImage = Boolean(post.image_urls && post.image_urls.length > 0);
 
           return (
           <article
             key={post.id}
-            className={`bg-[var(--post-bg,rgba(7,17,31,0.7))] border fractal-border rounded-[1.5rem] p-5 transition hover:-translate-y-1 hover:shadow-2xl sm:rounded-3xl sm:p-6 ${post.author_verified_badge ? "ring-2 ring-amber-300/30" : ""} ${fontClass(post.author_theme?.font_style)}`}
+            className={`bg-[var(--post-bg,rgba(7,17,31,0.7))] border rounded-[1.5rem] p-5 transition hover:-translate-y-1 hover:shadow-2xl sm:rounded-3xl sm:p-6 ${post.author_verified_badge ? "border-amber-400 ring-2 ring-amber-400" : "fractal-border"} ${fontClass(post.author_theme?.font_style)}`}
             ref={(element) => applyPostThemeVars(element, post.author_theme)}
           >
-            <header className="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:justify-between sm:gap-4">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <UserIdentity
-                    displayName={post.author_display_name || "DyeSpace User"}
-                    username={post.author_username || null}
-                    verifiedBadge={post.author_verified_badge === true}
-                    memberNumber={post.author_member_number ?? null}
-                    className="min-w-0"
-                    nameClassName="font-bold text-[color:var(--post-text)] hover:text-[color:var(--post-highlight)] hover:underline"
-                    usernameClassName="text-xs text-[color:var(--post-highlight)]/85 hover:text-[color:var(--post-highlight)] hover:underline"
-                    metaClassName="text-xs text-[color:var(--post-text)]/70"
-                  />
-                  {post.is_for_sale ? (
-                    <span className="inline-flex rounded-full border border-emerald-300/40 bg-emerald-500/20 px-2 py-1 text-xs font-semibold text-emerald-100">
-                      For Sale
-                    </span>
-                  ) : null}
-                  {categoryMeta ? (
-                    <Link
-                      href={`/explore?tab=${encodeURIComponent(categoryMeta.value)}`}
-                      className="inline-flex rounded-full border border-cyan-300/45 bg-cyan-300/15 px-2 py-0.5 text-[11px] font-semibold text-cyan-100 hover:border-cyan-200/70 hover:bg-cyan-300/30"
-                    >
-                      {categoryMeta.label}
-                    </Link>
-                  ) : null}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {(isOwner || isAdmin) && (
-                  <div className="flex items-center gap-2">
-                    {isOwner ? (
-                      <button
-                        type="button"
-                        className="rounded-full border border-cyan-300/25 bg-black/20 px-3 py-1 text-xs text-cyan-300 hover:bg-cyan-900/30 transition"
-                        onClick={() => {
-                          setEditingPostId(post.id);
-                          setEditPostContent(stripAffiliateProductTokens(displayContent ?? ""));
-                          setEditPostAffiliateProductIds(extractAffiliateProductIds(displayContent));
-                        }}
-                      >
-                        Edit
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      className="rounded-full border border-rose-300/25 bg-black/20 px-3 py-1 text-xs text-rose-300 hover:bg-rose-900/30 transition"
-                      onClick={() => void handleDeletePost(post.id)}
-                    >
-                      Delete
-                    </button>
-                    {isAdmin ? <AdminActionMenu targetUserId={post.user_id} onAction={handleAdminAction} /> : null}
-                  </div>
-                )}
-              </div>
-            </header>
             <div className="block w-full text-left space-y-4">
-              <button
-                type="button"
-                className="block w-full text-left hover:opacity-80 transition"
-                onClick={() => setExpandedComments((prev) => ({ ...prev, [post.id]: !prev[post.id] }))}
-              >
-                {editingPostId === post.id ? null : (
-                  <InlineEmojiText
-                    text={visibleContent || "No description provided yet."}
-                    className="mb-3 block whitespace-pre-wrap text-sm leading-7 text-[color:var(--post-text)]/92 sm:text-base sm:leading-8"
-                  />
-                )}
-              </button>
               {editingPostId === post.id && (
                 <div className="mb-3 flex flex-col gap-2">
                   <textarea
@@ -675,9 +608,9 @@ export default function MainFeedPage() {
                   </div>
                 </div>
               )}
-              {post.image_urls && post.image_urls.length > 0 && (
-                <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
-                  {post.image_urls.map((imgUrl, idx) => (
+              {hasImage && (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+                  {(post.image_urls || []).map((imgUrl, idx) => (
                     <button key={idx} type="button" className="group relative w-full overflow-hidden rounded-2xl cursor-zoom-in" onClick={() => {
                       setLightbox({ open: true, images: post.image_urls || [], index: idx });
                     }}>
@@ -699,16 +632,60 @@ export default function MainFeedPage() {
                   ))}
                 </div>
               )}
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan-800/60 bg-slate-950/70 px-4 py-3 text-xs text-[color:var(--post-text)]/70">
-                <span>{new Date(post.created_at).toLocaleString()}</span>
-                <span>{totalPostReactions} reactions • {post.comments_count} comments</span>
+
+              <div className="space-y-3 rounded-2xl border border-cyan-800/40 bg-slate-950/45 px-4 py-3">
+                <UserIdentity
+                  displayName={post.author_display_name || "DyeSpace User"}
+                  username={post.author_username || null}
+                  verifiedBadge={post.author_verified_badge === true}
+                  memberNumber={post.author_member_number ?? null}
+                  className="min-w-0"
+                  nameClassName="font-bold text-[color:var(--post-text)] hover:text-[color:var(--post-highlight)] hover:underline"
+                  usernameClassName="text-xs text-[color:var(--post-highlight)]/85 hover:text-[color:var(--post-highlight)] hover:underline"
+                  metaClassName="text-xs text-[color:var(--post-text)]/70"
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  {post.is_for_sale ? (
+                    <span className="inline-flex rounded-full border border-emerald-300/40 bg-emerald-500/20 px-2 py-1 text-xs font-semibold text-emerald-100">
+                      For Sale
+                    </span>
+                  ) : null}
+                  {categoryMeta ? (
+                    <Link
+                      href={`/explore?tab=${encodeURIComponent(categoryMeta.value)}`}
+                      className="inline-flex rounded-full border border-cyan-300/45 bg-cyan-300/15 px-2 py-0.5 text-[11px] font-semibold text-cyan-100 hover:border-cyan-200/70 hover:bg-cyan-300/30"
+                    >
+                      {categoryMeta.label}
+                    </Link>
+                  ) : null}
+                </div>
+                <div className="text-xs text-[color:var(--post-text)]/70">{new Date(post.created_at).toLocaleString()}</div>
               </div>
+
+              {editingPostId === post.id ? null : (
+                <button
+                  type="button"
+                  aria-label={isCommentsOpen ? "Hide comments" : "Show comments"}
+                  className="block w-full text-left transition hover:opacity-90"
+                  onClick={() => {
+                    if (!isShopListing) {
+                      setExpandedComments((prev) => ({ ...prev, [post.id]: !prev[post.id] }));
+                    }
+                  }}
+                >
+                  <InlineEmojiText
+                    text={visibleContent || "No description provided yet."}
+                    className={`block whitespace-pre-wrap text-[color:var(--post-text)]/92 ${hasImage ? "text-sm leading-7 sm:text-base sm:leading-8" : "rounded-2xl border border-cyan-300/15 bg-black/15 px-4 py-4 text-base leading-8 sm:text-lg"}`}
+                  />
+                </button>
+              )}
             </div>
             <footer className="mt-4 flex flex-col gap-3 border-t border-cyan-800 pt-4 text-sm text-cyan-200 sm:mt-6 sm:flex-row sm:justify-between">
               <div>
                 {session && session.user ? (
                   <div className="flex flex-wrap items-center gap-3">
-                    <EmojiPicker
+                    {!isShopListing ? (
+                      <EmojiPicker
                       mode="reaction"
                       reactionLayout="floating-inline"
                       align="left"
@@ -729,15 +706,22 @@ export default function MainFeedPage() {
                         void handleReactionSelect(post.id, emoji);
                       }}
                     />
+                    ) : null}
                     <button
                       type="button"
                       className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-black/20 px-4 py-2 text-sm text-cyan-100 transition hover:border-cyan-300/40 hover:bg-black/35"
-                      onClick={() => setExpandedComments((prev) => ({ ...prev, [post.id]: !prev[post.id] }))}
+                      onClick={() => {
+                        if (!isShopListing) {
+                          setExpandedComments((prev) => ({ ...prev, [post.id]: !prev[post.id] }));
+                        }
+                      }}
                       aria-label={isCommentsOpen ? "Hide comments" : "Show comments"}
+                      disabled={isShopListing}
                     >
                       <MessageCircle className="h-4 w-4" />
                       <span className="text-sm">{post.comments_count}</span>
                     </button>
+                    {!isShopListing ? (
                     <button
                       type="button"
                       className="inline-flex items-center gap-2 rounded-full border border-pink-400/45 bg-pink-900/30 px-4 py-2 text-sm text-pink-200 transition hover:bg-pink-900/50"
@@ -745,15 +729,40 @@ export default function MainFeedPage() {
                     >
                       <span>Report</span>
                     </button>
+                    ) : null}
                   </div>
                 ) : authResolved ? (
                   <span className="italic text-cyan-400">Sign in to like or comment</span>
                 ) : null}
               </div>
-              {/* Footer links removed from individual posts. Place in site footer or settings/help section only. */}
+              {!isShopListing && (isOwner || isAdmin) ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {isOwner ? (
+                    <button
+                      type="button"
+                      className="rounded-full border border-cyan-300/25 bg-black/20 px-3 py-1 text-xs text-cyan-300 hover:bg-cyan-900/30 transition"
+                      onClick={() => {
+                        setEditingPostId(post.id);
+                        setEditPostContent(stripAffiliateProductTokens(displayContent ?? ""));
+                        setEditPostAffiliateProductIds(extractAffiliateProductIds(displayContent));
+                      }}
+                    >
+                      Edit
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="rounded-full border border-rose-300/25 bg-black/20 px-3 py-1 text-xs text-rose-300 hover:bg-rose-900/30 transition"
+                    onClick={() => void handleDeletePost(post.id)}
+                  >
+                    Delete
+                  </button>
+                  {isAdmin ? <AdminActionMenu targetUserId={post.user_id} onAction={handleAdminAction} /> : null}
+                </div>
+              ) : null}
             </footer>
             {editingPostId === post.id ? null : <PostAffiliateProducts content={displayContent} className="mt-3" />}
-            {postInteraction.reactions.length > 0 && (
+            {!isShopListing && postInteraction.reactions.length > 0 && (
               <div className="mt-4 flex flex-wrap gap-2">
                 {postInteraction.reactions.map((reaction) => (
                   <button
@@ -773,7 +782,7 @@ export default function MainFeedPage() {
                 ))}
               </div>
             )}
-            {isCommentsOpen && (
+            {!isShopListing && isCommentsOpen && (
               <div className="mt-5 rounded-[1.5rem] border border-cyan-300/15 bg-black/20 p-4 backdrop-blur-xl sm:p-5">
                 <div className="space-y-4">
                   {postInteraction.comments.length === 0 ? (
@@ -942,8 +951,6 @@ export default function MainFeedPage() {
           );
         })}
       </div>
-
-      {/* Load more cosmic posts button removed as requested */}
     </div>
   );
 }

@@ -40,73 +40,84 @@ export default function FanChatPage() {
     const loadKey = username || "";
 
     async function loadFanChat() {
-      if (!username) {
+      try {
+        if (!username) {
+          if (active) {
+            setProfile(null);
+            setAllowed(false);
+            setLoading(false);
+          }
+          return;
+        }
+
+        setLoading(true);
+
+        let profilePromise = fanChatProfileLoadPromises.get(loadKey);
+        if (!profilePromise) {
+          profilePromise = fetchProfileLookupByUsername<FanChatProfile>(username, controller.signal);
+          fanChatProfileLoadPromises.set(loadKey, profilePromise);
+          profilePromise.finally(() => {
+            if (fanChatProfileLoadPromises.get(loadKey) === profilePromise) {
+              fanChatProfileLoadPromises.delete(loadKey);
+            }
+          });
+        }
+
+        const lookup = await profilePromise;
+
+        if (!active || controller.signal.aborted) {
+          return;
+        }
+
+        const resolvedProfile = lookup.profile ?? null;
+        setProfile(resolvedProfile);
+
+        if (!resolvedProfile) {
+          setAllowed(false);
+          setLoading(false);
+          return;
+        }
+
+        const supabase = createClient();
+        const { user } = await resolveClientAuth(supabase);
+        const currentUserId = user?.id ?? null;
+
+        if (!active || controller.signal.aborted) {
+          return;
+        }
+
+        if (!currentUserId) {
+          setAllowed(false);
+          setLoading(false);
+          return;
+        }
+
+        if (currentUserId === resolvedProfile.id) {
+          setAllowed(true);
+          setLoading(false);
+          return;
+        }
+
+        const { data: followData } = await supabase
+          .from("user_follows")
+          .select("follower_id")
+          .eq("follower_id", currentUserId)
+          .eq("followed_id", resolvedProfile.id)
+          .limit(1);
+
+        if (active && !controller.signal.aborted) {
+          setAllowed(Array.isArray(followData) && followData.length > 0);
+          setLoading(false);
+        }
+      } catch (error: any) {
+        if (controller.signal.aborted || error?.name === "AbortError") {
+          return;
+        }
+
         if (active) {
-          setProfile(null);
           setAllowed(false);
           setLoading(false);
         }
-        return;
-      }
-
-      setLoading(true);
-
-      let profilePromise = fanChatProfileLoadPromises.get(loadKey);
-      if (!profilePromise) {
-        profilePromise = fetchProfileLookupByUsername<FanChatProfile>(username, controller.signal);
-        fanChatProfileLoadPromises.set(loadKey, profilePromise);
-        profilePromise.finally(() => {
-          if (fanChatProfileLoadPromises.get(loadKey) === profilePromise) {
-            fanChatProfileLoadPromises.delete(loadKey);
-          }
-        });
-      }
-
-      const lookup = await profilePromise;
-
-      if (!active || controller.signal.aborted) {
-        return;
-      }
-
-      const resolvedProfile = lookup.profile ?? null;
-      setProfile(resolvedProfile);
-
-      if (!resolvedProfile) {
-        setAllowed(false);
-        setLoading(false);
-        return;
-      }
-
-      const supabase = createClient();
-      const { user } = await resolveClientAuth(supabase);
-      const currentUserId = user?.id ?? null;
-
-      if (!active) {
-        return;
-      }
-
-      if (!currentUserId) {
-        setAllowed(false);
-        setLoading(false);
-        return;
-      }
-
-      if (currentUserId === resolvedProfile.id) {
-        setAllowed(true);
-        setLoading(false);
-        return;
-      }
-
-      const { data: followData } = await supabase
-        .from("user_follows")
-        .select("follower_id")
-        .eq("follower_id", currentUserId)
-        .eq("followed_id", resolvedProfile.id)
-        .limit(1);
-
-      if (active && !controller.signal.aborted) {
-        setAllowed(Array.isArray(followData) && followData.length > 0);
-        setLoading(false);
       }
     }
 
@@ -114,7 +125,9 @@ export default function FanChatPage() {
 
     return () => {
       active = false;
-      controller.abort();
+      if (!controller.signal.aborted) {
+        controller.abort();
+      }
     };
   }, [username]);
 

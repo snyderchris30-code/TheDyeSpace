@@ -59,8 +59,8 @@ export default function UserIdentity({
           {safeDisplayName}
         </IdentityLink>
         {verifiedBadge ? (
-          <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/40 bg-amber-400/15 px-2 py-0.5 text-[11px] font-semibold text-amber-100">
-            <BadgeCheck className="h-3.5 w-3.5 text-amber-100" />
+          <span className="inline-flex items-center gap-1 rounded-full border border-amber-400 bg-amber-400 px-2 py-0.5 text-[11px] font-semibold text-amber-950 shadow-[0_0_0_1px_rgba(251,191,36,0.85)]">
+            <BadgeCheck className="h-3.5 w-3.5 text-amber-950" />
             Verified
           </span>
         ) : null}
