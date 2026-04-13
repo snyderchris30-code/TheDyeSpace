@@ -12,6 +12,7 @@ import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
 import { PRIVATE_ROOM_PROFILE_SELECT, canAccessPrivateRoom, type PrivateRoomAccessProfile } from "@/lib/private-rooms";
 import { createClient } from "@/lib/supabase/client";
 import { hasAdminAccess, runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
+import { dedupeFetchJson } from "@/lib/dedupe-fetch";
 
 type BeforeInstallPromptEvent = Event & {
   platform?: string;
@@ -22,12 +23,12 @@ type BeforeInstallPromptEvent = Event & {
 type NotificationItem = { id: string; actor_name: string; type: string; message: string; read: boolean; created_at: string };
 
 async function fetchNotifications(): Promise<NotificationItem[]> {
-  const response = await fetch("/api/notifications", { cache: "no-store" });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    return [];
-  }
-  return Array.isArray(body?.notifications) ? (body.notifications as NotificationItem[]) : [];
+  const body = await dedupeFetchJson<{ notifications?: NotificationItem[] }>(
+    "/api/notifications",
+    { cache: "no-store" },
+    { cacheTtlMs: 3000 }
+  );
+  return Array.isArray(body.notifications) ? body.notifications : [];
 }
 
 type DirectoryProfile = {

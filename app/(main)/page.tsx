@@ -4,6 +4,7 @@ import Image from "next/image";
 
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { dedupeFetchJson } from "@/lib/dedupe-fetch";
 import { Heart, MessageCircle, Send, SquarePen } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useEffect, useState, useCallback } from "react";
@@ -107,20 +108,7 @@ function getCategoryMeta(content: string | null): { value: FeedCategory; label: 
 
 async function fetchPosts({ pageParam }: { pageParam?: string | null }) {
   const url = `/api/posts/feed${pageParam ? `?before=${encodeURIComponent(pageParam)}` : ""}`;
-  const response = await fetch(url);
-  const text = await response.text();
-
-  if (!response.ok) {
-    throw new Error(text || "Failed to load posts.");
-  }
-
-  let body: any;
-  try {
-    body = JSON.parse(text);
-  } catch {
-    throw new Error("Failed to parse posts response.");
-  }
-
+  const body = await dedupeFetchJson<{ posts?: Post[] }>(url, { cache: "no-store" }, { cacheTtlMs: 3000 });
   return (body.posts || []) as Post[];
 }
 
@@ -187,12 +175,11 @@ export default function MainFeedPage() {
     queryKey: ["mainFeedInteractions", postIdsKey],
     queryFn: async () => {
       if (!postIds.length) return {};
-      const response = await fetch(`/api/posts/interactions?postIds=${encodeURIComponent(postIds.join(","))}`);
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body?.error || "Failed to load post interactions.");
-      }
-      const body = await response.json();
+      const body = await dedupeFetchJson<{ interactionsByPostId?: InteractionMap }>(
+        `/api/posts/interactions?postIds=${encodeURIComponent(postIds.join(","))}`,
+        { cache: "no-store" },
+        { cacheTtlMs: 3000 }
+      );
       return body.interactionsByPostId || {};
     },
     enabled: postIds.length > 0,

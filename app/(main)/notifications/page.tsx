@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AsyncStateCard from "@/app/AsyncStateCard";
 import { createClient } from "@/lib/supabase/client";
+import { dedupeFetchJson } from "@/lib/dedupe-fetch";
 import { Bell } from "lucide-react";
 import Link from "next/link";
 
@@ -44,12 +45,12 @@ export default function NotificationsPage() {
   } = useQuery<Notification[]>({
     queryKey: ["notificationsPage", userId],
     queryFn: async () => {
-      const response = await fetch("/api/notifications", { cache: "no-store" });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(body?.error || "Failed to load notifications.");
-      }
-      return Array.isArray(body?.notifications) ? body.notifications : [];
+      const body = await dedupeFetchJson<{ notifications?: Notification[] }>(
+        "/api/notifications",
+        { cache: "no-store" },
+        { cacheTtlMs: 3000 }
+      );
+      return Array.isArray(body.notifications) ? body.notifications : [];
     },
     enabled: Boolean(userId),
     staleTime: 1000 * 30,
@@ -64,12 +65,12 @@ export default function NotificationsPage() {
   } = useQuery<PendingContactRequest[]>({
     queryKey: ["pendingContactRequests", userId],
     queryFn: async () => {
-      const response = await fetch("/api/profile/contact-requests", { cache: "no-store" });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(body?.error || "Failed to load contact requests.");
-      }
-      return Array.isArray(body?.pendingRequests) ? body.pendingRequests : [];
+      const body = await dedupeFetchJson<{ pendingRequests?: PendingContactRequest[] }>(
+        "/api/profile/contact-requests",
+        { cache: "no-store" },
+        { cacheTtlMs: 3000 }
+      );
+      return Array.isArray(body.pendingRequests) ? body.pendingRequests : [];
     },
     enabled: Boolean(userId),
     staleTime: 1000 * 30,

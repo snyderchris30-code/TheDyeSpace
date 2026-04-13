@@ -36,6 +36,7 @@ export default function FanChatPage() {
 
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
     const loadKey = username || "";
 
     async function loadFanChat() {
@@ -52,7 +53,7 @@ export default function FanChatPage() {
 
       let profilePromise = fanChatProfileLoadPromises.get(loadKey);
       if (!profilePromise) {
-        profilePromise = fetchProfileLookupByUsername<FanChatProfile>(username);
+        profilePromise = fetchProfileLookupByUsername<FanChatProfile>(username, controller.signal);
         fanChatProfileLoadPromises.set(loadKey, profilePromise);
         profilePromise.finally(() => {
           if (fanChatProfileLoadPromises.get(loadKey) === profilePromise) {
@@ -63,7 +64,7 @@ export default function FanChatPage() {
 
       const lookup = await profilePromise;
 
-      if (!active) {
+      if (!active || controller.signal.aborted) {
         return;
       }
 
@@ -103,7 +104,7 @@ export default function FanChatPage() {
         .eq("followed_id", resolvedProfile.id)
         .limit(1);
 
-      if (active) {
+      if (active && !controller.signal.aborted) {
         setAllowed(Array.isArray(followData) && followData.length > 0);
         setLoading(false);
       }
@@ -113,6 +114,7 @@ export default function FanChatPage() {
 
     return () => {
       active = false;
+      controller.abort();
     };
   }, [username]);
 

@@ -1,3 +1,5 @@
+import { dedupeFetchJson } from '@/lib/dedupe-fetch';
+
 export type ProfileLookupResponse<T = unknown> = {
   profile: T | null;
   error?: string | null;
@@ -37,15 +39,16 @@ export async function fetchProfileLookupByUsername<T = unknown>(
   }
 
   const promise = (async (): Promise<ProfileLookupResponse<T>> => {
-    const response = await fetch(`/api/profile/lookup?username=${encodeURIComponent(username)}`, {
-      cache: "no-store",
-      signal,
-    });
-
-    const body = (await response.json().catch(() => ({}))) as ProfileLookupResponse<T>;
-    if (!response.ok) {
-      throw new Error(typeof body?.error === "string" ? body.error : "Could not load this profile right now.");
-    }
+    const body = await dedupeFetchJson<ProfileLookupResponse<T>>(
+      `/api/profile/lookup?username=${encodeURIComponent(username)}`,
+      {
+        cache: 'no-store',
+        signal,
+      },
+      {
+        cacheTtlMs: PROFILE_LOOKUP_CACHE_TTL_MS,
+      }
+    );
 
     resolvedProfileLookupCache.set(key, {
       expiresAt: Date.now() + PROFILE_LOOKUP_CACHE_TTL_MS,

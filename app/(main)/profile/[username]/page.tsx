@@ -17,6 +17,7 @@ import UserIdentity from "@/app/UserIdentity";
 import AsyncStateCard from "@/app/AsyncStateCard";
 import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
 import { fetchProfileLookupByUsername } from "@/lib/profile-fetch";
+import { dedupeFetchJson } from "@/lib/dedupe-fetch";
 import { normalizePostImageUrls } from "@/lib/post-media";
 import { countInteractionReactions, type AggregatedPostInteraction, type ReactionEmoji } from "@/lib/post-interactions";
 import { hasAdminAccess, runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
@@ -559,13 +560,11 @@ export default function ProfileEditor() {
       return;
     }
 
-    const response = await fetch(`/api/posts/interactions?postIds=${encodeURIComponent(postIds.join(","))}`);
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      throw new Error(body?.error || "Failed to load post interactions.");
-    }
-
-    const body = await response.json();
+    const body = await dedupeFetchJson<{ interactionsByPostId?: InteractionMap }>(
+      `/api/posts/interactions?postIds=${encodeURIComponent(postIds.join(","))}`,
+      { cache: "no-store" },
+      { cacheTtlMs: 3000 }
+    );
     setInteractions(body.interactionsByPostId || {});
   }, []);
 
@@ -719,14 +718,14 @@ export default function ProfileEditor() {
       return;
     }
 
-    const response = await fetch(`/api/profile/contact-requests?sellerUserId=${encodeURIComponent(profileUserId)}`, {
+    const body = await dedupeFetchJson<{
+      viewerVerified?: boolean;
+      requestStatus?: VerifiedSellerContactRequestStatus;
+      pendingRequests?: SellerContactRequestSummary[];
+      contactDetails?: string;
+    }>(`/api/profile/contact-requests?sellerUserId=${encodeURIComponent(profileUserId)}`, {
       cache: "no-store",
-    });
-    const body = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      throw new Error(body?.error || "Failed to load contact request data.");
-    }
+    }, { cacheTtlMs: 3000 });
 
     if (typeof body?.viewerVerified === "boolean") {
       setViewerIsVerifiedSeller(body.viewerVerified);

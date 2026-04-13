@@ -58,6 +58,7 @@ export default function ShopPage() {
 
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
     const loadKey = username || "";
 
     if (!username) {
@@ -73,7 +74,7 @@ export default function ShopPage() {
       try {
         let profilePromise = shopProfileLoadPromises.get(loadKey);
         if (!profilePromise) {
-          profilePromise = fetchProfileLookupByUsername<ShopProfile>(username);
+          profilePromise = fetchProfileLookupByUsername<ShopProfile>(username, controller.signal);
           shopProfileLoadPromises.set(loadKey, profilePromise);
           profilePromise.finally(() => {
             if (shopProfileLoadPromises.get(loadKey) === profilePromise) {
@@ -83,13 +84,13 @@ export default function ShopPage() {
         }
 
         const body = await profilePromise;
-        if (!active) return;
+        if (!active || controller.signal.aborted) return;
         setProfile(body.profile ?? null);
       } catch {
-        if (!active) return;
+        if (!active || controller.signal.aborted) return;
         setProfile(null);
       } finally {
-        if (active) setLoading(false);
+        if (active && !controller.signal.aborted) setLoading(false);
       }
     };
 
@@ -97,6 +98,7 @@ export default function ShopPage() {
 
     return () => {
       active = false;
+      controller.abort();
     };
   }, [username]);
 

@@ -7,6 +7,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { dedupeFetchJson } from "@/lib/dedupe-fetch";
 import AdminActionMenu from "@/app/AdminActionMenu";
 import Link from "next/link";
 import { fontClass, resolveProfileAppearance, type ProfileAppearance } from "@/lib/profile-theme";
@@ -113,13 +114,13 @@ async function fetchExplorePosts({ queryKey }: { queryKey: unknown[] }) {
   let followingIds: string[] = [];
 
   if (tab === "following") {
-    const followingRes = await fetch("/api/profile/following", { cache: "no-store" });
-    const followingBody = await followingRes.json().catch(() => ({}));
-    if (!followingRes.ok) {
-      throw new Error(followingBody?.error || "Failed to load Following feed.");
-    }
+    const followingBody = await dedupeFetchJson<{ followingIds?: string[] }>(
+      "/api/profile/following",
+      { cache: "no-store" },
+      { cacheTtlMs: 3000 }
+    );
 
-    followingIds = Array.isArray(followingBody?.followingIds)
+    followingIds = Array.isArray(followingBody.followingIds)
       ? followingBody.followingIds.filter((id: unknown): id is string => typeof id === "string")
       : [];
 
@@ -309,12 +310,11 @@ export default function ExplorePage() {
     queryKey: ["exploreInteractions", postIdsKey],
     queryFn: async () => {
       if (!postIds.length) return EMPTY_INTERACTIONS;
-      const response = await fetch(`/api/posts/interactions?postIds=${encodeURIComponent(postIds.join(","))}`);
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body?.error || "Failed to load post interactions.");
-      }
-      const body = await response.json();
+      const body = await dedupeFetchJson<{ interactionsByPostId?: InteractionMap }>(
+        `/api/posts/interactions?postIds=${encodeURIComponent(postIds.join(","))}`,
+        { cache: "no-store" },
+        { cacheTtlMs: 3000 }
+      );
       return body.interactionsByPostId || EMPTY_INTERACTIONS;
     },
     enabled: postIds.length > 0,

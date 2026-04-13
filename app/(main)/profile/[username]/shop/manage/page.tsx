@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { Store } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { resolveClientAuth } from "@/lib/client-auth";
+import { dedupeFetchJson } from "@/lib/dedupe-fetch";
 import { normalizeSellerProducts } from "@/lib/verified-seller";
 import { sanitizeUsernameInput } from "@/lib/profile-identity";
 import type { SellerProduct } from "@/types/database";
@@ -87,7 +88,9 @@ export default function ShopManagePage() {
           if (!data) {
             if (!triedEnsure) {
               // Try to auto-create the profile for the current user
-              await fetch(`/api/profile/lookup?username=${encodeURIComponent(username)}`);
+              await dedupeFetchJson(`/api/profile/lookup?username=${encodeURIComponent(username)}`, {
+                cache: "no-store",
+              }, { cacheTtlMs: 3000 });
               triedEnsure = true;
               continue;
             }

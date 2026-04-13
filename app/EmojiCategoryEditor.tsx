@@ -1,7 +1,35 @@
 import { useEffect, useMemo, useState, type DragEvent } from "react";
+import CustomEmojiImage from "@/app/CustomEmojiImage";
 import { useHiddenEmojis } from "./useHiddenEmojis";
 import { EmojiCategoryMap } from "@/types/emoji-category";
 import { CustomEmojiAsset } from "@/lib/custom-emojis";
+
+function extractLegacyEmojiCode(value: string) {
+  const match = value.match(/^(\d+)/);
+  return match?.[1] ?? null;
+}
+
+function buildEmojiLookupKeys(emoji: CustomEmojiAsset) {
+  const normalizedKeys = new Set<string>();
+  const addKey = (value: string | null | undefined) => {
+    if (!value) return;
+    const normalized = value.trim();
+    if (!normalized) return;
+    normalizedKeys.add(normalized);
+  };
+
+  addKey(emoji.id);
+  addKey(emoji.url);
+  addKey(emoji.fileName);
+  addKey(`/emojis/${emoji.fileName}`);
+
+  const legacyCode = extractLegacyEmojiCode(emoji.fileName);
+  if (legacyCode) {
+    addKey(legacyCode);
+  }
+
+  return [...normalizedKeys];
+}
 
 export default function EmojiCategoryEditor({
   emojis,
@@ -25,9 +53,34 @@ export default function EmojiCategoryEditor({
     return new Set(Object.values(categories).flatMap((category) => category.emojiIds));
   }, [categories]);
 
+  const emojiLookup = useMemo(() => {
+    const lookup = new Map<string, CustomEmojiAsset>();
+    for (const emoji of emojis) {
+      for (const key of buildEmojiLookupKeys(emoji)) {
+        if (!lookup.has(key)) {
+          lookup.set(key, emoji);
+        }
+      }
+    }
+    return lookup;
+  }, [emojis]);
+
+  const resolvedAssignedEmojiIds = useMemo(() => {
+    const resolvedIds = new Set<string>();
+    for (const emojiId of assignedEmojiIds) {
+      const asset = emojiLookup.get(emojiId);
+      if (asset) {
+        resolvedIds.add(asset.id);
+      }
+    }
+    return resolvedIds;
+  }, [assignedEmojiIds, emojiLookup]);
+
   const sortedEmojis = useMemo(() => {
     return [...emojis].sort((left, right) => left.name.localeCompare(right.name));
   }, [emojis]);
+
+  const resolveEmojiAsset = (emojiId: string) => emojiLookup.get(emojiId) ?? null;
 
   const handleCreateCategory = async () => {
     if (!newCategory.trim()) return;
@@ -128,17 +181,17 @@ export default function EmojiCategoryEditor({
         </div>
         <div className="grid grid-cols-6 gap-3 sm:grid-cols-8 lg:grid-cols-10">
           {sortedEmojis.map((emoji) => {
-            const assigned = assignedEmojiIds.has(emoji.id);
+            const assigned = resolvedAssignedEmojiIds.has(emoji.id);
             return (
               <button
                 key={emoji.id}
                 type="button"
                 draggable
-                onDragStart={() => handleDragStart(emoji.id)}
+                onDragStart={() => handleDragStart(emoji.fileName)}
                 onDragEnd={handleDragEnd}
-                className={`group flex h-16 w-16 items-center justify-center rounded-3xl border transition ${assigned ? "border-cyan-400/80 bg-cyan-900/70" : "border-slate-700 bg-slate-950/80 hover:border-cyan-300/70 hover:bg-slate-900"}`}
+                className={`group relative flex h-16 w-16 items-center justify-center rounded-3xl border transition ${assigned ? "border-cyan-400/80 bg-cyan-900/70" : "border-slate-700 bg-slate-950/80 hover:border-cyan-300/70 hover:bg-slate-900"}`}
               >
-                <img src={emoji.url} alt={emoji.name} className="h-10 w-10" />
+                <CustomEmojiImage src={emoji.url} alt={emoji.name} className="h-10 w-10" title={emoji.name} />
                 <span className="sr-only">{emoji.name}</span>
                 {assigned ? <span className="pointer-events-none absolute bottom-1 right-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-cyan-500 text-[10px] font-semibold text-slate-950">✓</span> : null}
               </button>
@@ -175,18 +228,18 @@ export default function EmojiCategoryEditor({
                 ) : (
                   <div className="flex flex-wrap gap-3">
                     {cat.emojiIds.map((eid) => {
-                      const emoji = emojis.find((e) => e.id === eid);
+                      const emoji = resolveEmojiAsset(eid);
                       if (!emoji) return null;
                       const isHidden = hidden.includes(emoji.id);
                       return (
                         <div
                           key={eid}
                           draggable
-                          onDragStart={() => handleDragStart(emoji.id)}
+                          onDragStart={() => handleDragStart(emoji.fileName)}
                           onDragEnd={handleDragEnd}
                           className="group relative flex h-16 w-16 flex-col items-center justify-center rounded-3xl border border-cyan-300/20 bg-slate-950/80 p-2 transition hover:border-cyan-200"
                         >
-                          <img src={emoji.url} alt={emoji.name} className="h-10 w-10" />
+                          <CustomEmojiImage src={emoji.url} alt={emoji.name} className="h-10 w-10" title={emoji.name} />
                           <span className="sr-only">{emoji.name}</span>
                           <div className="mt-1 text-[10px] text-cyan-200/80">{emoji.name}</div>
                           <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 opacity-0 transition group-hover:opacity-100">
