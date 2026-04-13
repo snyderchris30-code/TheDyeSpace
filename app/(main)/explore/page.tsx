@@ -24,7 +24,11 @@ import { Heart, MessageCircle, Send } from "lucide-react";
 import EmojiPicker from "@/app/EmojiPicker";
 import { appendEmojiToText, buildCustomEmojiAsset } from "@/lib/custom-emojis";
 import { countInteractionReactions, type AggregatedPostInteraction, type ReactionEmoji } from "@/lib/post-interactions";
-import { stripAffiliateProductTokens } from "@/lib/post-affiliate-products";
+import {
+  buildPostContentWithAffiliateProducts,
+  extractAffiliateProductIds,
+  stripAffiliateProductTokens,
+} from "@/lib/post-affiliate-products";
 
 type ExplorePost = {
   id: string;
@@ -293,6 +297,9 @@ export default function ExplorePage() {
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [interactionBusyPostId, setInteractionBusyPostId] = useState<string | null>(null);
   const [interactionStatus, setInteractionStatus] = useState<string | null>(null);
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [editPostContent, setEditPostContent] = useState("");
+  const [editPostAffiliateProductIds, setEditPostAffiliateProductIds] = useState<string[]>([]);
 
   const { data: posts = [], isLoading, error, refetch } = useQuery({
     queryKey: ["explorePosts", tab, search.trim(), marketplaceOnly, sessionUserId, viewerIsAdmin, reloadKey],
@@ -528,6 +535,33 @@ export default function ExplorePage() {
     );
   }, [queryClient, reloadKey, search, sessionUserId, tab, viewerIsAdmin, marketplaceOnly]);
 
+  const handleSavePostEdit = useCallback(async (postId: string) => {
+    const content = editPostContent.trim();
+    if (!content) {
+      return;
+    }
+
+    const nextContent = buildPostContentWithAffiliateProducts(content, editPostAffiliateProductIds);
+    const response = await fetch("/api/posts/manage", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ postId, content: nextContent }),
+    });
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      setInteractionStatus(body?.error || "Could not update post. Please try again.");
+      return;
+    }
+
+    const body = await response.json().catch(() => ({}));
+    queryClient.setQueryData<ExplorePost[]>(["explorePosts", tab, search.trim(), marketplaceOnly, sessionUserId, viewerIsAdmin, reloadKey], (currentPosts) =>
+      (currentPosts || []).map((post) => (post.id === postId ? { ...post, content: body.content || nextContent } : post))
+    );
+    setEditingPostId(null);
+    setEditPostAffiliateProductIds([]);
+  }, [editPostAffiliateProductIds, editPostContent, queryClient, reloadKey, search, sessionUserId, tab, viewerIsAdmin, marketplaceOnly]);
+
   const handleDeleteComment = useCallback(async (commentId: string, postId: string) => {
     if (!confirm("Delete this comment?")) {
       return;
@@ -673,7 +707,7 @@ export default function ExplorePage() {
             return (
             <article
               key={post.id}
-              className={`rounded-3xl border-4 border-gradient-tiedye bg-[var(--post-bg,rgba(7,17,31,0.7))] p-4 shadow-[0_0_0_4px_rgba(0,0,0,0.18),0_8px_32px_0_rgba(0,0,0,0.25)] backdrop-blur-xl sm:p-5 ${fontClass(post.author_theme?.font_style)}`}
+              className={`rounded-3xl border-4 border-gradient-tiedye bg-[var(--post-bg,rgba(7,17,31,0.7))] p-4 shadow-[0_0_0_4px_rgba(0,0,0,0.18),0_8px_32px_0_rgba(0,0,0,0.25)] backdrop-blur-xl sm:p-5 ${post.author_verified_badge ? "ring-2 ring-amber-300/30" : ""} ${fontClass(post.author_theme?.font_style)}`}
               ref={(element) => applyPostThemeVars(element, post.author_theme)}
             >
               {post.image_urls?.[0] ? (
@@ -687,10 +721,38 @@ export default function ExplorePage() {
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent px-3 py-4 text-left text-xs text-cyan-50/85 sm:text-sm">Tap to expand</div>
                   </button>
               ) : null}
+                {editingPostId === post.id ? (
+                <div className="mb-3 space-y-3 rounded-3xl border border-cyan-300/20 bg-slate-950/40 p-4">
+                  <label className="block text-sm font-semibold text-cyan-100">Edit post</label>
+                  <textarea
+                    value={editPostContent}
+                    onChange={(event) => setEditPostContent(event.target.value)}
+                    className="min-h-[128px] w-full rounded-2xl border border-cyan-300/30 bg-black/40 px-4 py-3 text-sm text-cyan-100 outline-none placeholder:text-cyan-300/60"
+                    placeholder="Update your post content"
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      className="rounded-full border border-cyan-300/25 bg-black/20 px-4 py-2 text-xs text-cyan-100 hover:bg-cyan-900/30 transition"
+                      onClick={() => void handleSavePostEdit(post.id)}
+                    >
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-full border border-slate-600 bg-black/20 px-4 py-2 text-xs text-slate-200 hover:bg-slate-900/30 transition"
+                      onClick={() => setEditingPostId(null)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
                 <InlineEmojiText
                   text={visibleContent || "No description provided."}
                   className="mb-3 block whitespace-pre-wrap text-sm leading-6 text-[color:var(--post-text)]/92 sm:text-base sm:leading-7"
                 />
+              )}
               <div className="mb-3">
                 <UserIdentity
                   displayName={post.author_display_name || "DyeSpace User"}
@@ -747,6 +809,19 @@ export default function ExplorePage() {
               </div>
               {(viewerIsAdmin || sessionUserId === post.user_id) ? (
                 <div className="mb-3 flex flex-wrap items-center gap-2">
+                  {sessionUserId === post.user_id && editingPostId !== post.id ? (
+                    <button
+                      type="button"
+                      className="rounded-full border border-cyan-300/25 bg-black/20 px-3 py-1 text-xs text-cyan-300 hover:bg-cyan-900/30 transition"
+                      onClick={() => {
+                        setEditingPostId(post.id);
+                        setEditPostContent(stripAffiliateProductTokens(post.content));
+                        setEditPostAffiliateProductIds(extractAffiliateProductIds(post.content));
+                      }}
+                    >
+                      Edit
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="rounded-full border border-rose-300/25 bg-black/20 px-3 py-1 text-xs text-rose-300 transition hover:bg-rose-900/30"

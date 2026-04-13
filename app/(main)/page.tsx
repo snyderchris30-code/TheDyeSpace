@@ -566,7 +566,7 @@ export default function MainFeedPage() {
           return (
           <article
             key={post.id}
-            className={`bg-[var(--post-bg,rgba(7,17,31,0.7))] border fractal-border rounded-[1.5rem] p-5 transition hover:-translate-y-1 hover:shadow-2xl sm:rounded-3xl sm:p-6 ${fontClass(post.author_theme?.font_style)}`}
+            className={`bg-[var(--post-bg,rgba(7,17,31,0.7))] border fractal-border rounded-[1.5rem] p-5 transition hover:-translate-y-1 hover:shadow-2xl sm:rounded-3xl sm:p-6 ${post.author_verified_badge ? "ring-2 ring-amber-300/30" : ""} ${fontClass(post.author_theme?.font_style)}`}
             ref={(element) => applyPostThemeVars(element, post.author_theme)}
           >
             <header className="mb-4 flex flex-col items-start gap-3 sm:flex-row sm:justify-between sm:gap-4">
@@ -582,6 +582,11 @@ export default function MainFeedPage() {
                     usernameClassName="text-xs text-[color:var(--post-highlight)]/85 hover:text-[color:var(--post-highlight)] hover:underline"
                     metaClassName="text-xs text-[color:var(--post-text)]/70"
                   />
+                  {post.is_for_sale ? (
+                    <span className="inline-flex rounded-full border border-emerald-300/40 bg-emerald-500/20 px-2 py-1 text-xs font-semibold text-emerald-100">
+                      For Sale
+                    </span>
+                  ) : null}
                   {categoryMeta ? (
                     <Link
                       href={`/explore?tab=${encodeURIComponent(categoryMeta.value)}`}
@@ -591,10 +596,8 @@ export default function MainFeedPage() {
                     </Link>
                   ) : null}
                 </div>
-                <time className="block text-xs text-[color:var(--post-text)]/70">{new Date(post.created_at).toLocaleString()}</time>
               </div>
               <div className="flex items-center gap-2">
-                <span className="rounded-full bg-green-900/30 px-2 py-1 text-xs text-green-200">{post.is_for_sale ? "For Sale" : "Just Shared"}</span>
                 {(isOwner || isAdmin) && (
                   <div className="flex items-center gap-2">
                     {isOwner ? (
@@ -696,8 +699,12 @@ export default function MainFeedPage() {
                   ))}
                 </div>
               )}
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan-800/60 bg-slate-950/70 px-4 py-3 text-xs text-[color:var(--post-text)]/70">
+                <span>{new Date(post.created_at).toLocaleString()}</span>
+                <span>{totalPostReactions} reactions • {post.comments_count} comments</span>
+              </div>
             </div>
-            <footer className="mt-6 flex flex-col gap-3 border-t border-cyan-800 pt-4 text-sm text-cyan-200 sm:mt-8 sm:flex-row sm:justify-between">
+            <footer className="mt-4 flex flex-col gap-3 border-t border-cyan-800 pt-4 text-sm text-cyan-200 sm:mt-6 sm:flex-row sm:justify-between">
               <div>
                 {session && session.user ? (
                   <div className="flex flex-wrap items-center gap-3">

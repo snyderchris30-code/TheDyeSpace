@@ -1406,6 +1406,28 @@ export default function ProfileEditor() {
     [profileDisplay.shop_products]
   );
 
+  const shopProductPosts = useMemo(() => {
+    if (!profileIsVerified || !profileUserId) return [] as ProfilePost[];
+
+    return visibleShopProducts.map((product) => {
+      const imageUrls = normalizePostImageUrls(product.photo_urls || null);
+      const descriptionParts = [product.title?.trim(), product.price ? `$${product.price}` : null, product.description?.trim()]
+        .filter(Boolean)
+        .map(String);
+
+      return {
+        id: `shop-product-${product.id}`,
+        user_id: profileUserId,
+        content: descriptionParts.join(" • ") || product.title || "Verified Seller Listing",
+        image_urls: imageUrls.length ? imageUrls : null,
+        likes: 0,
+        comments_count: 0,
+        is_for_sale: true,
+        created_at: new Date().toISOString(),
+      } as ProfilePost;
+    });
+  }, [profileIsVerified, profileUserId, visibleShopProducts]);
+
   useEffect(() => {
     const uncachedSongs = playlistSongs.filter((song) => !videoTitles[song.videoId]).slice(0, 8);
     if (!uncachedSongs.length) {
@@ -1847,7 +1869,7 @@ export default function ProfileEditor() {
                         ))}
                       </div>
                     ) : null}
-                    {profileIsVerified && !isOwner && session?.user && !viewerIsVerifiedSeller ? (
+                    {profileIsVerified && !isOwner && session?.user ? (
                       <div className="mt-4 flex flex-wrap items-center gap-3">
                         <button
                           type="button"
@@ -1951,7 +1973,7 @@ export default function ProfileEditor() {
                   <h2 className="mt-2 text-3xl font-bold text-cyan-50">Posts</h2>
                 </div>
                 <div className="rounded-full border border-cyan-300/20 bg-slate-950/45 px-4 py-2 text-sm text-cyan-100/80 backdrop-blur-xl">
-                  {posts.length} {posts.length === 1 ? "post" : "posts"}
+                  {posts.length + shopProductPosts.length} {(posts.length + shopProductPosts.length) === 1 ? "post" : "posts"}
                 </div>
               </div>
 
@@ -1966,12 +1988,60 @@ export default function ProfileEditor() {
                 <div className="rounded-[1.75rem] border border-violet-300/20 bg-violet-950/45 p-8 text-violet-100 shadow-xl backdrop-blur-xl">
                   This user is currently hidden from public discovery. Their posts are not visible right now.
                 </div>
-              ) : posts.length === 0 ? (
+              ) : posts.length + shopProductPosts.length === 0 ? (
                 <div className="rounded-[1.75rem] border border-cyan-300/20 bg-slate-950/45 p-8 text-cyan-100/75 shadow-xl backdrop-blur-xl">
                   No posts yet.
                 </div>
               ) : (
                 <div className="space-y-6">
+                  {shopProductPosts.map((product) => (
+                    <article
+                      key={product.id}
+                      className="rounded-[1.5rem] border border-amber-300/30 bg-slate-950/85 p-5 shadow-[0_0_0_1px_rgba(245,158,11,0.18)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_0_0_2px_rgba(245,158,11,0.28)] sm:rounded-[1.75rem] sm:p-6"
+                    >
+                      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:justify-between sm:gap-4">
+                        <div>
+                          <p className="text-xs text-cyan-100/70">Verified Seller Listing</p>
+                          <UserIdentity
+                            displayName={displayName}
+                            username={displayUsername}
+                            verifiedBadge={profileIsVerified}
+                            memberNumber={profileStatus?.member_number ?? null}
+                            className="min-w-0"
+                            nameClassName="font-bold text-[color:var(--profile-text)] hover:text-[color:var(--profile-highlight)] hover:underline"
+                            usernameClassName="text-xs text-[color:var(--profile-highlight)]/85 hover:text-[color:var(--profile-highlight)] hover:underline"
+                            metaClassName="text-xs text-[color:var(--profile-text)]/70"
+                          />
+                        </div>
+                        <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-100">For Sale</span>
+                      </div>
+                      <p className="text-base leading-7 text-[color:var(--profile-text)]/92">{product.content}</p>
+                      {product.image_urls && product.image_urls.length > 0 ? (
+                        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                          {product.image_urls.map((imageUrl, imageIndex) => (
+                            <button
+                              key={`${product.id}-${imageIndex}`}
+                              type="button"
+                              className="group relative aspect-[4/5] w-full overflow-hidden rounded-[1.5rem] cursor-zoom-in sm:aspect-square"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setLightbox({ open: true, images: product.image_urls || [], index: imageIndex });
+                              }}
+                            >
+                              <Image
+                                src={imageUrl}
+                                alt={`Listing image ${imageIndex + 1}`}
+                                className="absolute inset-0 h-full w-full object-cover transition duration-200 group-hover:scale-105"
+                                loading="lazy"
+                                fill
+                                unoptimized
+                              />
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </article>
+                  ))}
                   {posts.map((post) => {
                     const postInteraction = interactions[post.id] || { comments: [], reactions: [], viewerReaction: null };
                     const isCommentsOpen = Boolean(expandedComments[post.id]);
