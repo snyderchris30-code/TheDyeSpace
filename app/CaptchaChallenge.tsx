@@ -19,6 +19,8 @@ type CaptchaChallengeProps = {
   reloadKey?: number;
 };
 
+const captchaLoadPromises = new Map<string, Promise<CaptchaChallengeResponse>>();
+
 export default function CaptchaChallenge({ onStateChange, reloadKey = 0 }: CaptchaChallengeProps) {
   const [loading, setLoading] = useState(true);
   const [prompt, setPrompt] = useState("");
@@ -36,14 +38,30 @@ export default function CaptchaChallenge({ onStateChange, reloadKey = 0 }: Captc
     setSelectedIds([]);
     onStateChange({ token: null, selectedIds: [] });
 
+    const cacheKey = String(reloadKey);
+    let challengePromise = captchaLoadPromises.get(cacheKey);
+    if (!challengePromise) {
+      challengePromise = (async (): Promise<CaptchaChallengeResponse> => {
+        const response = await fetch(`/api/captcha?cacheBust=${Date.now()}`, { cache: "no-store" });
+        const body = (await response.json().catch(() => ({}))) as Partial<CaptchaChallengeResponse> & { error?: string };
+
+        if (!response.ok || !body.prompt || !Array.isArray(body.options) || typeof body.token !== "string") {
+          throw new Error(body.error || "Could not load the Stoned CAPTCHA.");
+        }
+
+        return body as CaptchaChallengeResponse;
+      })();
+
+      captchaLoadPromises.set(cacheKey, challengePromise);
+      challengePromise.finally(() => {
+        if (captchaLoadPromises.get(cacheKey) === challengePromise) {
+          captchaLoadPromises.delete(cacheKey);
+        }
+      });
+    }
+
     try {
-      const response = await fetch(`/api/captcha?cacheBust=${Date.now()}`, { cache: "no-store" });
-      const body = (await response.json().catch(() => ({}))) as Partial<CaptchaChallengeResponse> & { error?: string };
-
-      if (!response.ok || !body.prompt || !Array.isArray(body.options) || typeof body.token !== "string") {
-        throw new Error(body.error || "Could not load the Stoned CAPTCHA.");
-      }
-
+      const body = await challengePromise;
       setPrompt(body.prompt);
       setOptions(body.options);
       setToken(body.token);
@@ -53,7 +71,7 @@ export default function CaptchaChallenge({ onStateChange, reloadKey = 0 }: Captc
     } finally {
       setLoading(false);
     }
-  }, [onStateChange]);
+  }, [onStateChange, reloadKey]);
 
   useEffect(() => {
     void loadChallenge();

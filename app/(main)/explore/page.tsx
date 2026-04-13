@@ -54,6 +54,8 @@ type ProfileRow = {
   shadow_banned_until?: string | null;
 };
 
+const exploreLoadPromises = new Map<string, Promise<void>>();
+
 function isShadowBanned(profile?: ProfileRow) {
   if (!profile) return false;
   if (profile.shadow_banned) return true;
@@ -246,6 +248,13 @@ export default function ExplorePage() {
 
   useEffect(() => {
     let active = true;
+    const loadKey = JSON.stringify({ tab, search, marketplaceOnly, sessionUserId, viewerIsAdmin, reloadKey });
+
+    if (exploreLoadPromises.has(loadKey)) {
+      return () => {
+        active = false;
+      };
+    }
 
     const loadPosts = async () => {
       setLoading(true);
@@ -349,7 +358,14 @@ export default function ExplorePage() {
       }
     };
 
-    void loadPosts();
+    const loadPromise = loadPosts();
+    exploreLoadPromises.set(loadKey, loadPromise);
+    loadPromise.finally(() => {
+      if (exploreLoadPromises.get(loadKey) === loadPromise) {
+        exploreLoadPromises.delete(loadKey);
+      }
+    });
+
     return () => {
       active = false;
     };

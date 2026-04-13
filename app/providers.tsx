@@ -49,7 +49,11 @@ function FreshDataRuntime() {
             const now = Date.now();
             pruneRecentResponses(now);
 
-            const requestKey = `${method}:${url.toString()}`;
+            const dedupeUrl = new URL(url.toString());
+            for (const ignoreParam of ['cacheBust', 't', '_', 'v']) {
+              dedupeUrl.searchParams.delete(ignoreParam);
+            }
+            const requestKey = `${method}:${dedupeUrl.toString()}`;
             const cached = recentApiResponses.get(requestKey);
             if (cached && cached.expiresAt > now) {
               return cached.response.clone();

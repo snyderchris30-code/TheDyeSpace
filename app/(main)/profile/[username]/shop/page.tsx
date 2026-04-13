@@ -5,10 +5,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { MessageCircle, Store } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { fetchProfileLookupByUsername } from "@/lib/profile-fetch";
+import { fetchProfileLookupByUsername, type ProfileLookupResponse } from "@/lib/profile-fetch";
+import { normalizePostImageUrls } from "@/lib/post-media";
 import { normalizeSellerProducts } from "@/lib/verified-seller";
 import { sanitizeUsernameInput } from "@/lib/profile-identity";
 import type { ProfileThemeSettings } from "@/types/database";
+
+const shopProfileLoadPromises = new Map<string, Promise<ProfileLookupResponse<ShopProfile>>>();
+const shopPostLoadPromises = new Map<string, Promise<ForSalePost[]>>();
 
 type ForSalePost = {
   id: string;
@@ -52,6 +56,7 @@ export default function ShopPage() {
 
   useEffect(() => {
     let active = true;
+    const loadKey = username || "";
 
     if (!username) {
       if (active) {
@@ -61,20 +66,32 @@ export default function ShopPage() {
       return;
     }
 
-    setLoading(true);
-    void fetchProfileLookupByUsername<ShopProfile>(username)
-      .then((body) => {
+    const fetchProfile = async () => {
+      setLoading(true);
+      try {
+        let profilePromise = shopProfileLoadPromises.get(loadKey);
+        if (!profilePromise) {
+          profilePromise = fetchProfileLookupByUsername<ShopProfile>(username);
+          shopProfileLoadPromises.set(loadKey, profilePromise);
+          profilePromise.finally(() => {
+            if (shopProfileLoadPromises.get(loadKey) === profilePromise) {
+              shopProfileLoadPromises.delete(loadKey);
+            }
+          });
+        }
+
+        const body = await profilePromise;
         if (!active) return;
         setProfile(body.profile ?? null);
-      })
-      .catch(() => {
+      } catch {
         if (!active) return;
         setProfile(null);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    void fetchProfile();
 
     return () => {
       active = false;
@@ -83,35 +100,60 @@ export default function ShopPage() {
 
   useEffect(() => {
     let active = true;
-
-    async function loadSalePosts() {
-      if (!profile?.id) {
-        return;
-      }
-
-      setPostsLoading(true);
-      const { data, error } = await supabase
-        .from("posts")
-        .select("id, content, image_urls, created_at")
-        .eq("user_id", profile.id)
-        .eq("is_for_sale", true)
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false });
-
-      if (!active) {
-        return;
-      }
-
-      if (error) {
-        console.error("Failed to load for sale posts:", error);
-        setSalePosts([]);
-      } else {
-        setSalePosts((data || []) as ForSalePost[]);
-      }
+    const profileUserId = profile?.id;
+    if (!profileUserId) {
+      setSalePosts([]);
       setPostsLoading(false);
+      return;
     }
 
-    void loadSalePosts();
+    const loadKey = profileUserId;
+    const fetchPosts = async () => {
+      setPostsLoading(true);
+
+      let postsPromise = shopPostLoadPromises.get(loadKey);
+      if (!postsPromise) {
+        postsPromise = (async () => {
+          const { data, error } = await supabase
+            .from("posts")
+            .select("id, content, image_urls, created_at")
+            .eq("user_id", profileUserId)
+            .eq("is_for_sale", true)
+            .is("deleted_at", null)
+            .order("created_at", { ascending: false });
+
+          if (error) {
+            throw error;
+          }
+
+          return ((data || []) as ForSalePost[]).map((post) => ({
+            ...post,
+            image_urls: normalizePostImageUrls(post.image_urls),
+          }));
+        })();
+
+        shopPostLoadPromises.set(loadKey, postsPromise);
+        postsPromise.finally(() => {
+          if (shopPostLoadPromises.get(loadKey) === postsPromise) {
+            shopPostLoadPromises.delete(loadKey);
+          }
+        });
+      }
+
+      try {
+        const nextPosts = await postsPromise;
+        if (!active) return;
+        setSalePosts(nextPosts);
+      } catch (error) {
+        if (!active) return;
+        console.error("Failed to load for sale posts:", error);
+        setSalePosts([]);
+      } finally {
+        if (active) setPostsLoading(false);
+      }
+    };
+
+    void fetchPosts();
 
     return () => {
       active = false;

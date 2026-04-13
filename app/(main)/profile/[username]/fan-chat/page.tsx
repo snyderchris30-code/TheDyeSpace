@@ -5,8 +5,10 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import FanChatRoomClient from "./FanChatRoomClient";
-import { fetchProfileLookupByUsername } from "@/lib/profile-fetch";
+import { fetchProfileLookupByUsername, type ProfileLookupResponse } from "@/lib/profile-fetch";
 import { resolveClientAuth } from "@/lib/client-auth";
+
+const fanChatProfileLoadPromises = new Map<string, Promise<ProfileLookupResponse<FanChatProfile>>>();
 
 type FanChatProfile = {
   id: string;
@@ -34,6 +36,7 @@ export default function FanChatPage() {
 
   useEffect(() => {
     let active = true;
+    const loadKey = username || "";
 
     async function loadFanChat() {
       if (!username) {
@@ -46,7 +49,19 @@ export default function FanChatPage() {
       }
 
       setLoading(true);
-      const lookup = await fetchProfileLookupByUsername<FanChatProfile>(username);
+
+      let profilePromise = fanChatProfileLoadPromises.get(loadKey);
+      if (!profilePromise) {
+        profilePromise = fetchProfileLookupByUsername<FanChatProfile>(username);
+        fanChatProfileLoadPromises.set(loadKey, profilePromise);
+        profilePromise.finally(() => {
+          if (fanChatProfileLoadPromises.get(loadKey) === profilePromise) {
+            fanChatProfileLoadPromises.delete(loadKey);
+          }
+        });
+      }
+
+      const lookup = await profilePromise;
 
       if (!active) {
         return;
@@ -62,8 +77,8 @@ export default function FanChatPage() {
       }
 
       const supabase = createClient();
-      const authState = await resolveClientAuth(supabase);
-      const currentUserId = authState.user?.id ?? null;
+      const { user } = await resolveClientAuth(supabase);
+      const currentUserId = user?.id ?? null;
 
       if (!active) {
         return;
