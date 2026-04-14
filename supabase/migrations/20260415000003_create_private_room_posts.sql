@@ -22,6 +22,7 @@ create or replace function public.can_access_private_room(room_name text, profil
 returns boolean
 language sql
 stable
+set search_path = public
 as $$
   select exists (
     select 1
