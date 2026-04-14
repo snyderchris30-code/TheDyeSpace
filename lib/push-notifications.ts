@@ -34,10 +34,24 @@ export function getPushPublicKey() {
 }
 
 export function buildPushPayload(source: PushSourceNotification) {
+  const postUrl = source.post_id ? `/explore?post=${encodeURIComponent(source.post_id)}` : "/notifications";
+  const isReply = source.type === "mention" || /replied:/i.test(source.message || "");
+
+  const title =
+    source.type === "admin_report"
+      ? "New report in Moderation Queue"
+      : source.type === "comment"
+        ? "New comment on your post"
+        : source.type === "like"
+          ? "New reaction on your post"
+          : isReply
+            ? "New reply to your comment"
+            : "New notification";
+
   return {
-    title: source.type === "admin_report" ? "New report in Moderation Queue" : "New notification",
+    title,
     body: source.message,
-    url: source.type === "admin_report" ? "/admin/reports" : source.post_id ? "/explore" : "/notifications",
+    url: source.type === "admin_report" ? "/admin/reports" : postUrl,
     tag: `thedyespace-${source.type}-${source.user_id}`,
   };
 }

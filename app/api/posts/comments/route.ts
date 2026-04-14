@@ -12,6 +12,7 @@ import {
   normalizeThemeSettings,
 } from "@/lib/post-interactions";
 import { loadLegacyInteraction, loadRelationalInteraction } from "@/lib/post-interaction-loaders";
+import { sendPushNotificationsForSources } from "@/lib/push-notifications";
 
 type CommentBody = {
   postId?: string;
@@ -59,8 +60,10 @@ async function createCommentNotification(
   commentId: string,
   requireRelationalVerification = true
 ) {
+  const emptySources: Array<{ user_id: string; actor_name: string; type: string; message: string; post_id: string | null }> = [];
+
   if (!ownerId || ownerId === actorId) {
-    return;
+    return emptySources;
   }
 
   if (requireRelationalVerification) {
@@ -97,7 +100,7 @@ async function createCommentNotification(
         commentId,
         error: persistedCommentError?.message || null,
       });
-      return;
+      return emptySources;
     }
   }
 
@@ -112,7 +115,19 @@ async function createCommentNotification(
 
   try {
     const notificationId = await insertNotificationRecord(adminClient, payload);
-    void notificationId;
+    if (!notificationId) {
+      return emptySources;
+    }
+
+    return [
+      {
+        user_id: ownerId,
+        actor_name: actorName,
+        type: "comment",
+        message: `${actorName} commented on your post.`,
+        post_id: postId,
+      },
+    ];
   } catch (error: any) {
     console.error("[notifications] Failed to create comment notification", {
       ownerId,
@@ -121,6 +136,7 @@ async function createCommentNotification(
       commentId,
       error: error?.message || error,
     });
+    return emptySources;
   }
 }
 
@@ -130,11 +146,14 @@ async function createMentionNotifications(
   actorName: string,
   postId: string,
   mentionedUsernames: string[],
+  commentContent: string,
   actorIsAdmin = false
 ) {
+  const createdSources: Array<{ user_id: string; actor_name: string; type: string; message: string; post_id: string | null }> = [];
+
   const uniqueUsernames = Array.from(new Set(mentionedUsernames.map((username) => username.toLowerCase())));
   if (!uniqueUsernames.length) {
-    return;
+    return createdSources;
   }
 
   let mentionQuery = adminClient
@@ -154,7 +173,7 @@ async function createMentionNotifications(
       postId,
       error: mentionProfilesError.message,
     });
-    return;
+    return createdSources;
   }
 
   for (const profile of mentionedProfiles || []) {
@@ -163,13 +182,23 @@ async function createMentionNotifications(
     }
 
     try {
+      const preview = commentContent.replace(/\s+/g, " ").trim().slice(0, 120);
+      const replyMessage = `@${actorName} replied: ${preview || "Check the new comment."}`;
       await insertNotificationRecord(adminClient, {
         user_id: profile.id,
         actor_name: actorName,
         type: "mention",
         post_id: postId,
-        message: `${actorName} mentioned you in a comment.`,
+        message: replyMessage,
         read: false,
+      });
+
+      createdSources.push({
+        user_id: profile.id,
+        actor_name: actorName,
+        type: "mention",
+        message: replyMessage,
+        post_id: postId,
       });
     } catch (error: any) {
       console.error("[notifications] Failed to create mention notification", {
@@ -180,6 +209,8 @@ async function createMentionNotifications(
       });
     }
   }
+
+  return createdSources;
 }
 
 export async function POST(req: NextRequest) {
@@ -275,9 +306,26 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: updatePostError.message }, { status: 500 });
       }
 
-      await createCommentNotification(adminClient, post.user_id, user.id, actorName, body.postId, insertedComment.id);
+      const pushSources = await createCommentNotification(adminClient, post.user_id, user.id, actorName, body.postId, insertedComment.id);
       if (mentionedUsernames.length) {
-        await createMentionNotifications(adminClient, user.id, actorName, body.postId, mentionedUsernames, viewerIsAdmin);
+        const mentionPushSources = await createMentionNotifications(
+          adminClient,
+          user.id,
+          actorName,
+          body.postId,
+          mentionedUsernames,
+          content,
+          viewerIsAdmin
+        );
+        pushSources.push(...mentionPushSources);
+      }
+
+      if (pushSources.length) {
+        try {
+          await sendPushNotificationsForSources(adminClient, pushSources);
+        } catch (pushError) {
+          console.error("[push] Failed to send comment/mention push notifications", pushError);
+        }
       }
 
       return NextResponse.json({ interaction, commentsCount, storage: "relational" });
@@ -357,9 +405,26 @@ export async function POST(req: NextRequest) {
 
     const fallbackCommentId = nextComments[nextComments.length - 1]?.id;
     if (fallbackCommentId) {
-      await createCommentNotification(adminClient, post.user_id, user.id, actorName, body.postId, fallbackCommentId, false);
+      const pushSources = await createCommentNotification(adminClient, post.user_id, user.id, actorName, body.postId, fallbackCommentId, false);
       if (mentionedUsernames.length) {
-        await createMentionNotifications(adminClient, user.id, actorName, body.postId, mentionedUsernames, viewerIsAdmin);
+        const mentionPushSources = await createMentionNotifications(
+          adminClient,
+          user.id,
+          actorName,
+          body.postId,
+          mentionedUsernames,
+          content,
+          viewerIsAdmin
+        );
+        pushSources.push(...mentionPushSources);
+      }
+
+      if (pushSources.length) {
+        try {
+          await sendPushNotificationsForSources(adminClient, pushSources);
+        } catch (pushError) {
+          console.error("[push] Failed to send legacy comment/mention push notifications", pushError);
+        }
       }
     }
 

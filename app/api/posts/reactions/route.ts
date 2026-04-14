@@ -14,6 +14,7 @@ import {
 import { normalizeCustomEmojiStorageValue } from "@/lib/custom-emojis";
 import { loadLegacyInteraction, loadRelationalInteraction } from "@/lib/post-interaction-loaders";
 import { getCustomEmojiFileNameSet } from "@/lib/custom-emoji-registry";
+import { sendPushNotificationsForSources } from "@/lib/push-notifications";
 
 import { resolveProfileUsername } from "@/lib/profile-identity";
 
@@ -158,7 +159,17 @@ async function createLikeNotification(
 
   try {
     const notificationId = await insertNotificationRecord(adminClient, payload);
-    void notificationId;
+    if (!notificationId) {
+      return null;
+    }
+
+    return {
+      user_id: ownerId,
+      actor_name: actorHandle,
+      type: "like",
+      message: `@${actorHandle} reacted with ${emoji} to your post.`,
+      post_id: postId,
+    };
   } catch (error: any) {
     console.error("[notifications] Failed to create like notification", {
       ownerId,
@@ -167,6 +178,7 @@ async function createLikeNotification(
       emoji,
       error: error?.message || error,
     });
+    return null;
   }
 }
 
@@ -318,7 +330,14 @@ export async function POST(req: NextRequest) {
       }
 
       if (shouldNotify) {
-        await createLikeNotification(adminClient, postOwnerId, user.id, actorHandle, body.postId, emoji);
+        const pushSource = await createLikeNotification(adminClient, postOwnerId, user.id, actorHandle, body.postId, emoji);
+        if (pushSource) {
+          try {
+            await sendPushNotificationsForSources(adminClient, [pushSource]);
+          } catch (pushError) {
+            console.error("[push] Failed to send post reaction push notification", pushError);
+          }
+        }
       }
 
       return NextResponse.json({ interaction, likesCount, storage: "relational" });
@@ -393,7 +412,14 @@ export async function POST(req: NextRequest) {
     }
 
     if (shouldNotify) {
-      await createLikeNotification(adminClient, postOwnerId, user.id, actorHandle, body.postId, emoji);
+      const pushSource = await createLikeNotification(adminClient, postOwnerId, user.id, actorHandle, body.postId, emoji);
+      if (pushSource) {
+        try {
+          await sendPushNotificationsForSources(adminClient, [pushSource]);
+        } catch (pushError) {
+          console.error("[push] Failed to send legacy post reaction push notification", pushError);
+        }
+      }
     }
 
     return NextResponse.json({ interaction, likesCount, storage: "legacy" });

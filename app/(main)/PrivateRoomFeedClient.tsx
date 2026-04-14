@@ -72,10 +72,10 @@ export default function PrivateRoomFeedClient({ room }: { room: PrivateRoomKey }
 
   useEffect(() => {
     let active = true;
+    const supabase = createClient();
 
     const bootstrap = async () => {
       try {
-        const supabase = createClient();
         const { user, errorMessage } = await resolveClientAuth(supabase);
         if (!user) {
           if (!active) {
@@ -134,9 +134,23 @@ export default function PrivateRoomFeedClient({ room }: { room: PrivateRoomKey }
       }
     }, 30000);
 
+    const realtimeSubscription = supabase
+      .channel(`public:room_posts:${room}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "room_posts", filter: `room=eq.${room}` },
+        () => {
+          if (authorizedRef.current) {
+            void loadPosts().catch(() => undefined);
+          }
+        }
+      )
+      .subscribe();
+
     return () => {
       active = false;
       window.clearInterval(intervalId);
+      void supabase.removeChannel(realtimeSubscription);
     };
   }, [loadPosts, room]);
 

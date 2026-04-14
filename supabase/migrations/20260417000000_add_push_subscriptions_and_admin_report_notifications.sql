@@ -4,7 +4,7 @@ alter table public.notifications drop constraint if exists notifications_type_ch
 
 alter table public.notifications
   add constraint notifications_type_check
-  check (type in ('like', 'comment', 'follow', 'admin_report'));
+  check (type in ('like', 'comment', 'follow', 'mention', 'admin_report'));
 
 create table if not exists public.push_subscriptions (
   id uuid primary key default gen_random_uuid(),

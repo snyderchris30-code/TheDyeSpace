@@ -13,6 +13,7 @@ import {
 } from "@/lib/post-interactions";
 import { normalizeCustomEmojiStorageValue } from "@/lib/custom-emojis";
 import { resolveProfileUsername } from "@/lib/profile-identity";
+import { sendPushNotificationsForSources } from "@/lib/push-notifications";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type CommentReactionBody = {
@@ -45,6 +46,86 @@ async function loadTargetComment(adminClient: ReturnType<typeof createAdminClien
   }
 
   return commentResponse.data;
+}
+
+async function insertNotificationRecord(
+  adminClient: ReturnType<typeof createAdminClient>,
+  payload: Record<string, any>
+) {
+  const { data, error } = await adminClient
+    .from("notifications")
+    .insert(payload)
+    .select("id")
+    .limit(1);
+
+  if (!error) {
+    return data?.[0]?.id ?? null;
+  }
+
+  const cacheError = String(error.message || "").includes("Could not find the 'post_id' column of 'notifications' in the schema cache");
+  if (cacheError && payload.post_id !== undefined) {
+    const fallbackPayload = { ...payload };
+    delete fallbackPayload.post_id;
+    const { data: fallbackData, error: fallbackError } = await adminClient
+      .from("notifications")
+      .insert(fallbackPayload)
+      .select("id")
+      .limit(1);
+
+    if (!fallbackError) {
+      return fallbackData?.[0]?.id ?? null;
+    }
+  }
+
+  throw error;
+}
+
+async function createCommentLikeNotification(
+  adminClient: ReturnType<typeof createAdminClient>,
+  ownerId: string | null | undefined,
+  actorId: string,
+  actorHandle: string,
+  postId: string,
+  emoji: string
+) {
+  if (!ownerId || ownerId === actorId) {
+    return null;
+  }
+
+  const message = `@${actorHandle} reacted with ${emoji} to your comment.`;
+
+  const payload = {
+    user_id: ownerId,
+    actor_name: actorHandle,
+    type: "like",
+    post_id: postId,
+    message,
+    read: false,
+  };
+
+  try {
+    const notificationId = await insertNotificationRecord(adminClient, payload);
+    if (!notificationId) {
+      return null;
+    }
+
+    return {
+      user_id: ownerId,
+      actor_name: actorHandle,
+      type: "like",
+      message,
+      post_id: postId,
+    };
+  } catch (error: any) {
+    console.error("[notifications] Failed to create comment-like notification", {
+      ownerId,
+      actorId,
+      postId,
+      emoji,
+      error: error?.message || error,
+    });
+    return null;
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -110,6 +191,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Comment not found." }, { status: 404 });
     }
 
+    const { data: actorProfile } = await adminClient
+      .from("profiles")
+      .select("username")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    const actorHandle = resolveProfileUsername(
+      actorProfile?.username,
+      user.user_metadata?.username,
+      user.email,
+      user.id
+    ).replace(/^@+/, "");
+
     const { data: currentReaction, error: currentReactionError } = await adminClient
       .from("post_comment_reactions")
       .select("emoji")
@@ -118,6 +212,8 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (!currentReactionError) {
+      let shouldNotify = false;
+
       if (currentReaction?.emoji === emoji) {
         const { error: deleteError } = await adminClient
           .from("post_comment_reactions")
@@ -142,6 +238,7 @@ export async function POST(req: NextRequest) {
           console.error("[posts/comment-reactions] Failed to update comment reaction", { commentId: body.commentId, userId: user.id, updateError });
           return NextResponse.json({ error: updateError.message }, { status: 500 });
         }
+        shouldNotify = true;
       } else {
         const { error: insertError } = await adminClient.from("post_comment_reactions").insert({
           comment_id: body.commentId,
@@ -153,6 +250,26 @@ export async function POST(req: NextRequest) {
           // eslint-disable-next-line no-console
           console.error("[posts/comment-reactions] Failed to insert comment reaction", { commentId: body.commentId, userId: user.id, insertError });
           return NextResponse.json({ error: insertError.message }, { status: 500 });
+        }
+        shouldNotify = true;
+      }
+
+      if (shouldNotify) {
+        const pushSource = await createCommentLikeNotification(
+          adminClient,
+          comment.user_id,
+          user.id,
+          actorHandle,
+          body.postId,
+          emoji
+        );
+
+        if (pushSource) {
+          try {
+            await sendPushNotificationsForSources(adminClient, [pushSource]);
+          } catch (pushError) {
+            console.error("[push] Failed to send comment reaction push notification", pushError);
+          }
         }
       }
 
@@ -175,6 +292,7 @@ export async function POST(req: NextRequest) {
     const existingCommentReactions = getStoredCommentReactions(existingThemeSettings);
     const legacyCurrentReaction = existingCommentReactions.find((reaction) => reaction.comment_id === body.commentId);
     const nextCommentReactions = existingCommentReactions.filter((reaction) => reaction.comment_id !== body.commentId);
+    const shouldNotify = !legacyCurrentReaction || legacyCurrentReaction.emoji !== emoji;
 
     if (!legacyCurrentReaction || legacyCurrentReaction.emoji !== emoji) {
       nextCommentReactions.push({
@@ -208,6 +326,25 @@ export async function POST(req: NextRequest) {
       // eslint-disable-next-line no-console
       console.error("[posts/comment-reactions] Failed to upsert profile for legacy comment reaction", { userId: user.id, profileError });
       return NextResponse.json({ error: profileError.message }, { status: 500 });
+    }
+
+    if (shouldNotify) {
+      const pushSource = await createCommentLikeNotification(
+        adminClient,
+        comment.user_id,
+        user.id,
+        actorHandle,
+        body.postId,
+        emoji
+      );
+
+      if (pushSource) {
+        try {
+          await sendPushNotificationsForSources(adminClient, [pushSource]);
+        } catch (pushError) {
+          console.error("[push] Failed to send legacy comment reaction push notification", pushError);
+        }
+      }
     }
 
     const interaction = await loadLegacyInteraction(adminClient, body.postId, user.id);
