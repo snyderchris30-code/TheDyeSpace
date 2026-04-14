@@ -87,6 +87,30 @@ export default function NotificationsPage() {
     return `@${actor} interacted with your account`;
   };
 
+  const getNotificationHref = (notif: Notification) => {
+    if (notif.type === "admin_report") {
+      return "/admin/reports";
+    }
+
+    if (notif.post_id) {
+      return "/explore";
+    }
+
+    return null;
+  };
+
+  const getNotificationLinkLabel = (notif: Notification) => {
+    if (notif.type === "admin_report") {
+      return "Open Moderation Queue";
+    }
+
+    if (notif.post_id) {
+      return "Open post";
+    }
+
+    return null;
+  };
+
   const queryClient = useQueryClient();
 
   const markNotificationsReadInCache = useCallback(() => {
@@ -390,16 +414,16 @@ export default function NotificationsPage() {
                   <div>
                     <div className="font-semibold text-xs tracking-[0.2em] text-cyan-200/85 uppercase">{notif.type}</div>
                     <p className="text-base leading-relaxed mt-2 font-medium">{formatMessage(notif)}</p>
-                    {notif.post_id ? (
+                    {getNotificationHref(notif) ? (
                       <Link
-                        href="/explore"
+                        href={getNotificationHref(notif) || "/notifications"}
                         className="mt-2 inline-block text-xs text-cyan-300 underline underline-offset-2 hover:text-cyan-200"
                         onClick={(event) => {
                           event.stopPropagation();
                           void markAsRead(notif.id);
                         }}
                       >
-                        Open post
+                        {getNotificationLinkLabel(notif)}
                       </Link>
                     ) : null}
                   </div>

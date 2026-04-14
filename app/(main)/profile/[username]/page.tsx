@@ -23,6 +23,7 @@ import { countInteractionReactions, type AggregatedPostInteraction, type Reactio
 import { hasAdminAccess, runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import { appendEmojiToText, buildCustomEmojiAsset } from "@/lib/custom-emojis";
 import { buildPostContentWithAffiliateProducts, extractAffiliateProductIds, stripAffiliateProductTokens } from "@/lib/post-affiliate-products";
+import { submitModerationReport } from "@/lib/report-client";
 import { buildYoutubeEmbedUrl, extractYoutubeVideoId } from "@/lib/youtube-media";
 import {
   DEFAULT_BACKGROUND_COLOR,
@@ -1404,16 +1405,13 @@ export default function ProfileEditor() {
     const reason = prompt("Reason for reporting this post?");
     if (!reason?.trim()) return;
 
-    const { error: reportError } = await supabase.from("reports").insert({
-      type: "post",
-      reported_id: postId,
-      reporter_id: session.user.id,
-      reported_by: session.user.id,
-      reason: reason.trim(),
-      created_at: new Date().toISOString(),
-    });
-
-    if (reportError) {
+    try {
+      await submitModerationReport({
+        type: "post",
+        targetId: postId,
+        reason: reason.trim(),
+      });
+    } catch {
       setStatus({ type: "error", text: "Failed to submit report. Please try again." });
       return;
     }

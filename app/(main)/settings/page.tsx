@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/client";
 import AsyncStateCard from "@/app/AsyncStateCard";
 import { useEffect, useMemo, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Lock, Trash2 } from "lucide-react";
+import { Lock, RefreshCw, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { sanitizeUsernameInput } from "@/lib/profile-identity";
 import { APP_VERSION } from "@/lib/app-config";
@@ -47,6 +47,8 @@ function SettingsContent() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [appUpdating, setAppUpdating] = useState(false);
+  const [appUpdateError, setAppUpdateError] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -167,6 +169,72 @@ function SettingsContent() {
     setSaving(false);
   }
 
+  async function handleUpdateApp() {
+    if (appUpdating) {
+      return;
+    }
+
+    setAppUpdating(true);
+    setAppUpdateError(null);
+    setMessage(null);
+    setError(null);
+
+    try {
+      if ("serviceWorker" in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(
+          registrations.map(async (registration) => {
+            try {
+              await registration.update();
+            } catch {
+              // Best effort only.
+            }
+          })
+        );
+        await Promise.all(
+          registrations.map(async (registration) => {
+            try {
+              await registration.unregister();
+            } catch {
+              // Best effort only.
+            }
+          })
+        );
+      }
+
+      if (typeof window !== "undefined" && "caches" in window) {
+        const cacheKeys = await window.caches.keys();
+        await Promise.all(cacheKeys.map((cacheKey) => window.caches.delete(cacheKey)));
+      }
+
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.set("updateApp", String(Date.now()));
+
+      const warmResponse = await fetch(nextUrl.toString(), {
+        method: "GET",
+        cache: "reload",
+        credentials: "same-origin",
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          Pragma: "no-cache",
+        },
+      });
+
+      if (!warmResponse.ok) {
+        throw new Error("Couldn't grab the latest version right now. Try again in a sec.");
+      }
+
+      window.location.replace(nextUrl.toString());
+    } catch (updateError: any) {
+      setAppUpdating(false);
+      setAppUpdateError(
+        typeof updateError?.message === "string"
+          ? updateError.message
+          : "Couldn't refresh the app right now. Please try again."
+      );
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-[70vh] items-center justify-center px-4">
@@ -175,6 +243,20 @@ function SettingsContent() {
             loading
             title="Loading settings"
             message="Fetching your account details and admin tools now."
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (appUpdating) {
+    return (
+      <div className="flex min-h-[70vh] items-center justify-center px-4">
+        <div className="w-full max-w-2xl">
+          <AsyncStateCard
+            loading
+            title="Updating TheDyeSpace... hold tight"
+            message="Rolling a fresh one, be right back. We are pulling the latest version from the server now."
           />
         </div>
       </div>
@@ -197,6 +279,40 @@ function SettingsContent() {
           </Link>
         )}
       </div>
+
+      <section className="rounded-2xl border border-emerald-300/20 bg-black/40 p-6 backdrop-blur-sm">
+        <div className="mb-4 flex items-start gap-3">
+          <div className="rounded-full border border-emerald-300/30 bg-emerald-400/10 p-2 text-emerald-200">
+            <RefreshCw className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-xl font-semibold text-emerald-100">Update App</h2>
+            <p className="mt-2 text-sm text-emerald-100/85">
+              Pull the latest version straight from the server and refresh this app if your phone feels stuck on an older build.
+            </p>
+          </div>
+        </div>
+
+        {appUpdateError ? (
+          <p className="mb-4 rounded-lg bg-rose-900/30 px-3 py-2 text-sm text-rose-300">
+            {appUpdateError}
+          </p>
+        ) : null}
+
+        <button
+          type="button"
+          onClick={() => void handleUpdateApp()}
+          disabled={appUpdating}
+          className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-emerald-300 via-lime-300 to-yellow-200 px-6 py-3 text-sm font-semibold text-slate-950 shadow-lg transition hover:scale-[1.02] disabled:opacity-60"
+        >
+          <RefreshCw className="h-4 w-4" />
+          {appUpdating ? "Updating TheDyeSpace..." : "Check for Updates"}
+        </button>
+
+        <p className="mt-3 text-xs text-emerald-100/65">
+          This clears the app cache and reloads a fresh copy for a cleaner mobile refresh.
+        </p>
+      </section>
 
       <section className="rounded-2xl border border-cyan-300/20 bg-black/40 p-6 backdrop-blur-sm">
         <h2 className="text-xl font-semibold text-cyan-100">Profile Visibility</h2>

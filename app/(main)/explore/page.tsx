@@ -19,6 +19,7 @@ import PostAffiliateProducts from "@/app/PostAffiliateProducts";
 import UserIdentity from "@/app/UserIdentity";
 import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
 import { hasAdminAccess, runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
+import { submitModerationReport } from "@/lib/report-client";
 import { Home, Users, BookOpen, PartyPopper, Tag, Ban } from "lucide-react";
 import { Heart, MessageCircle, Send } from "lucide-react";
 import EmojiPicker from "@/app/EmojiPicker";
@@ -329,18 +330,17 @@ function ReportPostButton({ postId }: { postId: string }) {
   const handleReport = useCallback(async () => {
     const reason = prompt("Reason for reporting this post?");
     if (!reason) return;
-    const supabase = createClient();
-    const { data: sessionData } = await supabase.auth.getSession();
-    const reporterId = sessionData?.session?.user?.id || null;
-    await supabase.from("reports").insert({
-      type: "post",
-      reported_id: postId,
-      reporter_id: reporterId,
-      reported_by: reporterId,
-      reason,
-      created_at: new Date().toISOString(),
-    });
-    alert("Post reported. Thank you!");
+
+    try {
+      await submitModerationReport({
+        type: "post",
+        targetId: postId,
+        reason: reason.trim(),
+      });
+      alert("Post reported. Thank you!");
+    } catch (error: any) {
+      alert(typeof error?.message === "string" ? error.message : "Could not submit report. Please try again.");
+    }
   }, [postId]);
   return (
     <button

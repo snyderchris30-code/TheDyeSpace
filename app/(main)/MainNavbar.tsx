@@ -20,7 +20,7 @@ type BeforeInstallPromptEvent = Event & {
   userChoice?: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 };
 
-type NotificationItem = { id: string; actor_name: string; type: string; message: string; read: boolean; created_at: string };
+type NotificationItem = { id: string; actor_name: string; type: string; message: string; read: boolean; created_at: string; post_id?: string | null };
 
 async function fetchNotifications(): Promise<NotificationItem[]> {
   const body = await dedupeApiFetchJson<{ notifications?: NotificationItem[] }>(
@@ -324,14 +324,16 @@ export default function MainNavbar() {
       if (alreadySeen || item.read || Notification.permission !== "granted") return;
 
       const normalizedType = String(item.type || "").toLowerCase();
-      if (!["like", "comment", "follow"].includes(normalizedType)) return;
+      if (!["like", "comment", "follow", "admin_report"].includes(normalizedType)) return;
 
       const title =
         normalizedType === "like"
           ? "New like"
           : normalizedType === "comment"
             ? "New comment"
-            : "New follower";
+            : normalizedType === "follow"
+              ? "New follower"
+              : "New report";
 
       try {
         new Notification(title, {
@@ -388,6 +390,18 @@ export default function MainNavbar() {
       return nextOpen;
     });
   }, [markAllRead, unreadCount]);
+
+  const getNotificationHref = useCallback((note: NotificationItem) => {
+    if (note.type === "admin_report") {
+      return "/admin/reports";
+    }
+
+    if (note.post_id) {
+      return "/explore";
+    }
+
+    return "/notifications";
+  }, []);
 
   const handleCopyShareLink = async (url: string) => {
     try {
@@ -677,14 +691,20 @@ export default function MainNavbar() {
                       <p className="text-sm text-slate-300">No new notifications yet.</p>
                     ) : (
                       notifications.map((note) => (
-                        <button key={note.id} className={`w-full text-left p-2 rounded-lg transition ${note.read ? "bg-slate-900/40 text-slate-200" : "bg-[#00323c]/90 text-white"}`} onClick={closeDropdowns}>
+                        <Link
+                          key={note.id}
+                          href={getNotificationHref(note)}
+                          prefetch={false}
+                          className={`block w-full rounded-lg p-2 text-left transition ${note.read ? "bg-slate-900/40 text-slate-200" : "bg-[#00323c]/90 text-white"}`}
+                          onClick={closeDropdowns}
+                        >
                           <div className="flex items-center justify-between text-xs text-slate-300">
                             <span>{note.type.toUpperCase()}</span>
                             <span>{new Date(note.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                           </div>
                           <div className="text-sm font-semibold">{note.actor_name}</div>
                           <div className="text-xs leading-snug text-sky-100">{note.message}</div>
-                        </button>
+                        </Link>
                       ))
                     )}
                   </div>

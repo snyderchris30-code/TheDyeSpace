@@ -22,6 +22,7 @@ import UserIdentity from "@/app/UserIdentity";
 import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
 import { hasAdminAccess, runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import { appendEmojiToText, buildCustomEmojiAsset } from "@/lib/custom-emojis";
+import { submitModerationReport } from "@/lib/report-client";
 import {
   buildPostContentWithAffiliateProducts,
   extractAffiliateProductIds,
@@ -469,17 +470,13 @@ export default function MainFeedPage() {
     const reason = prompt("Reason for reporting this post?");
     if (!reason?.trim()) return;
 
-    const supabase = createClient();
-    const { error: reportError } = await supabase.from("reports").insert({
-      type: "post",
-      reported_id: postId,
-      reporter_id: session.user.id,
-      reported_by: session.user.id,
-      reason: reason.trim(),
-      created_at: new Date().toISOString(),
-    });
-
-    if (reportError) {
+    try {
+      await submitModerationReport({
+        type: "post",
+        targetId: postId,
+        reason: reason.trim(),
+      });
+    } catch {
       setInteractionStatus("Could not submit report. Please try again.");
       return;
     }
