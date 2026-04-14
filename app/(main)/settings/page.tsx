@@ -268,7 +268,10 @@ function SettingsContent() {
       <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-cyan-100">Profile Settings</h1>
-          <p className="mt-1 text-sm text-cyan-300">Version {APP_VERSION}</p>
+          <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-cyan-300/45 bg-cyan-400/15 px-3 py-1">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-200">App Version</span>
+            <span className="rounded-full bg-cyan-200/90 px-2 py-0.5 text-xs font-bold text-slate-900">{APP_VERSION}</span>
+          </div>
         </div>
         {username && username.length >= 3 && (
           <Link
