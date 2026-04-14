@@ -1,7 +1,6 @@
 -- Add storage bucket policies for public read and authenticated owner uploads.
 -- This file is intentionally idempotent: existing policies are dropped before recreation.
-
-alter table if exists storage.objects enable row level security;
+-- storage.objects is managed by Supabase Storage, so avoid ownership-sensitive table alters here.
 
 -- Avatars
 

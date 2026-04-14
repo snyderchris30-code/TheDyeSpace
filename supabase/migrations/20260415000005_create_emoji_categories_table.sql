@@ -27,4 +27,3 @@ BEGIN
     CREATE INDEX emoji_categories_sort_order_idx ON public.emoji_categories (sort_order);
   END IF;
 END$$;
-
