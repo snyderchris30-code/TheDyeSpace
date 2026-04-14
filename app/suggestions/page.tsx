@@ -168,12 +168,12 @@ export default function SuggestionsPage() {
             <div className="rounded-[1.5rem] border border-fuchsia-300/25 bg-black/30 p-5 text-sm leading-7 text-cyan-100/85">
               <p className="mt-2">
                 For real tie-dye artists and hippie vendors.{' '}
-                <a
+                <Link
                   href="/profile/shaggy_dyes"
                   className="text-cyan-200 underline decoration-cyan-400/50 underline-offset-4 transition hover:text-cyan-50"
                 >
                   Contact @shaggy_dyes
-                </a>{' '}
+                </Link>{' '}
                 for a verified seller profile.
               </p>
               <p className="mt-4 font-semibold text-cyan-50">Current Support via Cash App:</p>

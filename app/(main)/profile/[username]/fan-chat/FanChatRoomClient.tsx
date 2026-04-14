@@ -101,8 +101,9 @@ export default function FanChatRoomClient({ room, allowed, sellerDisplayName, se
     if (!allowed) return;
     const supabase = createClient();
     let subscription: any;
-
-    void fetchMessages();
+    const timer = setTimeout(() => {
+      void fetchMessages();
+    }, 0);
 
     subscription = supabase
       .channel(`public:chat_messages_${room}`)
@@ -124,6 +125,7 @@ export default function FanChatRoomClient({ room, allowed, sellerDisplayName, se
       .subscribe();
 
     return () => {
+      clearTimeout(timer);
       supabase.removeChannel(subscription);
     };
   }, [allowed, fetchMessages, room]);
@@ -190,7 +192,7 @@ export default function FanChatRoomClient({ room, allowed, sellerDisplayName, se
         <MessageCircle className="h-6 w-6 text-cyan-300" />
         <div>
           <p className="text-sm uppercase tracking-[0.24em] text-cyan-400/80">Fan Chat Room</p>
-          <p className="text-lg font-semibold text-cyan-100">{sellerDisplayName || sellerUsername || "Verified Seller"}'s private room</p>
+          <p className="text-lg font-semibold text-cyan-100">{sellerDisplayName || sellerUsername || "Verified Seller"}&apos;s private room</p>
         </div>
       </div>
 

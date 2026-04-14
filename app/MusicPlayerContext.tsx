@@ -18,40 +18,37 @@ const MUSIC_PLAYER_VISIBLE_KEY = "dyespace.music_player_visible";
 const MUSIC_PLAYER_INDEX_KEY = "dyespace.music_player_index";
 const MUSIC_PLAYER_PLAYING_KEY = "dyespace.music_player_playing";
 
+function getStorageValue(key: string) {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
 const MusicPlayerContext = createContext<MusicPlayerContextValue | null>(null);
 
 export function MusicPlayerProvider({ children }: { children: React.ReactNode }) {
-  const [isMinimized, setIsMinimized] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isVisible, setIsVisible] = useState(true);
-
-  useEffect(() => {
-    try {
-      const minimizedValue = window.localStorage.getItem(MUSIC_PLAYER_MINIMIZED_KEY);
-      const visibleValue = window.localStorage.getItem(MUSIC_PLAYER_VISIBLE_KEY);
-      const indexValue = window.localStorage.getItem(MUSIC_PLAYER_INDEX_KEY);
-      const playingValue = window.localStorage.getItem(MUSIC_PLAYER_PLAYING_KEY);
-
-      if (minimizedValue === "true") {
-        setIsMinimized(true);
-      }
-      if (visibleValue === "false") {
-        setIsVisible(false);
-      }
-      if (indexValue !== null) {
-        const parsed = Number.parseInt(indexValue, 10);
-        if (Number.isFinite(parsed) && parsed >= 0) {
-          setCurrentIndex(parsed);
-        }
-      }
-      if (playingValue === "true") {
-        setIsPlaying(true);
-      }
-    } catch {
-      // Ignore localStorage failures on hydration.
+  const [isMinimized, setIsMinimized] = useState(() => getStorageValue(MUSIC_PLAYER_MINIMIZED_KEY) === "true");
+  const [isPlaying, setIsPlaying] = useState(() => getStorageValue(MUSIC_PLAYER_PLAYING_KEY) === "true");
+  const [currentIndex, setCurrentIndex] = useState(() => {
+    const indexValue = getStorageValue(MUSIC_PLAYER_INDEX_KEY);
+    if (indexValue === null) {
+      return 0;
     }
-  }, []);
+
+    const parsed = Number.parseInt(indexValue, 10);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return parsed;
+    }
+
+    return 0;
+  });
+  const [isVisible, setIsVisible] = useState(() => getStorageValue(MUSIC_PLAYER_VISIBLE_KEY) !== "false");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
