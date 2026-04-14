@@ -15,7 +15,7 @@ const audiowide = Audiowide({ subsets: ['latin'], variable: '--font-audiowide', 
 
 export const metadata: Metadata = {
   title: 'TheDyeSpace',
-  description: 'A cosmic, psychedelic commune for tie-dye artists and creative souls.',
+  description: 'A community platform for tie-dye artists and creative sellers.',
 };
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {

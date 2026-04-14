@@ -22,7 +22,7 @@ import { normalizePostImageUrls } from "@/lib/post-media";
 import { countInteractionReactions, type AggregatedPostInteraction, type ReactionEmoji } from "@/lib/post-interactions";
 import { hasAdminAccess, runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import { appendEmojiToText, buildCustomEmojiAsset } from "@/lib/custom-emojis";
-import { stripAffiliateProductTokens } from "@/lib/post-affiliate-products";
+import { buildPostContentWithAffiliateProducts, extractAffiliateProductIds, stripAffiliateProductTokens } from "@/lib/post-affiliate-products";
 import { buildYoutubeEmbedUrl, extractYoutubeVideoId } from "@/lib/youtube-media";
 import {
   DEFAULT_BACKGROUND_COLOR,
@@ -352,6 +352,9 @@ export default function ProfileEditor() {
   });
   const [editing, setEditing] = useState(false);
   const [posts, setPosts] = useState<ProfilePost[]>([]);
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [editPostContent, setEditPostContent] = useState("");
+  const [editPostAffiliateProductIds, setEditPostAffiliateProductIds] = useState<string[]>([]);
   const [interactions, setInteractions] = useState<InteractionMap>({});
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
@@ -1306,6 +1309,11 @@ export default function ProfileEditor() {
     if (!confirm("Delete this post? This cannot be undone.")) return;
     const res = await fetch(`/api/posts/manage?postId=${encodeURIComponent(postId)}`, { method: "DELETE" });
     if (res.ok) {
+      if (editingPostId === postId) {
+        setEditingPostId(null);
+        setEditPostContent("");
+        setEditPostAffiliateProductIds([]);
+      }
       setPosts((prev) => prev.filter((post) => post.id !== postId));
       setInteractions((prev) => {
         const next = { ...prev };
@@ -1315,7 +1323,45 @@ export default function ProfileEditor() {
     } else {
       setStatus({ type: "error", text: "Could not delete post. Please try again." });
     }
-  }, []);
+  }, [editingPostId]);
+
+  const handleSavePostEdit = useCallback(async (postId: string) => {
+    const content = editPostContent.trim();
+    if (!content) {
+      setStatus({ type: "error", text: "Post content cannot be empty." });
+      return;
+    }
+
+    setInteractionBusyPostId(postId);
+    try {
+      const response = await fetch("/api/posts/manage", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          postId,
+          content: buildPostContentWithAffiliateProducts(content, editPostAffiliateProductIds),
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(body?.error || "Could not update post. Please try again.");
+      }
+
+      setPosts((prev) => prev.map((post) => (post.id === postId ? { ...post, content: body?.post?.content ?? content } : post)));
+      setEditingPostId(null);
+      setEditPostContent("");
+      setEditPostAffiliateProductIds([]);
+      setStatus({ type: "success", text: "Post updated." });
+    } catch (error: any) {
+      setStatus({
+        type: "error",
+        text: typeof error?.message === "string" ? error.message : "Could not update post. Please try again.",
+      });
+    } finally {
+      setInteractionBusyPostId(null);
+    }
+  }, [editPostAffiliateProductIds, editPostContent]);
 
   const handleDeleteComment = useCallback(async (commentId: string, postId: string) => {
     if (!confirm("Delete this comment?")) return;
@@ -2010,14 +2056,14 @@ export default function ProfileEditor() {
                         {post.image_urls && post.image_urls.length > 0 ? (
                           <div className="grid gap-3 sm:grid-cols-2">
                             {post.image_urls.map((imageUrl, imageIndex) => (
-                              <button key={`${post.id}-${imageIndex}`} type="button" className="group relative aspect-[4/5] w-full overflow-hidden rounded-[1.5rem] cursor-zoom-in sm:aspect-square" onClick={(e) => {
+                              <button key={`${post.id}-${imageIndex}`} type="button" className="group relative aspect-[4/5] w-full overflow-hidden rounded-[1.5rem] border border-cyan-300/10 bg-slate-950 cursor-zoom-in sm:aspect-square" onClick={(e) => {
                                 e.stopPropagation();
                                 setLightbox({ open: true, images: post.image_urls || [], index: imageIndex });
                               }}>
                                 <Image
                                   src={imageUrl}
                                   alt={`Post image ${imageIndex + 1}`}
-                                  className="absolute inset-0 h-full w-full border border-cyan-300/20 object-cover shadow-lg transition duration-200 group-hover:scale-105"
+                                  className="absolute inset-0 h-full w-full object-contain p-2 shadow-lg transition duration-200 group-hover:scale-[1.02]"
                                   loading="lazy"
                                   tabIndex={0}
                                   fill
@@ -2029,42 +2075,50 @@ export default function ProfileEditor() {
                           </div>
                         ) : null}
 
-                        <div className="mt-4 space-y-3 rounded-2xl border border-cyan-300/15 bg-black/20 px-4 py-3">
-                          <UserIdentity
-                            displayName={profileDisplay.display_name}
-                            username={profileDisplay.username}
-                            verifiedBadge={profileIsVerified}
-                            memberNumber={profileStatus?.member_number ?? null}
-                            className="min-w-0"
-                            nameClassName="font-semibold text-[color:var(--profile-text)] hover:text-[color:var(--profile-highlight)] hover:underline"
-                            usernameClassName="text-xs text-[color:var(--profile-highlight)]/80 hover:text-[color:var(--profile-highlight)] hover:underline"
-                            metaClassName="text-xs text-[color:var(--profile-text)]/55"
-                          />
-                          <div className="flex flex-wrap gap-2">
-                            {post.is_for_sale ? (
-                              <span className="inline-flex rounded-full border border-emerald-300/40 bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-100">
-                                For Sale
-                              </span>
-                            ) : null}
-                            {categoryMeta ? (
-                              <Link
-                                href={`/explore?tab=${encodeURIComponent(categoryMeta.value)}`}
-                                className="inline-flex rounded-full border border-cyan-300/45 bg-cyan-300/15 px-3 py-1 text-xs font-semibold text-cyan-100 hover:border-cyan-200/70 hover:bg-cyan-300/30"
+                        {editingPostId === post.id ? (
+                          <div className="mt-4 space-y-3 rounded-2xl border border-cyan-300/15 bg-black/20 p-4">
+                            <label className="block text-sm font-semibold text-[color:var(--profile-text)]">Edit post</label>
+                            <textarea
+                              value={editPostContent}
+                              onChange={(event) => setEditPostContent(event.target.value)}
+                              rows={4}
+                              className="w-full rounded-2xl border border-cyan-300/20 bg-black/30 px-4 py-3 text-sm text-[color:var(--profile-text)] outline-none transition focus:border-cyan-200/60"
+                              placeholder="Update your post"
+                            />
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                className="rounded-full border border-cyan-300/30 bg-cyan-400/15 px-4 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-400/25"
+                                onClick={() => void handleSavePostEdit(post.id)}
+                                disabled={isBusy}
                               >
-                                {categoryMeta.label}
-                              </Link>
-                            ) : null}
+                                Save
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded-full border border-cyan-300/20 bg-black/20 px-4 py-2 text-xs text-cyan-200 transition hover:bg-black/35"
+                                onClick={() => {
+                                  setEditingPostId(null);
+                                  setEditPostContent("");
+                                  setEditPostAffiliateProductIds([]);
+                                }}
+                                disabled={isBusy}
+                              >
+                                Cancel
+                              </button>
+                            </div>
                           </div>
-                          <p className="text-sm text-[color:var(--profile-text)]/70">{formatPostDate(post.created_at)}</p>
-                        </div>
+                        ) : (
+                          <InlineEmojiText
+                            text={stripCategoryTag(stripAffiliateProductTokens(post.content)) || "No description provided."}
+                            className={`mt-4 block whitespace-pre-wrap text-[color:var(--profile-text)]/92 ${hasImage ? "text-base leading-7 sm:text-lg sm:leading-8" : "rounded-2xl border border-cyan-300/15 bg-black/15 px-4 py-4 text-base leading-8 sm:text-lg"}`}
+                          />
+                        )}
 
-                        <InlineEmojiText
-                          text={stripCategoryTag(stripAffiliateProductTokens(post.content)) || "No description provided."}
-                          className={`mt-4 block whitespace-pre-wrap text-[color:var(--profile-text)]/92 ${hasImage ? "text-base leading-7 sm:text-lg sm:leading-8" : "rounded-2xl border border-cyan-300/15 bg-black/15 px-4 py-4 text-base leading-8 sm:text-lg"}`}
-                        />
+                        <PostAffiliateProducts content={post.content} className="mt-4" />
 
                         <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-cyan-300/10 pt-4">
-                          {session?.user && !isShopListing ? (
+                          {session?.user ? (
                             <EmojiPicker
                               mode="reaction"
                               reactionLayout="floating-inline"
@@ -2121,6 +2175,19 @@ export default function ProfileEditor() {
                           ) : null}
                           {!isShopListing && (isOwner || isAdmin) ? (
                             <>
+                              {isOwner && editingPostId !== post.id ? (
+                                <button
+                                  type="button"
+                                  className="rounded-full border border-cyan-300/25 bg-black/20 px-4 py-2 text-xs text-cyan-300 hover:bg-cyan-900/30 transition"
+                                  onClick={() => {
+                                    setEditingPostId(post.id);
+                                    setEditPostContent(stripAffiliateProductTokens(post.content));
+                                    setEditPostAffiliateProductIds(extractAffiliateProductIds(post.content));
+                                  }}
+                                >
+                                  Edit
+                                </button>
+                              ) : null}
                               <button
                                 type="button"
                                 className="rounded-full border border-rose-300/25 bg-black/20 px-4 py-2 text-xs text-rose-300 hover:bg-rose-900/30 transition"
@@ -2135,9 +2202,7 @@ export default function ProfileEditor() {
                           ) : null}
                         </div>
 
-                        <PostAffiliateProducts content={post.content} className="mt-4" />
-
-                        {!isShopListing && postInteraction.reactions.length > 0 ? (
+                        {postInteraction.reactions.length > 0 ? (
                           <div className="mt-4 flex flex-wrap gap-2">
                             {postInteraction.reactions.map((reaction) => (
                               <button
@@ -2157,6 +2222,35 @@ export default function ProfileEditor() {
                             ))}
                           </div>
                         ) : null}
+
+                        <div className="mt-4 space-y-3 rounded-2xl border border-cyan-300/15 bg-black/20 px-4 py-3">
+                          <UserIdentity
+                            displayName={profileDisplay.display_name}
+                            username={profileDisplay.username}
+                            verifiedBadge={profileIsVerified}
+                            memberNumber={profileStatus?.member_number ?? null}
+                            className="min-w-0"
+                            nameClassName="font-semibold text-[color:var(--profile-text)] hover:text-[color:var(--profile-highlight)] hover:underline"
+                            usernameClassName="text-xs text-[color:var(--profile-highlight)]/80 hover:text-[color:var(--profile-highlight)] hover:underline"
+                            metaClassName="text-xs text-[color:var(--profile-text)]/55"
+                          />
+                          <div className="flex flex-wrap gap-2">
+                            {post.is_for_sale ? (
+                              <span className="inline-flex rounded-full border border-emerald-300/40 bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-100">
+                                For Sale
+                              </span>
+                            ) : null}
+                            {categoryMeta ? (
+                              <Link
+                                href={`/explore?tab=${encodeURIComponent(categoryMeta.value)}`}
+                                className="inline-flex rounded-full border border-cyan-300/45 bg-cyan-300/15 px-3 py-1 text-xs font-semibold text-cyan-100 hover:border-cyan-200/70 hover:bg-cyan-300/30"
+                              >
+                                {categoryMeta.label}
+                              </Link>
+                            ) : null}
+                          </div>
+                          <p className="text-sm text-[color:var(--profile-text)]/70">{formatPostDate(post.created_at)}</p>
+                        </div>
 
                         {!isShopListing && isCommentsOpen ? (
                           <div className="mt-5 rounded-[1.5rem] border border-cyan-300/15 bg-black/20 p-4 backdrop-blur-xl sm:p-5">

@@ -104,7 +104,7 @@ export default function CaptchaChallenge({ onStateChange, reloadKey = 0 }: Captc
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-200/75">Stoned CAPTCHA</p>
-          <h2 className="mt-1 text-sm font-semibold text-cyan-50 sm:text-base">Cosmic Vibe Check</h2>
+          <h2 className="mt-1 text-sm font-semibold text-cyan-50 sm:text-base">Quick Vibe Check</h2>
           <p className="mt-1 text-xs text-cyan-100/80">{loading ? "Loading challenge..." : prompt}</p>
         </div>
         <button

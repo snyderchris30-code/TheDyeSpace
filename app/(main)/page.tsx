@@ -571,8 +571,33 @@ export default function MainFeedPage() {
             ref={(element) => applyPostThemeVars(element, post.author_theme)}
           >
             <div className="block w-full text-left space-y-4">
+              {hasImage && (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+                  {(post.image_urls || []).map((imgUrl, idx) => (
+                    <button key={idx} type="button" className="group relative w-full overflow-hidden rounded-2xl cursor-zoom-in" onClick={() => {
+                      setLightbox({ open: true, images: post.image_urls || [], index: idx });
+                    }}>
+                      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl border border-cyan-300/10 bg-slate-950 sm:aspect-[16/9]">
+                        <Image
+                          src={imgUrl}
+                          alt={`Post image ${idx + 1}`}
+                          className="absolute inset-0 h-full w-full object-contain p-2 transition duration-200 group-hover:scale-[1.02]"
+                          loading="lazy"
+                          tabIndex={0}
+                          fill
+                          unoptimized
+                        />
+                      </div>
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent px-3 py-4 text-left text-xs text-cyan-50/85 sm:text-sm">
+                        Tap to expand
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {editingPostId === post.id && (
-                <div className="mb-3 flex flex-col gap-2">
+                <div className="flex flex-col gap-2">
                   <textarea
                     className="min-h-24 w-full rounded-2xl border border-cyan-300/20 bg-slate-950/75 px-4 py-3 text-white outline-none transition focus:border-cyan-300/50"
                     title="Edit post content"
@@ -608,59 +633,6 @@ export default function MainFeedPage() {
                   </div>
                 </div>
               )}
-              {hasImage && (
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
-                  {(post.image_urls || []).map((imgUrl, idx) => (
-                    <button key={idx} type="button" className="group relative w-full overflow-hidden rounded-2xl cursor-zoom-in" onClick={() => {
-                      setLightbox({ open: true, images: post.image_urls || [], index: idx });
-                    }}>
-                      <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-slate-900 sm:aspect-[16/9]">
-                        <Image
-                          src={imgUrl}
-                          alt={`Post image ${idx + 1}`}
-                          className="absolute inset-0 h-full w-full object-cover transition duration-200 group-hover:scale-105"
-                          loading="lazy"
-                          tabIndex={0}
-                          fill
-                          unoptimized
-                        />
-                      </div>
-                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent px-3 py-4 text-left text-xs text-cyan-50/85 sm:text-sm">
-                        Tap to expand
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <div className="space-y-3 rounded-2xl border border-cyan-800/40 bg-slate-950/45 px-4 py-3">
-                <UserIdentity
-                  displayName={post.author_display_name || "DyeSpace User"}
-                  username={post.author_username || null}
-                  verifiedBadge={post.author_verified_badge === true}
-                  memberNumber={post.author_member_number ?? null}
-                  className="min-w-0"
-                  nameClassName="font-bold text-[color:var(--post-text)] hover:text-[color:var(--post-highlight)] hover:underline"
-                  usernameClassName="text-xs text-[color:var(--post-highlight)]/85 hover:text-[color:var(--post-highlight)] hover:underline"
-                  metaClassName="text-xs text-[color:var(--post-text)]/70"
-                />
-                <div className="flex flex-wrap items-center gap-2">
-                  {post.is_for_sale ? (
-                    <span className="inline-flex rounded-full border border-emerald-300/40 bg-emerald-500/20 px-2 py-1 text-xs font-semibold text-emerald-100">
-                      For Sale
-                    </span>
-                  ) : null}
-                  {categoryMeta ? (
-                    <Link
-                      href={`/explore?tab=${encodeURIComponent(categoryMeta.value)}`}
-                      className="inline-flex rounded-full border border-cyan-300/45 bg-cyan-300/15 px-2 py-0.5 text-[11px] font-semibold text-cyan-100 hover:border-cyan-200/70 hover:bg-cyan-300/30"
-                    >
-                      {categoryMeta.label}
-                    </Link>
-                  ) : null}
-                </div>
-                <div className="text-xs text-[color:var(--post-text)]/70">{new Date(post.created_at).toLocaleString()}</div>
-              </div>
 
               {editingPostId === post.id ? null : (
                 <button
@@ -679,13 +651,13 @@ export default function MainFeedPage() {
                   />
                 </button>
               )}
+              {editingPostId === post.id ? null : <PostAffiliateProducts content={displayContent} className="mt-3" />}
             </div>
-            <footer className="mt-4 flex flex-col gap-3 border-t border-cyan-800 pt-4 text-sm text-cyan-200 sm:mt-6 sm:flex-row sm:justify-between">
+            <footer className="mt-4 space-y-4 border-t border-cyan-800 pt-4 text-sm text-cyan-200 sm:mt-6">
               <div>
                 {session && session.user ? (
                   <div className="flex flex-wrap items-center gap-3">
-                    {!isShopListing ? (
-                      <EmojiPicker
+                    <EmojiPicker
                       mode="reaction"
                       reactionLayout="floating-inline"
                       align="left"
@@ -706,7 +678,6 @@ export default function MainFeedPage() {
                         void handleReactionSelect(post.id, emoji);
                       }}
                     />
-                    ) : null}
                     <button
                       type="button"
                       className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-black/20 px-4 py-2 text-sm text-cyan-100 transition hover:border-cyan-300/40 hover:bg-black/35"
@@ -735,6 +706,26 @@ export default function MainFeedPage() {
                   <span className="italic text-cyan-400">Sign in to like or comment</span>
                 ) : null}
               </div>
+              {postInteraction.reactions.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {postInteraction.reactions.map((reaction) => (
+                    <button
+                      key={`${post.id}-${reaction.emoji}`}
+                      type="button"
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm transition ${
+                        reaction.reacted
+                          ? "border-cyan-300/50 bg-cyan-400/15 text-cyan-50"
+                          : "border-cyan-300/20 bg-black/20 text-cyan-100/85"
+                      }`}
+                      onClick={() => void handleReactionSelect(post.id, reaction.emoji)}
+                      disabled={isBusy || !session?.user}
+                    >
+                      <CustomEmojiImage src={reaction.emoji} alt="post reaction" className="h-5 w-5 object-contain" />
+                      <span>{reaction.count}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               {!isShopListing && (isOwner || isAdmin) ? (
                 <div className="flex flex-wrap items-center gap-2">
                   {isOwner ? (
@@ -761,27 +752,34 @@ export default function MainFeedPage() {
                 </div>
               ) : null}
             </footer>
-            {editingPostId === post.id ? null : <PostAffiliateProducts content={displayContent} className="mt-3" />}
-            {!isShopListing && postInteraction.reactions.length > 0 && (
-              <div className="mt-4 flex flex-wrap gap-2">
-                {postInteraction.reactions.map((reaction) => (
-                  <button
-                    key={`${post.id}-${reaction.emoji}`}
-                    type="button"
-                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm transition ${
-                      reaction.reacted
-                        ? "border-cyan-300/50 bg-cyan-400/15 text-cyan-50"
-                        : "border-cyan-300/20 bg-black/20 text-cyan-100/85"
-                    }`}
-                    onClick={() => void handleReactionSelect(post.id, reaction.emoji)}
-                    disabled={isBusy || !session?.user}
+            <div className="mt-4 space-y-3 rounded-2xl border border-cyan-800/40 bg-slate-950/45 px-4 py-3">
+              <UserIdentity
+                displayName={post.author_display_name || "DyeSpace User"}
+                username={post.author_username || null}
+                verifiedBadge={post.author_verified_badge === true}
+                memberNumber={post.author_member_number ?? null}
+                className="min-w-0"
+                nameClassName="font-bold text-[color:var(--post-text)] hover:text-[color:var(--post-highlight)] hover:underline"
+                usernameClassName="text-xs text-[color:var(--post-highlight)]/85 hover:text-[color:var(--post-highlight)] hover:underline"
+                metaClassName="text-xs text-[color:var(--post-text)]/70"
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                {post.is_for_sale ? (
+                  <span className="inline-flex rounded-full border border-emerald-300/40 bg-emerald-500/20 px-2 py-1 text-xs font-semibold text-emerald-100">
+                    For Sale
+                  </span>
+                ) : null}
+                {categoryMeta ? (
+                  <Link
+                    href={`/explore?tab=${encodeURIComponent(categoryMeta.value)}`}
+                    className="inline-flex rounded-full border border-cyan-300/45 bg-cyan-300/15 px-2 py-0.5 text-[11px] font-semibold text-cyan-100 hover:border-cyan-200/70 hover:bg-cyan-300/30"
                   >
-                    <CustomEmojiImage src={reaction.emoji} alt="post reaction" className="h-5 w-5 object-contain" />
-                    <span>{reaction.count}</span>
-                  </button>
-                ))}
+                    {categoryMeta.label}
+                  </Link>
+                ) : null}
               </div>
-            )}
+              <div className="text-xs text-[color:var(--post-text)]/70">{new Date(post.created_at).toLocaleString()}</div>
+            </div>
             {!isShopListing && isCommentsOpen && (
               <div className="mt-5 rounded-[1.5rem] border border-cyan-300/15 bg-black/20 p-4 backdrop-blur-xl sm:p-5">
                 <div className="space-y-4">

@@ -6,9 +6,9 @@ export default function PrivacyPolicy() {
       <div className="max-w-2xl w-full bg-white/10 rounded-3xl shadow-xl p-8 border border-cyan-400">
         <h1 className="text-4xl font-bold mb-6 text-cyan-200 cosmic-headline">Privacy Policy</h1>
         <ul className="space-y-4 text-lg">
-          <li>📧 We collect your email, username, profile data, and posts to make your cosmic journey possible.</li>
+          <li>📧 We collect your email, username, profile data, and posts to operate the platform.</li>
           <li>🗄️ We use Supabase to store your data safely in the cloud.</li>
-          <li>🚫 We never sell your data. Your info is your own cosmic property.</li>
+          <li>🚫 We never sell your data. Your information stays yours.</li>
           <li>🗑️ You can delete your account anytime and vanish into the stars.</li>
           <li>🍪 We use basic cookies to keep you logged in and grooving. No tracking for profit.</li>
         </ul>

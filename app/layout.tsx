@@ -8,7 +8,7 @@ const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], variable: '--font-space
 
 export const metadata: Metadata = {
   title: 'TheDyeSpace',
-  description: 'A cosmic, psychedelic commune for tie-dye artists and creative souls.',
+  description: 'A community platform for tie-dye artists and creative sellers.',
   manifest: withVersionParam('/manifest.json'),
   icons: {
     icon: [

@@ -344,18 +344,50 @@ export default function MainNavbar() {
     });
   }, [isLoggedIn, notifications]);
 
-  const markAllRead = async () => {
+  const markNotificationsReadInCache = useCallback(() => {
     if (!notificationUserId) {
       return;
     }
 
-    await fetch("/api/notifications", {
+    queryClient.setQueryData<NotificationItem[]>(["notifications", notificationUserId], (current) =>
+      (current || []).map((item) => ({ ...item, read: true }))
+    );
+    queryClient.setQueryData<NotificationItem[]>(["notificationsPage", notificationUserId], (current) =>
+      (current || []).map((item) => ({ ...item, read: true }))
+    );
+  }, [notificationUserId, queryClient]);
+
+  const markAllRead = useCallback(async () => {
+    if (!notificationUserId) {
+      return;
+    }
+
+    markNotificationsReadInCache();
+
+    const response = await fetch("/api/notifications", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ markAll: true }),
     });
+
+    if (!response.ok) {
+      void refetch();
+      void queryClient.invalidateQueries({ queryKey: ["notificationsPage", notificationUserId] });
+      return;
+    }
+
     void refetch();
-  };
+  }, [markNotificationsReadInCache, notificationUserId, queryClient, refetch]);
+
+  const handleNotificationsToggle = useCallback(() => {
+    setOpenDropdown((current) => {
+      const nextOpen = current === "notifications" ? null : "notifications";
+      if (nextOpen === "notifications" && unreadCount > 0) {
+        void markAllRead();
+      }
+      return nextOpen;
+    });
+  }, [markAllRead, unreadCount]);
 
   const handleCopyShareLink = async (url: string) => {
     try {
@@ -622,9 +654,7 @@ export default function MainNavbar() {
                 aria-label="Notifications"
                 title="Notifications"
                 className="group relative flex h-11 w-11 items-center justify-center rounded-xl border border-[#39ffcc]/20 bg-black/30 text-[#39ffcc] transition-all duration-200 hover:border-[#00f5ff]/45 hover:bg-[#00323c]/90 hover:text-[#00f5ff] hover:shadow-[0_0_18px_rgba(57,255,204,0.2)]"
-                onClick={() => {
-                  setOpenDropdown((current) => (current === "notifications" ? null : "notifications"));
-                }}
+                onClick={handleNotificationsToggle}
               >
                 <Bell size={18} />
                 {unreadCount > 0 && (

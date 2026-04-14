@@ -89,6 +89,19 @@ export default function NotificationsPage() {
 
   const queryClient = useQueryClient();
 
+  const markNotificationsReadInCache = useCallback(() => {
+    if (!userId) {
+      return;
+    }
+
+    queryClient.setQueryData<Notification[]>(["notificationsPage", userId], (current) =>
+      (current || []).map((item) => ({ ...item, read: true }))
+    );
+    queryClient.setQueryData<Notification[]>(["notifications", userId], (current) =>
+      (current || []).map((item) => ({ ...item, read: true }))
+    );
+  }, [queryClient, userId]);
+
   const markAllAsRead = useCallback(async () => {
     const response = await fetch("/api/notifications", {
       method: "PATCH",
@@ -102,12 +115,8 @@ export default function NotificationsPage() {
       return;
     }
 
-    if (userId) {
-      queryClient.setQueryData<Notification[]>(["notificationsPage", userId], (current) =>
-        (current || []).map((item) => ({ ...item, read: true }))
-      );
-    }
-  }, [queryClient, userId]);
+    markNotificationsReadInCache();
+  }, [markNotificationsReadInCache]);
 
   const loadNotificationStateThrottled = useCallback(() => {
     const now = Date.now();
@@ -232,6 +241,9 @@ export default function NotificationsPage() {
     if (!userId) return;
 
     queryClient.setQueryData<Notification[]>(["notificationsPage", userId], (current) =>
+      (current || []).map((item) => (item.id === notifId ? { ...item, read: true } : item))
+    );
+    queryClient.setQueryData<Notification[]>(["notifications", userId], (current) =>
       (current || []).map((item) => (item.id === notifId ? { ...item, read: true } : item))
     );
 

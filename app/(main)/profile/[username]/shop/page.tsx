@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { MessageCircle, Store } from "lucide-react";
+import UserIdentity from "@/app/UserIdentity";
 import { createClient } from "@/lib/supabase/client";
 import { resolveClientAuth } from "@/lib/client-auth";
 import { fetchProfileLookupByUsername, type ProfileLookupResponse } from "@/lib/profile-fetch";
@@ -28,6 +29,7 @@ type ShopProfile = {
   display_name: string | null;
   theme_settings: ProfileThemeSettings | null;
   verified_badge?: boolean;
+  member_number?: number | null;
 };
 
 function getPreviewImage(urls?: string[] | null) {
@@ -256,12 +258,31 @@ export default function ShopPage() {
                 {visibleListings.map((post) => (
                   <div key={post.id} className="rounded-[1.5rem] border border-cyan-300/10 bg-slate-950/80 p-4 shadow-xl">
                     {getPreviewImage(post.image_urls) ? (
-                      <img src={getPreviewImage(post.image_urls) ?? ""} alt="Sale item" className="mb-3 w-full rounded-2xl object-cover" />
+                      <div className="mb-3 flex min-h-[18rem] items-center justify-center overflow-hidden rounded-2xl border border-cyan-300/10 bg-slate-950 p-2">
+                        <img src={getPreviewImage(post.image_urls) ?? ""} alt="Sale item" className="max-h-[28rem] w-full object-contain" />
+                      </div>
                     ) : null}
                     <p className="text-sm text-slate-200">{post.content || "No description"}</p>
-                    {post.created_at ? (
-                      <p className="mt-3 text-xs uppercase tracking-[0.24em] text-cyan-300/70">Posted {new Date(post.created_at).toLocaleDateString()}</p>
-                    ) : null}
+                    <div className="mt-4 space-y-3 rounded-2xl border border-cyan-300/10 bg-black/20 px-4 py-3">
+                      <UserIdentity
+                        displayName={profile?.display_name}
+                        username={profile?.username}
+                        verifiedBadge={profile?.verified_badge === true}
+                        memberNumber={profile?.member_number ?? null}
+                        className="min-w-0"
+                        nameClassName="font-semibold text-slate-100 hover:text-white"
+                        usernameClassName="text-xs text-cyan-300/80 hover:text-cyan-100 hover:underline"
+                        metaClassName="text-xs text-slate-300/65"
+                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="inline-flex rounded-full border border-emerald-300/40 bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-100">
+                          For Sale
+                        </span>
+                      </div>
+                      {post.created_at ? (
+                        <p className="text-xs uppercase tracking-[0.24em] text-cyan-300/70">Posted {new Date(post.created_at).toLocaleDateString()}</p>
+                      ) : null}
+                    </div>
                   </div>
                 ))}
               </div>

@@ -27,6 +27,20 @@ async function ensureAdminAutoFollow(adminClient: any, targetUserId: string) {
     return;
   }
 
+  let isNewFollow = true;
+  const { data: existingFollow, error: existingFollowError } = await adminClient
+    .from("user_follows")
+    .select("follower_id")
+    .eq("follower_id", ADMIN_AUTO_FOLLOW_USER_ID)
+    .eq("followed_id", targetUserId)
+    .maybeSingle();
+
+  if (existingFollowError && !isMissingUserFollowsTable(existingFollowError)) {
+    throw existingFollowError;
+  }
+
+  isNewFollow = !existingFollow;
+
   const { error: followError } = await adminClient.from("user_follows").upsert({
     follower_id: ADMIN_AUTO_FOLLOW_USER_ID,
     followed_id: targetUserId,
@@ -34,6 +48,23 @@ async function ensureAdminAutoFollow(adminClient: any, targetUserId: string) {
 
   if (followError && !isMissingUserFollowsTable(followError)) {
     throw followError;
+  }
+
+  if (!isNewFollow) {
+    return;
+  }
+
+  const { data: existingNotification } = await adminClient
+    .from("notifications")
+    .select("id")
+    .eq("user_id", targetUserId)
+    .eq("actor_name", "TheDyeSpace")
+    .eq("type", "follow")
+    .limit(1)
+    .maybeSingle();
+
+  if (existingNotification) {
+    return;
   }
 
   const { error: notificationError } = await adminClient.from("notifications").insert({

@@ -186,7 +186,7 @@ export default function LoginPage() {
         console.error("[LOGIN] profile initialization failed after login", profileInitError);
       }
 
-      setMessage("Welcome back, cosmic soul!");
+      setMessage("Welcome back.");
       router.push(redirect);
     } catch (error) {
       console.error("[LOGIN] unexpected error", error);

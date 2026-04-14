@@ -128,11 +128,6 @@ async function getRequestContext(req: NextRequest, requestId: string): Promise<R
 
   if (authError) {
     if (isMissingSessionAuthError(authError)) {
-      console.info("[notifications] Anonymous request", {
-        requestId,
-        method: req.method,
-      });
-
       return {
         requestId,
         sessionClient,
@@ -164,10 +159,6 @@ async function parsePatchBody(req: NextRequest, requestId: string): Promise<Patc
 
     return body as PatchBody;
   } catch (error) {
-    console.warn("[notifications] Invalid PATCH body", {
-      requestId,
-      error: serializeError(error),
-    });
     return null;
   }
 }
@@ -201,13 +192,6 @@ async function readNotificationsForUser(
   if (!missingPostId && !missingActorName && !missingActorAvatar) {
     throw withPostId.error;
   }
-
-  console.warn("[notifications] Falling back to notifications query without post_id / actor_name", {
-    requestId,
-    userId,
-    clientType,
-    error: serializeError(withPostId.error),
-  });
 
   const fallbackSelectParts = ["id"];
   if (!missingActorName) {
@@ -276,14 +260,8 @@ export async function GET(req: NextRequest) {
     );
     const unreadCount = notifications.reduce((count, item) => (item.read ? count : count + 1), 0);
 
-    console.info("[notifications] Loaded notifications", {
-      requestId,
-      userId,
-      count: notifications.length,
-      unreadCount,
-      usedFallback,
-      clientType,
-    });
+    void usedFallback;
+    void clientType;
 
     return NextResponse.json({ notifications, unreadCount, authenticated: true });
   } catch (error: any) {
@@ -325,12 +303,7 @@ export async function PATCH(req: NextRequest) {
         throw error;
       }
 
-      console.info("[notifications] Marked all notifications as read", {
-        requestId,
-        userId,
-        updatedCount: Array.isArray(data) ? data.length : 0,
-        clientType,
-      });
+      void clientType;
       return NextResponse.json({ ok: true, updatedCount: Array.isArray(data) ? data.length : 0 });
     }
 
@@ -352,13 +325,8 @@ export async function PATCH(req: NextRequest) {
       throw error;
     }
 
-    console.info("[notifications] Marked notification as read", {
-      requestId,
-      userId,
-      notificationId,
-      updated: Array.isArray(data) && data.length > 0,
-      clientType,
-    });
+    void requestId;
+    void clientType;
 
     return NextResponse.json({ ok: true, updated: Array.isArray(data) && data.length > 0 });
   } catch (error: any) {

@@ -28,6 +28,15 @@ type ReactionsGetResponse = {
   degraded?: boolean;
 };
 
+function isShopListingPostId(postId?: string | null) {
+  return typeof postId === "string" && postId.startsWith("shop-product-");
+}
+
+function extractShopListingOwnerId(postId: string) {
+  const match = /^shop-product-([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})-/i.exec(postId);
+  return match?.[1] ?? null;
+}
+
 export async function GET(req: NextRequest) {
   const postIds = (req.nextUrl.searchParams.get("postIds") || "")
     .split(",")
@@ -54,13 +63,27 @@ export async function GET(req: NextRequest) {
     }
 
     const viewerIsAdmin = user ? await userIsAdmin(adminClient, user.id) : false;
+    const relationalPostIds = postIds.filter((postId) => !isShopListingPostId(postId));
+    const shopListingPostIds = postIds.filter((postId) => isShopListingPostId(postId));
+
     try {
       const interactionByPostId: Record<string, any> = {};
-      const loaded = await Promise.all(postIds.map((postId) => loadRelationalInteraction(adminClient, postId, user?.id || null, viewerIsAdmin)));
-      postIds.forEach((postId, index) => {
-        interactionByPostId[postId] = loaded[index] ?? { comments: [], reactions: [], viewerReaction: null };
-      });
-      return NextResponse.json({ interactionsByPostId: interactionByPostId, storage: "relational" });
+
+      if (relationalPostIds.length) {
+        const loaded = await Promise.all(relationalPostIds.map((postId) => loadRelationalInteraction(adminClient, postId, user?.id || null, viewerIsAdmin)));
+        relationalPostIds.forEach((postId, index) => {
+          interactionByPostId[postId] = loaded[index] ?? { comments: [], reactions: [], viewerReaction: null };
+        });
+      }
+
+      if (shopListingPostIds.length) {
+        const loadedShopListings = await Promise.all(shopListingPostIds.map((postId) => loadLegacyInteraction(adminClient, postId, user?.id || null)));
+        shopListingPostIds.forEach((postId, index) => {
+          interactionByPostId[postId] = loadedShopListings[index] ?? { comments: [], reactions: [], viewerReaction: null };
+        });
+      }
+
+      return NextResponse.json({ interactionsByPostId: interactionByPostId, storage: relationalPostIds.length ? "relational" : "legacy" });
     } catch (error: any) {
       if (!isMissingInteractionTablesError(error)) {
         console.error("[posts/reactions] Relational GET failed; returning degraded payload", { error: error?.message || error });
@@ -121,13 +144,6 @@ async function createLikeNotification(
   emoji: ReactionEmoji
 ) {
   if (!ownerId || ownerId === actorId) {
-    console.info("[notifications] Skipping like notification", {
-      reason: !ownerId ? "missing_owner" : "self_action",
-      ownerId,
-      actorId,
-      postId,
-      emoji,
-    });
     return;
   }
 
@@ -140,23 +156,9 @@ async function createLikeNotification(
     read: false,
   };
 
-  console.info("[notifications] Attempting like notification", {
-    ownerId,
-    actorId,
-    postId,
-    emoji,
-    actorHandle,
-  });
-
   try {
     const notificationId = await insertNotificationRecord(adminClient, payload);
-    console.info("[notifications] Like notification created", {
-      notificationId,
-      ownerId,
-      actorId,
-      postId,
-      emoji,
-    });
+    void notificationId;
   } catch (error: any) {
     console.error("[notifications] Failed to create like notification", {
       ownerId,
@@ -200,6 +202,8 @@ export async function POST(req: NextRequest) {
   }
 
   const emoji = normalizedEmoji;
+  const shopListingOwnerId = body.postId ? extractShopListingOwnerId(body.postId) : null;
+  const isShopListing = isShopListingPostId(body.postId);
 
   try {
     const adminClient = createAdminClient();
@@ -211,17 +215,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "You are muted and cannot react at this time." }, { status: 403 });
     }
 
-    const { data: post, error: postError } = await adminClient
-      .from("posts")
-      .select("id, user_id")
-      .eq("id", body.postId)
-      .is("deleted_at", null)
-      .maybeSingle();
+    let postOwnerId: string | null = null;
+    if (isShopListing) {
+      if (!shopListingOwnerId) {
+        return NextResponse.json({ error: "Post not found." }, { status: 404 });
+      }
+      postOwnerId = shopListingOwnerId;
+    } else {
+      const { data: post, error: postError } = await adminClient
+        .from("posts")
+        .select("id, user_id")
+        .eq("id", body.postId)
+        .is("deleted_at", null)
+        .maybeSingle();
 
-    if (postError || !post) {
-      // eslint-disable-next-line no-console
-      console.error("[posts/reactions] Post not found", { postId: body.postId, postError });
-      return NextResponse.json({ error: "Post not found." }, { status: 404 });
+      if (postError || !post) {
+        // eslint-disable-next-line no-console
+        console.error("[posts/reactions] Post not found", { postId: body.postId, postError });
+        return NextResponse.json({ error: "Post not found." }, { status: 404 });
+      }
+
+      postOwnerId = post.user_id;
     }
 
     const { data: actorProfile } = await adminClient
@@ -237,12 +251,14 @@ export async function POST(req: NextRequest) {
       user.id
     ).replace(/^@+/, "");
 
-    const { data: currentReaction, error: currentReactionError } = await adminClient
-      .from("post_reactions")
-      .select("emoji")
-      .eq("post_id", body.postId)
-      .eq("user_id", user.id)
-      .maybeSingle();
+    const { data: currentReaction, error: currentReactionError } = isShopListing
+      ? { data: null, error: { code: "PGRST205", message: "shop listing uses legacy storage" } as any }
+      : await adminClient
+          .from("post_reactions")
+          .select("emoji")
+          .eq("post_id", body.postId)
+          .eq("user_id", user.id)
+          .maybeSingle();
 
     if (!currentReactionError) {
       let shouldNotify = false;
@@ -302,7 +318,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (shouldNotify) {
-        await createLikeNotification(adminClient, post.user_id, user.id, actorHandle, body.postId, emoji);
+        await createLikeNotification(adminClient, postOwnerId, user.id, actorHandle, body.postId, emoji);
       }
 
       return NextResponse.json({ interaction, likesCount, storage: "relational" });
@@ -363,19 +379,21 @@ export async function POST(req: NextRequest) {
     const interaction = await loadLegacyInteraction(adminClient, body.postId, user.id);
     const likesCount = countInteractionReactions(interaction);
 
-    const { error: updatePostError } = await adminClient
-      .from("posts")
-      .update({ likes: likesCount })
-      .eq("id", body.postId);
+    if (!isShopListing) {
+      const { error: updatePostError } = await adminClient
+        .from("posts")
+        .update({ likes: likesCount })
+        .eq("id", body.postId);
 
-    if (updatePostError) {
-      // eslint-disable-next-line no-console
-      console.error("[posts/reactions] Failed to update post likes count (legacy)", { postId: body.postId, updatePostError });
-      return NextResponse.json({ error: updatePostError.message }, { status: 500 });
+      if (updatePostError) {
+        // eslint-disable-next-line no-console
+        console.error("[posts/reactions] Failed to update post likes count (legacy)", { postId: body.postId, updatePostError });
+        return NextResponse.json({ error: updatePostError.message }, { status: 500 });
+      }
     }
 
     if (shouldNotify) {
-      await createLikeNotification(adminClient, post.user_id, user.id, actorHandle, body.postId, emoji);
+      await createLikeNotification(adminClient, postOwnerId, user.id, actorHandle, body.postId, emoji);
     }
 
     return NextResponse.json({ interaction, likesCount, storage: "legacy" });

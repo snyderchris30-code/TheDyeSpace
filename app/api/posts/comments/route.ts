@@ -60,12 +60,6 @@ async function createCommentNotification(
   requireRelationalVerification = true
 ) {
   if (!ownerId || ownerId === actorId) {
-    console.info("[notifications] Skipping comment notification", {
-      reason: !ownerId ? "missing_owner" : "self_action",
-      ownerId,
-      actorId,
-      postId,
-    });
     return;
   }
 
@@ -116,23 +110,9 @@ async function createCommentNotification(
     read: false,
   };
 
-  console.info("[notifications] Attempting comment notification", {
-    ownerId,
-    actorId,
-    postId,
-    commentId,
-    actorName,
-  });
-
   try {
     const notificationId = await insertNotificationRecord(adminClient, payload);
-    console.info("[notifications] Comment notification created", {
-      notificationId,
-      ownerId,
-      actorId,
-      postId,
-      commentId,
-    });
+    void notificationId;
   } catch (error: any) {
     console.error("[notifications] Failed to create comment notification", {
       ownerId,
@@ -256,12 +236,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Post not found." }, { status: 404 });
     }
 
-    console.info("[comments/create] Attempting comment insert", {
-      postId: body.postId,
-      actorId: user.id,
-      contentLength: content.length,
-    });
-
     const { data: actorProfile } = await adminClient
       .from("profiles")
       .select("username")
@@ -305,13 +279,6 @@ export async function POST(req: NextRequest) {
       if (mentionedUsernames.length) {
         await createMentionNotifications(adminClient, user.id, actorName, body.postId, mentionedUsernames, viewerIsAdmin);
       }
-
-      console.info("[comments/create] Comment insert succeeded", {
-        postId: body.postId,
-        actorId: user.id,
-        commentId: insertedComment.id,
-        commentsCount,
-      });
 
       return NextResponse.json({ interaction, commentsCount, storage: "relational" });
     }
@@ -395,13 +362,6 @@ export async function POST(req: NextRequest) {
         await createMentionNotifications(adminClient, user.id, actorName, body.postId, mentionedUsernames, viewerIsAdmin);
       }
     }
-
-    console.info("[comments/create] Legacy comment save succeeded", {
-      postId: body.postId,
-      actorId: user.id,
-      commentId: fallbackCommentId,
-      commentsCount,
-    });
 
     return NextResponse.json({ interaction, commentsCount, storage: "legacy" });
   } catch (error: any) {

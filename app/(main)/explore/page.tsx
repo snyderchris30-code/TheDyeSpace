@@ -782,8 +782,8 @@ export default function ExplorePage() {
               ref={(element) => applyPostThemeVars(element, post.author_theme)}
             >
               {post.image_urls?.[0] ? (
-                  <button type="button" className="group relative mb-4 block aspect-[4/5] w-full overflow-hidden rounded-2xl sm:aspect-[4/3]" onClick={() => setLightbox({ open: true, images: post.image_urls || [], index: 0 })}>
-                    <Image src={post.image_urls[0]} alt="Post" className="h-full w-full rounded-2xl object-cover transition duration-200 group-hover:scale-105" loading="lazy" fill unoptimized />
+                  <button type="button" className="group relative mb-4 block aspect-[4/5] w-full overflow-hidden rounded-2xl border border-cyan-300/10 bg-slate-950 sm:aspect-[4/3]" onClick={() => setLightbox({ open: true, images: post.image_urls || [], index: 0 })}>
+                    <Image src={post.image_urls[0]} alt="Post" className="h-full w-full rounded-2xl object-contain p-2 transition duration-200 group-hover:scale-[1.02]" loading="lazy" fill unoptimized />
                     {post.image_urls.length > 1 ? (
                       <span className="absolute right-3 top-3 rounded-full border border-black/15 bg-black/55 px-2 py-1 text-[11px] font-semibold text-cyan-50 shadow-lg backdrop-blur-sm">
                         {post.image_urls.length} photos
@@ -792,40 +792,6 @@ export default function ExplorePage() {
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent px-3 py-4 text-left text-xs text-cyan-50/85 sm:text-sm">Tap to expand</div>
                   </button>
               ) : null}
-                <div className="space-y-3 rounded-2xl border border-cyan-800/40 bg-slate-950/45 px-4 py-3">
-                  <UserIdentity
-                    displayName={post.author_display_name || "DyeSpace User"}
-                    username={post.author_username || null}
-                    verifiedBadge={post.author_verified_badge === true}
-                    memberNumber={post.author_member_number ?? null}
-                    className="min-w-0"
-                    nameClassName="text-sm font-semibold text-[color:var(--post-text)] hover:text-[color:var(--post-highlight)] hover:underline"
-                    usernameClassName="text-xs text-[color:var(--post-highlight)]/85 hover:text-[color:var(--post-highlight)] hover:underline"
-                    metaClassName="text-xs text-[color:var(--post-text)]/55"
-                  />
-                  <div className="flex flex-wrap gap-2">
-                    {post.is_for_sale ? (
-                      <span className="rounded-full border border-emerald-300/40 bg-emerald-500/20 px-2 py-1 text-xs font-semibold text-emerald-100">
-                        For Sale
-                      </span>
-                    ) : null}
-                    {parsePostCategory(post.content) === "sold_unavailable" ? (
-                      <span className="rounded-full border border-amber-300/40 bg-amber-500/20 px-2 py-1 text-xs font-semibold text-amber-100">
-                        {post.content?.toLowerCase().startsWith("[sold]") ? "Sold" : "No Longer Available"}
-                      </span>
-                    ) : null}
-                    {getCategoryMeta(post.content) ? (
-                      <Link
-                        href={`/explore?tab=${encodeURIComponent(getCategoryMeta(post.content)!.value)}`}
-                        className="inline-flex rounded-full border border-cyan-300/45 bg-cyan-300/15 px-2 py-0.5 text-[11px] font-semibold text-cyan-100 hover:border-cyan-200/70 hover:bg-cyan-300/30"
-                      >
-                        {getCategoryMeta(post.content)!.label}
-                      </Link>
-                    ) : null}
-                  </div>
-                  <div className="text-xs text-[color:var(--post-text)]/75">{new Date(post.created_at).toLocaleString()}</div>
-                </div>
-
                 {editingPostId === post.id ? (
                 <div className="space-y-3 rounded-3xl border border-cyan-300/20 bg-slate-950/40 p-4">
                   <label className="block text-sm font-semibold text-cyan-100">Edit post</label>
@@ -858,8 +824,8 @@ export default function ExplorePage() {
                   className={`block whitespace-pre-wrap text-[color:var(--post-text)]/92 ${hasImage ? "text-sm leading-6 sm:text-base sm:leading-7" : "rounded-2xl border border-cyan-300/15 bg-black/15 px-4 py-4 text-base leading-8 sm:text-lg"}`}
                 />
               )}
+              <PostAffiliateProducts content={post.content} className="mt-3" />
               {sessionUserId ? (
-                !post.is_shop_listing ? (
                 <div className="flex flex-wrap items-center gap-3">
                   <EmojiPicker
                     mode="reaction"
@@ -893,11 +859,30 @@ export default function ExplorePage() {
                   </button>
                   <ReportPostButton postId={post.id} />
                 </div>
-                ) : null
               ) : (
                 <p className="text-sm italic text-cyan-300/80">Sign in to interact with posts.</p>
               )}
-              <div className="flex flex-wrap items-center gap-3 border-t border-cyan-300/10 pt-4">
+              {postInteraction.reactions.length > 0 ? (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {postInteraction.reactions.map((reaction) => (
+                    <button
+                      key={`${post.id}-${reaction.emoji}`}
+                      type="button"
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm transition ${
+                        reaction.reacted
+                          ? "border-cyan-300/50 bg-cyan-400/15 text-cyan-50"
+                          : "border-cyan-300/20 bg-black/20 text-cyan-100/85"
+                      } ${!sessionUserId ? "cursor-default opacity-80" : "hover:border-cyan-300/40"}`}
+                      onClick={() => sessionUserId ? void handleReactionSelect(post.id, reaction.emoji) : undefined}
+                      disabled={isBusy || !sessionUserId}
+                    >
+                      <CustomEmojiImage src={reaction.emoji} alt="post reaction" className="h-5 w-5 object-contain" />
+                      <span>{reaction.count}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-cyan-300/10 pt-4">
                 {!post.is_shop_listing && (viewerIsAdmin || sessionUserId === post.user_id) ? (
                   <>
                     {sessionUserId === post.user_id && editingPostId !== post.id ? (
@@ -940,28 +925,39 @@ export default function ExplorePage() {
                   </>
                 ) : null}
               </div>
-              <PostAffiliateProducts content={post.content} className="mt-3" />
-
-              {!post.is_shop_listing && postInteraction.reactions.length > 0 ? (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {postInteraction.reactions.map((reaction) => (
-                    <button
-                      key={`${post.id}-${reaction.emoji}`}
-                      type="button"
-                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm transition ${
-                        reaction.reacted
-                          ? "border-cyan-300/50 bg-cyan-400/15 text-cyan-50"
-                          : "border-cyan-300/20 bg-black/20 text-cyan-100/85"
-                      } ${!sessionUserId ? "cursor-default opacity-80" : "hover:border-cyan-300/40"}`}
-                      onClick={() => sessionUserId ? void handleReactionSelect(post.id, reaction.emoji) : undefined}
-                      disabled={isBusy || !sessionUserId}
+              <div className="mt-4 space-y-3 rounded-2xl border border-cyan-800/40 bg-slate-950/45 px-4 py-3">
+                <UserIdentity
+                  displayName={post.author_display_name || "DyeSpace User"}
+                  username={post.author_username || null}
+                  verifiedBadge={post.author_verified_badge === true}
+                  memberNumber={post.author_member_number ?? null}
+                  className="min-w-0"
+                  nameClassName="text-sm font-semibold text-[color:var(--post-text)] hover:text-[color:var(--post-highlight)] hover:underline"
+                  usernameClassName="text-xs text-[color:var(--post-highlight)]/85 hover:text-[color:var(--post-highlight)] hover:underline"
+                  metaClassName="text-xs text-[color:var(--post-text)]/55"
+                />
+                <div className="flex flex-wrap gap-2">
+                  {post.is_for_sale ? (
+                    <span className="rounded-full border border-emerald-300/40 bg-emerald-500/20 px-2 py-1 text-xs font-semibold text-emerald-100">
+                      For Sale
+                    </span>
+                  ) : null}
+                  {parsePostCategory(post.content) === "sold_unavailable" ? (
+                    <span className="rounded-full border border-amber-300/40 bg-amber-500/20 px-2 py-1 text-xs font-semibold text-amber-100">
+                      {post.content?.toLowerCase().startsWith("[sold]") ? "Sold" : "No Longer Available"}
+                    </span>
+                  ) : null}
+                  {getCategoryMeta(post.content) ? (
+                    <Link
+                      href={`/explore?tab=${encodeURIComponent(getCategoryMeta(post.content)!.value)}`}
+                      className="inline-flex rounded-full border border-cyan-300/45 bg-cyan-300/15 px-2 py-0.5 text-[11px] font-semibold text-cyan-100 hover:border-cyan-200/70 hover:bg-cyan-300/30"
                     >
-                      <CustomEmojiImage src={reaction.emoji} alt="post reaction" className="h-5 w-5 object-contain" />
-                      <span>{reaction.count}</span>
-                    </button>
-                  ))}
+                      {getCategoryMeta(post.content)!.label}
+                    </Link>
+                  ) : null}
                 </div>
-              ) : null}
+                <div className="text-xs text-[color:var(--post-text)]/75">{new Date(post.created_at).toLocaleString()}</div>
+              </div>
 
               {!post.is_shop_listing && isCommentsOpen ? (
                 <div className="mt-5 rounded-[1.5rem] border border-cyan-300/15 bg-black/20 p-4 backdrop-blur-xl sm:p-5">

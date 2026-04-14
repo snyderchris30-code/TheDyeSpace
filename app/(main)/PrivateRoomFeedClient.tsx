@@ -278,30 +278,29 @@ export default function PrivateRoomFeedClient({ room }: { room: PrivateRoomKey }
         ) : (
           posts.map((post) => (
             <article key={post.id} className="overflow-hidden rounded-[1.75rem] border border-cyan-300/20 bg-slate-950/60 shadow-xl backdrop-blur-xl">
-              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-cyan-300/10 px-5 py-4">
-                <UserIdentity
-                  displayName={post.author?.display_name}
-                  username={post.author?.username}
-                  verifiedBadge={post.author?.verified_badge}
-                  memberNumber={post.author?.member_number}
-                  timestampText={new Date(post.created_at).toLocaleString()}
-                  className="min-w-0"
-                  nameClassName="font-semibold text-cyan-50 hover:text-cyan-100"
-                  usernameClassName="text-xs text-cyan-300/75 hover:text-cyan-100 hover:underline"
-                  metaClassName="text-xs text-cyan-300/55"
-                />
-                <span className="rounded-full border border-amber-300/20 bg-amber-400/10 px-3 py-1 text-[11px] font-semibold text-amber-100/85">
-                  {formatTimeRemaining(post.expires_at)}
-                </span>
-              </div>
-
               <div className="space-y-4 px-5 py-4">
-                {post.content ? <p className="whitespace-pre-wrap text-sm leading-6 text-cyan-50">{post.content}</p> : null}
                 {post.image_url ? (
-                  <div className="overflow-hidden rounded-[1.5rem] border border-cyan-300/15 bg-black/20">
-                    <img src={post.image_url} alt="Private room upload" className="max-h-[38rem] w-full object-cover" />
+                  <div className="flex min-h-[18rem] items-center justify-center overflow-hidden rounded-[1.5rem] border border-cyan-300/15 bg-black/20 p-2">
+                    <img src={post.image_url} alt="Private room upload" className="max-h-[38rem] w-full object-contain" />
                   </div>
                 ) : null}
+                {post.content ? <p className="whitespace-pre-wrap text-sm leading-6 text-cyan-50">{post.content}</p> : null}
+                <div className="flex flex-wrap items-start justify-between gap-3 rounded-[1.25rem] border border-cyan-300/10 bg-black/20 px-4 py-3">
+                  <UserIdentity
+                    displayName={post.author?.display_name}
+                    username={post.author?.username}
+                    verifiedBadge={post.author?.verified_badge}
+                    memberNumber={post.author?.member_number}
+                    timestampText={new Date(post.created_at).toLocaleString()}
+                    className="min-w-0"
+                    nameClassName="font-semibold text-cyan-50 hover:text-cyan-100"
+                    usernameClassName="text-xs text-cyan-300/75 hover:text-cyan-100 hover:underline"
+                    metaClassName="text-xs text-cyan-300/55"
+                  />
+                  <span className="rounded-full border border-amber-300/20 bg-amber-400/10 px-3 py-1 text-[11px] font-semibold text-amber-100/85">
+                    {formatTimeRemaining(post.expires_at)}
+                  </span>
+                </div>
               </div>
             </article>
           ))

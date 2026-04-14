@@ -29,6 +29,19 @@ async function createFollowNotification(
     return;
   }
 
+  const { data: existingNotification } = await adminClient
+    .from("notifications")
+    .select("id")
+    .eq("user_id", followedId)
+    .eq("actor_name", actorHandle)
+    .eq("type", "follow")
+    .limit(1)
+    .maybeSingle();
+
+  if (existingNotification) {
+    return;
+  }
+
   const payload = {
     user_id: followedId,
     actor_name: actorHandle,
@@ -37,12 +50,6 @@ async function createFollowNotification(
     message: `@${actorHandle} started following you.`,
     read: false,
   };
-
-  console.info("[notifications] Attempting follow notification", {
-    followedId,
-    followerId,
-    actorHandle,
-  });
 
   let data: Array<{ id: string }> | null = null;
 
@@ -88,11 +95,7 @@ async function createFollowNotification(
     }
   }
 
-  console.info("[notifications] Follow notification created", {
-    notificationId: data?.[0]?.id ?? null,
-    followedId,
-    followerId,
-  });
+  void data;
 }
 
 export async function GET(req: NextRequest) {
