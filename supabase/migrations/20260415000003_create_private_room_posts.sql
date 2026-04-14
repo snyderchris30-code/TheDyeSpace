@@ -73,6 +73,7 @@ using (
 create or replace function public.cleanup_expired_room_posts()
 returns bigint
 language plpgsql
+set search_path = public
 as $$
 declare
   deleted_count bigint;
