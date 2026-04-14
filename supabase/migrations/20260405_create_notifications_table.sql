@@ -25,6 +25,12 @@ create policy "Users can read own notifications"
   to authenticated
   using (auth.uid() = user_id);
 
+drop policy if exists "Users can insert own notifications" on public.notifications;
+create policy "Users can insert own notifications"
+  on public.notifications for insert
+  to authenticated
+  with check (auth.uid() = user_id);
+
 drop policy if exists "Users can update own notifications" on public.notifications;
 create policy "Users can update own notifications"
   on public.notifications for update
