@@ -1,5 +1,7 @@
 create extension if not exists pgcrypto;
 
+create schema if not exists extensions;
+
 do $$
 begin
   begin
@@ -9,7 +11,7 @@ begin
   end;
 
   begin
-    create extension if not exists pg_net;
+    create extension if not exists pg_net with schema extensions;
   exception when others then
     raise notice 'pg_net extension is unavailable in this environment. AI watcher scheduling will need an external cron trigger. %', sqlerrm;
   end;
