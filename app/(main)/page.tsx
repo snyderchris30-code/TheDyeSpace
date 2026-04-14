@@ -110,7 +110,11 @@ function getCategoryMeta(content: string | null): { value: FeedCategory; label: 
 
 async function fetchPosts({ pageParam }: { pageParam?: string | null }) {
   const url = `/api/posts/feed${pageParam ? `?before=${encodeURIComponent(pageParam)}` : ""}`;
-  const body = await dedupeApiFetchJson<{ posts?: Post[] }>(url, { cache: "no-store" });
+  const response = await fetch(url, { cache: "no-store" });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error((body as { error?: string })?.error || "Failed to load feed posts.");
+  }
   return (body.posts || []) as Post[];
 }
 
@@ -154,6 +158,22 @@ function isSameInteractionMap(prev: InteractionMap, next: InteractionMap) {
   }
 
   return true;
+}
+
+type InfinitePostsCache = {
+  pages: Post[][];
+  pageParams: unknown[];
+};
+
+function removePostFromInfiniteCache(cache: InfinitePostsCache | undefined, postId: string) {
+  if (!cache) {
+    return cache;
+  }
+
+  return {
+    ...cache,
+    pages: cache.pages.map((page) => page.filter((post) => post.id !== postId)),
+  };
 }
 
 export default function MainFeedPage() {
@@ -259,6 +279,48 @@ export default function MainFeedPage() {
     const nextInteractions = interactionData ?? EMPTY_INTERACTIONS;
     setInteractions((prev) => (isSameInteractionMap(prev, nextInteractions) ? prev : nextInteractions));
   }, [interactionData]);
+
+  useEffect(() => {
+    const supabase = createClient();
+
+    const channel = supabase
+      .channel("public:main-feed-posts")
+      .on("postgres_changes", { event: "*", schema: "public", table: "posts" }, (payload) => {
+        const newRecord = (payload.new || null) as { id?: string; deleted_at?: string | null } | null;
+        const oldRecord = (payload.old || null) as { id?: string; deleted_at?: string | null } | null;
+        const postId = newRecord?.id || oldRecord?.id;
+
+        if (postId && (payload.eventType === "DELETE" || (typeof newRecord?.deleted_at === "string" && newRecord.deleted_at))) {
+          setDeletedPostIds((prev) => {
+            const next = new Set(prev);
+            next.add(postId);
+            return next;
+          });
+
+          setInteractions((prev) => {
+            if (!(postId in prev)) {
+              return prev;
+            }
+
+            const next = { ...prev };
+            delete next[postId];
+            return next;
+          });
+
+          queryClient.setQueryData<InfinitePostsCache | undefined>(["posts"], (current) =>
+            removePostFromInfiniteCache(current, postId)
+          );
+        }
+
+        void queryClient.invalidateQueries({ queryKey: ["posts"] });
+        void refetchInteractions();
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [queryClient, refetchInteractions]);
 
   const [postOverrides, setPostOverrides] = useState<Record<string, Partial<Pick<Post, "likes" | "comments_count">>>>({});
 

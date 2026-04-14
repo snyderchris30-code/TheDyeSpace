@@ -6,14 +6,6 @@ import { normalizePostImageUrls } from "@/lib/post-media";
 import { normalizeSellerProducts } from "@/lib/verified-seller";
 
 const PAGE_SIZE = 8;
-const FEED_CACHE_TTL_MS = 10_000;
-
-type FeedCacheEntry = {
-  createdAt: number;
-  payload: { posts: FeedPost[] };
-};
-
-const feedCache = new Map<string, FeedCacheEntry>();
 
 type FeedPost = {
   id: string;
@@ -103,18 +95,6 @@ export async function GET(request: NextRequest) {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-
-    const viewerId = user?.id ?? "anon";
-    const cacheKey = `${viewerId}:${before ?? "first"}`;
-    const now = Date.now();
-    const cached = feedCache.get(cacheKey);
-    if (cached && now - cached.createdAt < FEED_CACHE_TTL_MS) {
-      return NextResponse.json(cached.payload, {
-        headers: {
-          "Cache-Control": "private, max-age=0, s-maxage=10, stale-while-revalidate=20",
-        },
-      });
-    }
 
     let viewerIsAdmin = false;
     if (user?.id) {
@@ -291,12 +271,9 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => Date.parse(b.created_at || "") - Date.parse(a.created_at || ""))
       .slice(0, PAGE_SIZE);
 
-    const payload = { posts: result };
-    feedCache.set(cacheKey, { createdAt: now, payload });
-
-    return NextResponse.json(payload, {
+    return NextResponse.json({ posts: result }, {
       headers: {
-        "Cache-Control": "private, max-age=0, s-maxage=10, stale-while-revalidate=20",
+        "Cache-Control": "no-store, max-age=0",
       },
     });
   } catch (err: any) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import AsyncStateCard from "@/app/AsyncStateCard";
 import { createClient } from "@/lib/supabase/client";
@@ -147,6 +147,7 @@ function formatRunTrigger(metadata: Record<string, unknown>) {
 
 export default function AdminReportsClient() {
   const supabase = useMemo(() => createClient(), []);
+  const lastRealtimeRefreshRef = useRef(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [watcherError, setWatcherError] = useState<string | null>(null);
@@ -249,6 +250,52 @@ export default function AdminReportsClient() {
   useEffect(() => {
     void loadReports();
   }, [loadReports]);
+
+  useEffect(() => {
+    if (!isAdmin) {
+      return;
+    }
+
+    const channel = supabase
+      .channel("public:admin-moderation-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "reports" }, () => {
+        const now = Date.now();
+        if (now - lastRealtimeRefreshRef.current < 1500) {
+          return;
+        }
+        lastRealtimeRefreshRef.current = now;
+        void loadReports();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "moderation_flags" }, () => {
+        const now = Date.now();
+        if (now - lastRealtimeRefreshRef.current < 1500) {
+          return;
+        }
+        lastRealtimeRefreshRef.current = now;
+        void loadReports();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "moderation_daily_reports" }, () => {
+        const now = Date.now();
+        if (now - lastRealtimeRefreshRef.current < 1500) {
+          return;
+        }
+        lastRealtimeRefreshRef.current = now;
+        void loadReports();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "moderation_watch_runs" }, () => {
+        const now = Date.now();
+        if (now - lastRealtimeRefreshRef.current < 1500) {
+          return;
+        }
+        lastRealtimeRefreshRef.current = now;
+        void loadReports();
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [isAdmin, loadReports, supabase]);
 
   const dismissReport = useCallback(async (reportId: string) => {
     setBusyReportId(reportId);

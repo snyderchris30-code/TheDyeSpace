@@ -1,5 +1,5 @@
 type SubmitModerationReportInput = {
-  type: "post" | "comment";
+  type: "post" | "comment" | "user";
   targetId: string;
   reason: string;
 };

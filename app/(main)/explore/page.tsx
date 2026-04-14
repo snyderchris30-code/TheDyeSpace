@@ -326,6 +326,14 @@ function isSameInteractionMap(prev: InteractionMap, next: InteractionMap) {
   return true;
 }
 
+function removePostFromExploreCache(cache: ExplorePost[] | undefined, postId: string) {
+  if (!cache) {
+    return cache;
+  }
+
+  return cache.filter((post) => post.id !== postId);
+}
+
 function ReportPostButton({ postId }: { postId: string }) {
   const handleReport = useCallback(async () => {
     const reason = prompt("Reason for reporting this post?");
@@ -468,6 +476,42 @@ export default function ExplorePage() {
   }, []);
 
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const supabase = createClient();
+
+    const channel = supabase
+      .channel("public:explore-posts")
+      .on("postgres_changes", { event: "*", schema: "public", table: "posts" }, (payload) => {
+        const newRecord = (payload.new || null) as { id?: string; deleted_at?: string | null } | null;
+        const oldRecord = (payload.old || null) as { id?: string; deleted_at?: string | null } | null;
+        const postId = newRecord?.id || oldRecord?.id;
+
+        if (postId && (payload.eventType === "DELETE" || (typeof newRecord?.deleted_at === "string" && newRecord.deleted_at))) {
+          queryClient.setQueriesData<ExplorePost[]>({ queryKey: ["explorePosts"] }, (current) =>
+            removePostFromExploreCache(current, postId)
+          );
+
+          setInteractions((prev) => {
+            if (!(postId in prev)) {
+              return prev;
+            }
+
+            const next = { ...prev };
+            delete next[postId];
+            return next;
+          });
+        }
+
+        void queryClient.invalidateQueries({ queryKey: ["explorePosts"] });
+        void queryClient.invalidateQueries({ queryKey: ["exploreInteractions"] });
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
 
   const updatePostCounters = useCallback((postId: string, updates: Partial<Pick<ExplorePost, "likes" | "comments_count">>) => {
     queryClient.setQueryData<ExplorePost[]>(["explorePosts", tab, search.trim(), marketplaceOnly, sessionUserId, viewerIsAdmin, reloadKey], (currentPosts) =>

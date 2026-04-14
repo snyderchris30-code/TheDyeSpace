@@ -715,6 +715,45 @@ export default function ProfileEditor() {
     void loadPosts(profileUserId);
   }, [loadPosts, profileUserId]);
 
+  useEffect(() => {
+    if (!profileUserId) {
+      return;
+    }
+
+    const channel = supabase
+      .channel(`public:profile-posts:${profileUserId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "posts", filter: `user_id=eq.${profileUserId}` },
+        (payload) => {
+          const newRecord = (payload.new || null) as { id?: string; deleted_at?: string | null } | null;
+          const oldRecord = (payload.old || null) as { id?: string; deleted_at?: string | null } | null;
+          const postId = newRecord?.id || oldRecord?.id;
+
+          if (postId && (payload.eventType === "DELETE" || (typeof newRecord?.deleted_at === "string" && newRecord.deleted_at))) {
+            setPosts((prev) => prev.filter((post) => post.id !== postId));
+            setInteractions((prev) => {
+              if (!(postId in prev)) {
+                return prev;
+              }
+
+              const next = { ...prev };
+              delete next[postId];
+              return next;
+            });
+            return;
+          }
+
+          void loadPosts(profileUserId);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [loadPosts, profileUserId, supabase]);
+
   const loadContactRequestState = useCallback(async () => {
     if (!session?.user?.id || !profileUserId || profileStatus?.verified_badge !== true) {
       setContactRequestStatus(null);
@@ -1760,25 +1799,20 @@ export default function ProfileEditor() {
                 setReportStatus("Please provide a reason for your report.");
                 return;
               }
+              if (!profileUserId) {
+                setReportStatus("Could not identify this profile for reporting.");
+                return;
+              }
               try {
-                const { data: sessionData } = await supabase.auth.getSession();
-                const reporter_id = sessionData.session?.user?.id;
-                if (!reporter_id) {
-                  setReportStatus("You must be signed in to report a user.");
-                  return;
-                }
-                const { error } = await supabase.from("reports").insert({
-                  reporter_id,
-                  reported_user_id: profileUserId,
+                await submitModerationReport({
+                  type: "user",
+                  targetId: profileUserId,
                   reason: reportReason.trim(),
                 });
-                if (error) {
-                  setReportStatus("Failed to submit report. Please try again.");
-                } else {
-                  setReportStatus("Report submitted. Thank you for helping keep TheDyeSpace safe.");
-                  setReportReason("");
-                  setTimeout(() => setReportOpen(false), 1800);
-                }
+
+                setReportStatus("Report submitted. Thank you for helping keep TheDyeSpace safe.");
+                setReportReason("");
+                setTimeout(() => setReportOpen(false), 1800);
               } catch {
                 setReportStatus("Failed to submit report. Please try again.");
               }

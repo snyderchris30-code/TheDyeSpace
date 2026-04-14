@@ -5,7 +5,7 @@ import { sendPushNotificationsForSources } from "@/lib/push-notifications";
 import { applyRateLimit, getClientIp, hasSuspiciousInput, sanitizeUserText } from "@/lib/security/request-guards";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-type ReportType = "post" | "comment";
+type ReportType = "post" | "comment" | "user";
 
 type ReportBody = {
   type?: string;
@@ -16,6 +16,8 @@ type ReportBody = {
 type ReportTargetContext = {
   postId: string | null;
   targetHandle: string | null;
+  targetUserId: string | null;
+  contentUrl: string;
 };
 
 function normalizeHandle(value: string | null | undefined) {
@@ -53,7 +55,10 @@ async function insertNotificationRecord(
 }
 
 async function getAdminRecipientIds(adminClient: ReturnType<typeof createAdminClient>) {
-  const { data, error } = await adminClient.from("profiles").select("id").eq("role", "admin");
+  const { data, error } = await adminClient
+    .from("profiles")
+    .select("id")
+    .in("role", ["admin", "moderator", "mod"]);
 
   if (error) {
     throw error;
@@ -91,7 +96,12 @@ async function resolveReportTargetContext(
     }
 
     if (!post.user_id) {
-      return { postId: post.id, targetHandle: null };
+      return {
+        postId: post.id,
+        targetHandle: null,
+        targetUserId: null,
+        contentUrl: `/explore?postId=${encodeURIComponent(post.id)}`,
+      };
     }
 
     const { data: author, error: authorError } = await adminClient
@@ -108,6 +118,36 @@ async function resolveReportTargetContext(
     return {
       postId: post.id,
       targetHandle: normalizeHandle(author?.username) ?? normalizeHandle(author?.display_name),
+      targetUserId: post.user_id,
+      contentUrl: `/explore?postId=${encodeURIComponent(post.id)}`,
+    };
+  }
+
+  if (type === "user") {
+    const { data: profile, error: profileError } = await adminClient
+      .from("profiles")
+      .select("id,username,display_name")
+      .eq("id", targetId)
+      .limit(1)
+      .maybeSingle<{ id: string; username: string | null; display_name: string | null }>();
+
+    if (profileError) {
+      throw profileError;
+    }
+
+    if (!profile) {
+      throw new Error("That profile could not be found.");
+    }
+
+    const username = normalizeHandle(profile.username);
+
+    return {
+      postId: null,
+      targetHandle: username ?? normalizeHandle(profile.display_name),
+      targetUserId: profile.id,
+      contentUrl: username
+        ? `/profile/${encodeURIComponent(username)}`
+        : `/explore?profileId=${encodeURIComponent(profile.id)}`,
     };
   }
 
@@ -127,7 +167,18 @@ async function resolveReportTargetContext(
   }
 
   if (!comment.user_id) {
-    return { postId: comment.post_id ?? null, targetHandle: null };
+    const params = new URLSearchParams();
+    if (comment.post_id) {
+      params.set("postId", comment.post_id);
+    }
+    params.set("commentId", comment.id);
+
+    return {
+      postId: comment.post_id ?? null,
+      targetHandle: null,
+      targetUserId: null,
+      contentUrl: `/explore?${params.toString()}`,
+    };
   }
 
   const { data: author, error: authorError } = await adminClient
@@ -141,19 +192,27 @@ async function resolveReportTargetContext(
     throw authorError;
   }
 
+  const params = new URLSearchParams();
+  if (comment.post_id) {
+    params.set("postId", comment.post_id);
+  }
+  params.set("commentId", comment.id);
+
   return {
     postId: comment.post_id ?? null,
     targetHandle: normalizeHandle(author?.username) ?? normalizeHandle(author?.display_name),
+    targetUserId: comment.user_id,
+    contentUrl: `/explore?${params.toString()}`,
   };
 }
 
 async function createAdminReportNotifications(
   adminClient: ReturnType<typeof createAdminClient>,
   reportType: ReportType,
-  targetId: string,
-  reporterId: string
+  reporterId: string,
+  targetContext: ReportTargetContext
 ) {
-  const [{ data: reporter, error: reporterError }, adminRecipientIds, targetContext] = await Promise.all([
+  const [{ data: reporter, error: reporterError }, adminRecipientIds] = await Promise.all([
     adminClient
       .from("profiles")
       .select("username,display_name")
@@ -161,7 +220,6 @@ async function createAdminReportNotifications(
       .limit(1)
       .maybeSingle<{ username: string | null; display_name: string | null }>(),
     getAdminRecipientIds(adminClient),
-    resolveReportTargetContext(adminClient, reportType, targetId),
   ]);
 
   if (reporterError) {
@@ -173,7 +231,9 @@ async function createAdminReportNotifications(
   const message =
     reportType === "post"
       ? `New report on post${targetLabel}. Open the Moderation Queue.`
-      : `New report on comment${targetLabel}. Open the Moderation Queue.`;
+      : reportType === "comment"
+        ? `New report on comment${targetLabel}. Open the Moderation Queue.`
+        : `New report on profile${targetLabel}. Open the Moderation Queue.`;
 
   const notificationRows = adminRecipientIds.map((userId) => ({
     user_id: userId,
@@ -188,7 +248,74 @@ async function createAdminReportNotifications(
     notificationRows.map((notificationRow) => insertNotificationRecord(adminClient, notificationRow))
   );
 
-  return notificationRows;
+  return { notificationRows, reporterHandle };
+}
+
+function normalizeReportWatcherEntityType(type: ReportType): "post" | "comment" | "profile" {
+  if (type === "user") {
+    return "profile";
+  }
+
+  return type;
+}
+
+async function upsertReportWatcherSignal(
+  adminClient: ReturnType<typeof createAdminClient>,
+  params: {
+    reportId: string;
+    reportType: ReportType;
+    targetId: string;
+    reporterId: string;
+    reporterHandle: string;
+    reason: string;
+    targetContext: ReportTargetContext;
+  }
+) {
+  const now = new Date().toISOString();
+  const entityType = normalizeReportWatcherEntityType(params.reportType);
+
+  const { error } = await adminClient
+    .from("moderation_flags")
+    .upsert(
+      {
+        entity_type: entityType,
+        entity_id: params.targetId,
+        related_post_id: params.reportType === "post" ? params.targetId : params.targetContext.postId,
+        related_comment_id: params.reportType === "comment" ? params.targetId : null,
+        related_profile_id: params.targetContext.targetUserId,
+        actor_user_id: params.reporterId,
+        content_url: params.targetContext.contentUrl,
+        excerpt: `User report submitted: ${params.reason}`,
+        reason: `User report: ${params.reason}`,
+        categories: ["community_suspicious"],
+        confidence_score: 0.995,
+        source_created_at: now,
+        metadata: {
+          source: "user_report",
+          reportId: params.reportId,
+          reportType: params.reportType,
+          reporter: {
+            id: params.reporterId,
+            handle: params.reporterHandle,
+          },
+          target: {
+            id: params.targetId,
+            handle: params.targetContext.targetHandle,
+            userId: params.targetContext.targetUserId,
+            postId: params.targetContext.postId,
+          },
+        },
+        status: "open",
+        last_seen_at: now,
+        reviewed_at: null,
+        reviewed_by: null,
+      },
+      { onConflict: "entity_type,entity_id" }
+    );
+
+  if (error) {
+    throw error;
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -219,7 +346,14 @@ export async function POST(req: NextRequest) {
     }
 
     const body = (await req.json().catch(() => ({}))) as ReportBody;
-    const type = body.type === "comment" ? "comment" : body.type === "post" ? "post" : null;
+    const type =
+      body.type === "comment"
+        ? "comment"
+        : body.type === "post"
+          ? "post"
+          : body.type === "user"
+            ? "user"
+            : null;
     const targetId = typeof body.targetId === "string" ? body.targetId.trim() : "";
     const rawReason = typeof body.reason === "string" ? body.reason : "";
     const reason = sanitizeUserText(rawReason, 1000);
@@ -237,20 +371,42 @@ export async function POST(req: NextRequest) {
     }
 
     const adminClient = createAdminClient();
-    const { error: reportError } = await adminClient.from("reports").insert({
-      type,
-      reported_id: targetId,
-      reporter_id: user.id,
-      reported_by: user.id,
-      reason,
-      created_at: new Date().toISOString(),
-    });
+    const targetContext = await resolveReportTargetContext(adminClient, type, targetId);
+
+    const { data: reportRow, error: reportError } = await adminClient
+      .from("reports")
+      .insert({
+        type,
+        reported_id: targetId,
+        reported_user_id: targetContext.targetUserId,
+        reporter_id: user.id,
+        reported_by: user.id,
+        reason,
+        created_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single<{ id: string }>();
 
     if (reportError) {
       throw reportError;
     }
 
-    const notificationRows = await createAdminReportNotifications(adminClient, type, targetId, user.id);
+    const { notificationRows, reporterHandle } = await createAdminReportNotifications(
+      adminClient,
+      type,
+      user.id,
+      targetContext
+    );
+
+    await upsertReportWatcherSignal(adminClient, {
+      reportId: reportRow.id,
+      reportType: type,
+      targetId,
+      reporterId: user.id,
+      reporterHandle,
+      reason,
+      targetContext,
+    });
 
     try {
       await sendPushNotificationsForSources(adminClient, notificationRows);
