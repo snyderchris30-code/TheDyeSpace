@@ -2,6 +2,40 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { ADMIN_USER_UID } from "@/lib/admin-actions";
+import { normalizeSellerProducts } from "@/lib/verified-seller";
+
+function resolveShopListingContext(postId: string, sellerUserId?: string | null) {
+  if (!postId.startsWith("shop-product-")) {
+    return null;
+  }
+
+  const suffix = postId.slice("shop-product-".length);
+  if (!suffix) {
+    return null;
+  }
+
+  if (sellerUserId) {
+    const sellerPrefix = `${sellerUserId}-`;
+    if (suffix.startsWith(sellerPrefix)) {
+      const productId = suffix.slice(sellerPrefix.length);
+      return productId ? { sellerUserId, productId } : null;
+    }
+    return { sellerUserId, productId: suffix };
+  }
+
+  const separatorIndex = suffix.indexOf("-");
+  if (separatorIndex <= 0) {
+    return null;
+  }
+
+  const parsedSellerUserId = suffix.slice(0, separatorIndex);
+  const productId = suffix.slice(separatorIndex + 1);
+  if (!parsedSellerUserId || !productId) {
+    return null;
+  }
+
+  return { sellerUserId: parsedSellerUserId, productId };
+}
 
 function createAdminClient() {
   const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -92,12 +126,59 @@ export async function DELETE(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const postId = searchParams.get("postId");
+  const sellerUserId = searchParams.get("sellerUserId");
   const mode = searchParams.get("mode") || "soft";
   if (!postId) {
     return NextResponse.json({ error: "postId is required" }, { status: 400 });
   }
 
   const adminClient = createAdminClient();
+  const shopListingContext = resolveShopListingContext(postId, sellerUserId);
+
+  if (shopListingContext) {
+    const admin = await isUserAdmin(adminClient, user.id);
+    if (shopListingContext.sellerUserId !== user.id && !admin) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const { data: sellerProfile, error: sellerProfileError } = await adminClient
+      .from("profiles")
+      .select("id, theme_settings")
+      .eq("id", shopListingContext.sellerUserId)
+      .maybeSingle();
+
+    if (sellerProfileError || !sellerProfile) {
+      return NextResponse.json({ error: "Shop listing owner not found" }, { status: 404 });
+    }
+
+    const currentThemeSettings =
+      sellerProfile.theme_settings && typeof sellerProfile.theme_settings === "object"
+        ? (sellerProfile.theme_settings as Record<string, unknown>)
+        : {};
+    const currentProducts = normalizeSellerProducts(currentThemeSettings.shop_products);
+    const nextProducts = currentProducts.filter((product) => product.id !== shopListingContext.productId);
+
+    if (nextProducts.length === currentProducts.length) {
+      return NextResponse.json({ error: "Shop listing not found" }, { status: 404 });
+    }
+
+    const { error: updateSellerError } = await adminClient
+      .from("profiles")
+      .update({
+        theme_settings: {
+          ...currentThemeSettings,
+          shop_products: nextProducts,
+        },
+      })
+      .eq("id", shopListingContext.sellerUserId);
+
+    if (updateSellerError) {
+      return NextResponse.json({ error: updateSellerError.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, mode: "shop_listing_delete", sellerUserId: shopListingContext.sellerUserId, productId: shopListingContext.productId });
+  }
+
   const { data: post, error: fetchError } = await adminClient
     .from("posts")
     .select("id, user_id, deleted_at")

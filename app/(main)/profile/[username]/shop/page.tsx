@@ -4,13 +4,15 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { MessageCircle, Store } from "lucide-react";
+import AdminActionMenu from "@/app/AdminActionMenu";
 import UserIdentity from "@/app/UserIdentity";
 import { createClient } from "@/lib/supabase/client";
-import { resolveClientAuth } from "@/lib/client-auth";
+import { resolveClientAuth, fetchClientProfile } from "@/lib/client-auth";
 import { fetchProfileLookupByUsername, type ProfileLookupResponse } from "@/lib/profile-fetch";
 import { normalizePostImageUrls } from "@/lib/post-media";
 import { normalizeSellerProducts } from "@/lib/verified-seller";
 import { sanitizeUsernameInput } from "@/lib/profile-identity";
+import { hasAdminAccess, runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import type { ProfileThemeSettings, SellerProduct } from "@/types/database";
 
 const shopProfileLoadPromises = new Map<string, Promise<ProfileLookupResponse<ShopProfile>>>();
@@ -18,9 +20,11 @@ const shopPostLoadPromises = new Map<string, Promise<ForSalePost[]>>();
 
 type ForSalePost = {
   id: string;
+  user_id: string;
   content: string | null;
   image_urls: string[] | null;
   created_at: string;
+  is_shop_listing: boolean;
 };
 
 type ShopProfile = {
@@ -53,6 +57,9 @@ export default function ShopPage() {
   const [salePosts, setSalePosts] = useState<ForSalePost[]>([]);
   const [postsLoading, setPostsLoading] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [interactionStatus, setInteractionStatus] = useState<string | null>(null);
+  const [adminActionStatus, setAdminActionStatus] = useState<string | null>(null);
   const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
@@ -126,7 +133,7 @@ export default function ShopPage() {
         postsPromise = (async () => {
           const { data, error } = await supabase
             .from("posts")
-            .select("id, content, image_urls, created_at")
+            .select("id, user_id, content, image_urls, created_at")
             .eq("user_id", profileUserId)
             .eq("is_for_sale", true)
             .is("deleted_at", null)
@@ -139,6 +146,7 @@ export default function ShopPage() {
           return ((data || []) as ForSalePost[]).map((post) => ({
             ...post,
             image_urls: normalizePostImageUrls(post.image_urls),
+            is_shop_listing: false,
           }));
         })();
 
@@ -183,9 +191,22 @@ export default function ShopPage() {
         const auth = await resolveClientAuth(supabase);
         if (!active) return;
         setIsOwner(Boolean(auth.user?.id && auth.user.id === profileUserId));
+        if (auth.user?.id) {
+          try {
+            const profile = await fetchClientProfile<{ role?: string | null }>(supabase, auth.user.id, "role");
+            if (!active) return;
+            setIsAdmin(hasAdminAccess(auth.user.id, profile?.role ?? null));
+          } catch {
+            if (!active) return;
+            setIsAdmin(hasAdminAccess(auth.user.id, null));
+          }
+        } else {
+          setIsAdmin(false);
+        }
       } catch {
         if (!active) return;
         setIsOwner(false);
+        setIsAdmin(false);
       }
     };
 
@@ -199,14 +220,53 @@ export default function ShopPage() {
   const sellerName = profile?.username || username || profile?.display_name || "Seller";
   const profileHref = username ? `/profile/${encodeURIComponent(username)}` : "/profile";
   const fanChatHref = username ? `/profile/${encodeURIComponent(username)}/fan-chat` : "/profile";
+  const manageShopHref = username ? `/profile/${encodeURIComponent(username)}/shop/manage` : null;
+
+  const handleAdminAction = async (targetUserId: string, action: AdminActionName, durationHours?: number) => {
+    setAdminActionStatus(null);
+    try {
+      const body = await runAdminUserAction({ targetUserId, action, durationHours });
+      setAdminActionStatus(body?.message || "Admin action applied successfully.");
+    } catch (error: any) {
+      setAdminActionStatus(typeof error?.message === "string" ? error.message : "Admin action failed.");
+    }
+  };
+
+  const handleDeleteListing = async (post: ForSalePost) => {
+    if (!confirm("Delete this listing? This cannot be undone.")) {
+      return;
+    }
+
+    setInteractionStatus(null);
+    const query = new URLSearchParams({ postId: post.id });
+    if (post.is_shop_listing) {
+      query.set("sellerUserId", post.user_id);
+    }
+
+    const response = await fetch(`/api/posts/manage?${query.toString()}`, { method: "DELETE" });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      setInteractionStatus(body?.error || "Could not remove listing. Please try again.");
+      return;
+    }
+
+    if (post.is_shop_listing) {
+      setShopProducts((prev) => prev.filter((product) => `shop-product-${product.id}` !== post.id));
+    } else {
+      setSalePosts((prev) => prev.filter((item) => item.id !== post.id));
+    }
+  };
+
   const visibleListings = shopProducts.length > 0
     ? shopProducts.map((product) => ({
-        id: product.id,
+        id: `shop-product-${product.id}`,
+        user_id: profile?.id || "",
         content: [product.title, product.price ? `$${product.price}` : null, product.description]
           .filter(Boolean)
           .join(" • "),
         image_urls: product.photo_urls || null,
         created_at: "",
+        is_shop_listing: true,
       }))
     : salePosts;
 
@@ -247,6 +307,17 @@ export default function ShopPage() {
           </div>
         </header>
 
+        {interactionStatus ? (
+          <div className="rounded-2xl border border-rose-300/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+            {interactionStatus}
+          </div>
+        ) : null}
+        {adminActionStatus ? (
+          <div className="rounded-2xl border border-cyan-300/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
+            {adminActionStatus}
+          </div>
+        ) : null}
+
         {loading ? (
           <div className="rounded-[1.75rem] border border-cyan-300/15 bg-slate-950/80 p-8 text-center text-slate-300 shadow-xl">
             Loading shop...
@@ -283,6 +354,48 @@ export default function ShopPage() {
                         <p className="text-xs uppercase tracking-[0.24em] text-cyan-300/70">Posted {new Date(post.created_at).toLocaleDateString()}</p>
                       ) : null}
                     </div>
+                    {(isOwner || isAdmin) ? (
+                      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-cyan-300/10 pt-3">
+                        {isOwner ? (
+                          post.is_shop_listing && manageShopHref ? (
+                            <Link
+                              href={manageShopHref}
+                              className="rounded-full border border-cyan-300/25 bg-black/20 px-3 py-1 text-xs text-cyan-300 transition hover:bg-cyan-900/30"
+                            >
+                              Edit
+                            </Link>
+                          ) : (
+                            <Link
+                              href={profileHref}
+                              className="rounded-full border border-cyan-300/25 bg-black/20 px-3 py-1 text-xs text-cyan-300 transition hover:bg-cyan-900/30"
+                            >
+                              Edit
+                            </Link>
+                          )
+                        ) : null}
+                        {isOwner ? (
+                          <button
+                            type="button"
+                            className="rounded-full border border-rose-300/25 bg-black/20 px-3 py-1 text-xs text-rose-300 transition hover:bg-rose-900/30"
+                            onClick={() => void handleDeleteListing(post)}
+                          >
+                            Delete
+                          </button>
+                        ) : null}
+                        {isAdmin ? (
+                          <>
+                            <button
+                              type="button"
+                              className="rounded-full border border-amber-300/35 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/20"
+                              onClick={() => void handleDeleteListing(post)}
+                            >
+                              Remove Listing
+                            </button>
+                            <AdminActionMenu targetUserId={post.user_id} onAction={handleAdminAction} label="ADMIN" />
+                          </>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>

@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import FanChatRoomClient from "./FanChatRoomClient";
 import { fetchProfileLookupByUsername, type ProfileLookupResponse } from "@/lib/profile-fetch";
-import { resolveClientAuth } from "@/lib/client-auth";
+import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
 
 const fanChatProfileLoadPromises = new Map<string, Promise<ProfileLookupResponse<FanChatProfile>>>();
 
@@ -98,15 +98,15 @@ export default function FanChatPage() {
           return;
         }
 
-        const { data: followData } = await supabase
-          .from("user_follows")
-          .select("follower_id")
-          .eq("follower_id", currentUserId)
-          .eq("followed_id", resolvedProfile.id)
-          .limit(1);
+        const viewerProfile = await fetchClientProfile<{ role?: string | null }>(
+          supabase,
+          currentUserId,
+          "role",
+          { ensureProfile: true }
+        );
 
         if (active && !controller.signal.aborted) {
-          setAllowed(Array.isArray(followData) && followData.length > 0);
+          setAllowed(viewerProfile?.role === "admin" || Boolean(currentUserId));
           setLoading(false);
         }
       } catch (error: any) {

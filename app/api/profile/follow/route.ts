@@ -160,6 +160,30 @@ export async function POST(req: NextRequest) {
 
     const adminClient = createAdminClient();
 
+    const { data: actorProfile } = await adminClient
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .limit(1)
+      .maybeSingle();
+
+    const viewerIsAdmin = actorProfile?.role === "admin";
+
+    const { data: targetProfile, error: targetProfileError } = await adminClient
+      .from("profiles")
+      .select("ghost_ridin")
+      .eq("id", targetUserId)
+      .limit(1)
+      .maybeSingle();
+
+    if (targetProfileError) {
+      return NextResponse.json({ error: targetProfileError.message }, { status: 500 });
+    }
+
+    if (action === "follow" && targetProfile?.ghost_ridin === true && !viewerIsAdmin) {
+      return NextResponse.json({ error: "Ghost Rider profiles cannot be followed." }, { status: 403 });
+    }
+
     if (action === "unfollow") {
       const { error } = await adminClient
         .from("user_follows")

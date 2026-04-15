@@ -632,12 +632,17 @@ export default function ExplorePage() {
     }
   }, [refetch, refetchInteractions]);
 
-  const handleDeletePost = useCallback(async (postId: string) => {
+  const handleDeletePost = useCallback(async (post: Pick<ExplorePost, "id" | "user_id" | "is_shop_listing">) => {
     if (!confirm("Delete this post? This cannot be undone.")) {
       return;
     }
 
-    const response = await fetch(`/api/posts/manage?postId=${postId}`, { method: "DELETE" });
+    const query = new URLSearchParams({ postId: post.id });
+    if (post.is_shop_listing) {
+      query.set("sellerUserId", post.user_id);
+    }
+
+    const response = await fetch(`/api/posts/manage?${query.toString()}`, { method: "DELETE" });
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
       setInteractionStatus(body?.error || "Could not delete post. Please try again.");
@@ -645,7 +650,7 @@ export default function ExplorePage() {
     }
 
     queryClient.setQueryData<ExplorePost[]>(["explorePosts", tab, search.trim(), marketplaceOnly, sessionUserId, viewerIsAdmin, reloadKey], (currentPosts) =>
-      (currentPosts || []).filter((post) => post.id !== postId)
+      (currentPosts || []).filter((item) => item.id !== post.id)
     );
   }, [queryClient, reloadKey, search, sessionUserId, tab, viewerIsAdmin, marketplaceOnly]);
 
@@ -927,7 +932,53 @@ export default function ExplorePage() {
                 </div>
               ) : null}
               <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-cyan-300/10 pt-4">
-                {!post.is_shop_listing && (viewerIsAdmin || sessionUserId === post.user_id) ? (
+                {(viewerIsAdmin || sessionUserId === post.user_id) && post.is_for_sale ? (
+                  <>
+                    {sessionUserId === post.user_id ? (
+                      post.is_shop_listing && post.author_username ? (
+                        <Link
+                          href={`/profile/${encodeURIComponent(post.author_username)}/shop/manage`}
+                          className="rounded-full border border-cyan-300/25 bg-black/20 px-3 py-1 text-xs text-cyan-300 transition hover:bg-cyan-900/30"
+                        >
+                          Edit
+                        </Link>
+                      ) : editingPostId !== post.id ? (
+                        <button
+                          type="button"
+                          className="rounded-full border border-cyan-300/25 bg-black/20 px-3 py-1 text-xs text-cyan-300 hover:bg-cyan-900/30 transition"
+                          onClick={() => {
+                            setEditingPostId(post.id);
+                            setEditPostContent(stripAffiliateProductTokens(post.content));
+                            setEditPostAffiliateProductIds(extractAffiliateProductIds(post.content));
+                          }}
+                        >
+                          Edit
+                        </button>
+                      ) : null
+                    ) : null}
+                    {sessionUserId === post.user_id ? (
+                      <button
+                        type="button"
+                        className="rounded-full border border-rose-300/25 bg-black/20 px-3 py-1 text-xs text-rose-300 transition hover:bg-rose-900/30"
+                        onClick={() => void handleDeletePost(post)}
+                      >
+                        Delete
+                      </button>
+                    ) : null}
+                    {viewerIsAdmin ? (
+                      <>
+                        <button
+                          type="button"
+                          className="rounded-full border border-amber-300/35 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/20"
+                          onClick={() => void handleDeletePost(post)}
+                        >
+                          Remove Listing
+                        </button>
+                        <AdminActionMenu targetUserId={post.user_id} onAction={handleAdminAction} label="ADMIN" />
+                      </>
+                    ) : null}
+                  </>
+                ) : !post.is_shop_listing && (viewerIsAdmin || sessionUserId === post.user_id) ? (
                   <>
                     {sessionUserId === post.user_id && editingPostId !== post.id ? (
                       <button
@@ -945,7 +996,7 @@ export default function ExplorePage() {
                     <button
                       type="button"
                       className="rounded-full border border-rose-300/25 bg-black/20 px-3 py-1 text-xs text-rose-300 transition hover:bg-rose-900/30"
-                      onClick={() => void handleDeletePost(post.id)}
+                      onClick={() => void handleDeletePost(post)}
                     >
                       Delete
                     </button>

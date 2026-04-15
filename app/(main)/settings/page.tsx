@@ -43,6 +43,7 @@ function SettingsContent() {
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [username, setUsername] = useState<string | null>(null);
   const [ghostRidin, setGhostRidin] = useState(false);
+  const [verifiedBadge, setVerifiedBadge] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +60,7 @@ function SettingsContent() {
       }
       supabase
         .from("profiles")
-        .select("username, role, ghost_ridin")
+        .select("username, role, ghost_ridin, verified_badge")
         .eq("id", user.id)
         .maybeSingle()
         .then(async ({ data: profile }) => {
@@ -67,6 +68,7 @@ function SettingsContent() {
           const adminRole = hasAdminAccess(user.id, profile?.role ?? null);
           setIsAdmin(adminRole);
           setGhostRidin(profile?.ghost_ridin === true);
+          setVerifiedBadge(profile?.verified_badge === true);
           setLoading(false);
         });
     });
@@ -235,6 +237,21 @@ function SettingsContent() {
     }
   }
 
+  async function handleCopyFanChatInvite() {
+    if (!username) {
+      setError("Your username is not ready yet.");
+      return;
+    }
+
+    try {
+      const inviteUrl = `${window.location.origin}/profile/${encodeURIComponent(username)}/fan-chat`;
+      await navigator.clipboard.writeText(inviteUrl);
+      setMessage("Fan chat invite link copied.");
+    } catch {
+      setError("Could not copy invite link right now.");
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-[70vh] items-center justify-center px-4">
@@ -322,6 +339,21 @@ function SettingsContent() {
         <p className="mt-2 text-sm text-cyan-200/85">
           Enable <span className="font-semibold text-cyan-100">Ghost Ridin</span> to hide your profile from regular users while keeping your account active.
         </p>
+        {verifiedBadge && username ? (
+          <div className="mt-4 rounded-xl border border-fuchsia-300/20 bg-fuchsia-500/5 px-4 py-4">
+            <p className="text-sm font-semibold text-fuchsia-100">Verified Seller Chat Group</p>
+            <p className="mt-1 text-sm text-fuchsia-100/75">
+              Share your private fan chat invite link with fans. When Ghost Ridin is enabled, this chat stays hidden from regular users.
+            </p>
+            <button
+              type="button"
+              onClick={() => void handleCopyFanChatInvite()}
+              className="mt-3 rounded-full border border-fuchsia-300/45 bg-fuchsia-400/10 px-4 py-2 text-sm font-semibold text-fuchsia-100 transition hover:bg-fuchsia-400/20"
+            >
+              Invite to My Chat Group
+            </button>
+          </div>
+        ) : null}
 
         <form onSubmit={handleSaveProfileSettings} className="mt-5 flex flex-col gap-4">
           <label className="flex items-center gap-3 rounded-xl border border-white/15 bg-black/30 px-4 py-3">

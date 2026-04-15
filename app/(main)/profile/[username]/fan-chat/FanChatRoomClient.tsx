@@ -177,7 +177,7 @@ export default function FanChatRoomClient({ room, allowed, sellerDisplayName, se
         <MessageCircle className="mx-auto mb-4 h-12 w-12 text-pink-400" />
         <h1 className="text-2xl font-semibold text-white">Fan Chat Access Restricted</h1>
         <p className="mt-3 text-sm text-slate-300">
-          Only the verified seller and users who follow them may join this private fan chat.
+          Only signed-in users can join visible verified seller chats. Ghost Rider chats remain hidden to regular users.
         </p>
         <Link href="/" className="mt-6 inline-flex rounded-full bg-cyan-500/15 px-5 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-500/25 transition">
           Back to Home
@@ -240,7 +240,7 @@ export default function FanChatRoomClient({ room, allowed, sellerDisplayName, se
           className="min-h-[96px] w-full resize-none rounded-[1.5rem] border border-cyan-300/15 bg-slate-950/80 px-4 py-3 text-sm text-cyan-100 outline-none transition focus:border-cyan-300/40 focus:ring-2 focus:ring-cyan-400/20"
         />
         <div className="flex items-center justify-between gap-3">
-          <span className="text-[11px] text-cyan-300/70">Only followers and the seller are allowed in this room.</span>
+          <span className="text-[11px] text-cyan-300/70">Signed-in users can join visible seller chats. Owner and admins always retain access.</span>
           <button
             type="submit"
             className="rounded-full bg-cyan-400 px-5 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300"

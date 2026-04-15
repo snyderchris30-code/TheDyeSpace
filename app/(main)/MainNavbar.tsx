@@ -2,7 +2,7 @@
 
 import React, { useCallback, useState, useEffect } from "react";
 import Link from "next/link";
-import { Bell, User, Home, Compass, LogOut, HeartHandshake, Users, Settings, Trash2, Share2 } from "lucide-react";
+import { Bell, User, Home, Compass, MessageCircle, LogOut, HeartHandshake, Users, Settings, Trash2, Share2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { usePathname } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -13,12 +13,6 @@ import { PRIVATE_ROOM_PROFILE_SELECT, canAccessPrivateRoom, type PrivateRoomAcce
 import { createClient } from "@/lib/supabase/client";
 import { hasAdminAccess, runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import { dedupeApiFetchJson } from "@/lib/dedupe-fetch";
-
-type BeforeInstallPromptEvent = Event & {
-  platform?: string;
-  prompt: () => Promise<void>;
-  userChoice?: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
-};
 
 type NotificationItem = { id: string; actor_name: string; type: string; message: string; read: boolean; created_at: string; post_id?: string | null };
 
@@ -496,9 +490,6 @@ export default function MainNavbar() {
     </button>
   );
 
-  // PWA Install Button logic
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-
   useEffect(() => {
     const eventOptions = { passive: true } as AddEventListenerOptions;
     const handleOutside = (event: Event) => {
@@ -521,49 +512,6 @@ export default function MainNavbar() {
       document.removeEventListener("touchstart", handleOutside, eventOptions);
     };
   }, []);
-  const [showInstall, setShowInstall] = useState(false);
-  useEffect(() => {
-    const handler = (event: Event) => {
-      const promptEvent = event as BeforeInstallPromptEvent;
-      setDeferredPrompt(promptEvent);
-      setShowInstall(true);
-    };
-
-    const onInstalled = () => {
-      setDeferredPrompt(null);
-      setShowInstall(false);
-    };
-
-    window.addEventListener('beforeinstallprompt', handler as EventListener);
-    window.addEventListener('appinstalled', onInstalled);
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handler as EventListener);
-      window.removeEventListener('appinstalled', onInstalled);
-    };
-  }, []);
-  const handleInstallClick = async () => {
-    if (!deferredPrompt) {
-      setShowInstall(false);
-      setDeferredPrompt(null);
-      return;
-    }
-
-    try {
-      await deferredPrompt.prompt();
-      if (deferredPrompt.userChoice && typeof deferredPrompt.userChoice.then === 'function') {
-        const result = await deferredPrompt.userChoice;
-        if (result?.outcome === 'accepted') {
-          setShowInstall(false);
-        }
-      }
-    } catch (error) {
-      console.error('Install prompt failed', error);
-    } finally {
-      setDeferredPrompt(null);
-      setShowInstall(false);
-    }
-  };
-
   return (
     <nav className={`navbar mt-2 mb-4 relative isolate overflow-visible ${NAV_LAYER_CLASS} sm:mb-6 flex flex-wrap items-center justify-between`}>
       <div className="flex items-center gap-2 overflow-visible">
@@ -638,18 +586,9 @@ export default function MainNavbar() {
         )}
       </div>
       <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end sm:gap-2">
-        {showInstall && (
-          <button
-            onClick={handleInstallClick}
-            className="flex h-11 items-center gap-2 rounded-xl border border-cyan-300 bg-cyan-900/80 px-4 text-cyan-100 font-semibold shadow-md hover:bg-cyan-800/90 transition"
-            aria-label="Install App"
-          >
-            <svg width="20" height="20" fill="none" viewBox="0 0 24 24"><path fill="currentColor" d="M12 16.5a1 1 0 0 1-.707-.293l-4-4a1 1 0 1 1 1.414-1.414L11 12.586V4a1 1 0 1 1 2 0v8.586l2.293-2.293a1 1 0 1 1 1.414 1.414l-4 4A1 1 0 0 1 12 16.5Z"/><path fill="currentColor" d="M4 20a1 1 0 0 1 0-2h16a1 1 0 1 1 0 2H4Z"/></svg>
-            Install App
-          </button>
-        )}
         <IconButton href="/" label="Home" icon={<Home size={18} />} isActive={pathname === "/"} />
         <IconButton href="/explore" label="Explore" icon={<Compass size={18} />} isActive={pathname?.startsWith("/explore")} />
+        <IconButton href="/chat" label="Chat" icon={<MessageCircle size={18} />} isActive={pathname?.startsWith("/chat")} />
         {isLoggedIn && (
           <IconButton
             href={profileHref}

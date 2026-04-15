@@ -70,6 +70,7 @@ type ProfileRow = {
   member_number?: number | null;
   shadow_banned?: boolean | null;
   shadow_banned_until?: string | null;
+  ghost_ridin?: boolean | null;
 };
 
 type StatusState = {
@@ -304,7 +305,7 @@ export default function ProfileEditor() {
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
-  const [profileStatus, setProfileStatus] = useState<Pick<ProfileRow, "muted_until" | "voided_until" | "verified_badge" | "member_number" | "shadow_banned" | "shadow_banned_until"> | null>(null);
+  const [profileStatus, setProfileStatus] = useState<Pick<ProfileRow, "muted_until" | "voided_until" | "verified_badge" | "member_number" | "shadow_banned" | "shadow_banned_until" | "ghost_ridin"> | null>(null);
   const [viewerIsVerifiedSeller, setViewerIsVerifiedSeller] = useState(false);
   const [viewerCanAccessSmokeLounge, setViewerCanAccessSmokeLounge] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
@@ -451,6 +452,7 @@ export default function ProfileEditor() {
         member_number: profile.member_number ?? null,
         shadow_banned: profile.shadow_banned ?? null,
         shadow_banned_until: profile.shadow_banned_until ?? null,
+        ghost_ridin: profile.ghost_ridin ?? null,
       });
       applyProfileToForm(profile);
     },
@@ -481,7 +483,7 @@ export default function ProfileEditor() {
     async (userId: string) => {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings, created_at, role, muted_until, voided_until, verified_badge, member_number, shadow_banned, shadow_banned_until")
+        .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings, created_at, role, muted_until, voided_until, verified_badge, member_number, shadow_banned, shadow_banned_until, ghost_ridin")
         .eq("id", userId)
         .limit(1)
         .maybeSingle<ProfileRow>();
@@ -1387,19 +1389,24 @@ export default function ProfileEditor() {
     [commentDrafts, session?.user, updatePostCounters]
   );
 
-  const handleDeletePost = useCallback(async (postId: string) => {
+  const handleDeletePost = useCallback(async (post: Pick<ProfilePost, "id" | "user_id" | "is_shop_listing">) => {
     if (!confirm("Delete this post? This cannot be undone.")) return;
-    const res = await fetch(`/api/posts/manage?postId=${encodeURIComponent(postId)}`, { method: "DELETE" });
+    const query = new URLSearchParams({ postId: post.id });
+    if (post.is_shop_listing) {
+      query.set("sellerUserId", post.user_id);
+    }
+
+    const res = await fetch(`/api/posts/manage?${query.toString()}`, { method: "DELETE" });
     if (res.ok) {
-      if (editingPostId === postId) {
+      if (editingPostId === post.id) {
         setEditingPostId(null);
         setEditPostContent("");
         setEditPostAffiliateProductIds([]);
       }
-      setPosts((prev) => prev.filter((post) => post.id !== postId));
+      setPosts((prev) => prev.filter((item) => item.id !== post.id));
       setInteractions((prev) => {
         const next = { ...prev };
-        delete next[postId];
+        delete next[post.id];
         return next;
       });
     } else {
@@ -1509,6 +1516,7 @@ export default function ProfileEditor() {
   const profileVoidedUntil = profileStatus?.voided_until ? new Date(profileStatus.voided_until) : null;
   const profileIsVoided = Boolean(profileVoidedUntil && profileVoidedUntil > new Date());
   const profileIsVerified = profileStatus?.verified_badge === true;
+  const profileIsGhostRidin = profileStatus?.ghost_ridin === true;
   const profileShadowBannedUntil = profileStatus?.shadow_banned_until ? new Date(profileStatus.shadow_banned_until) : null;
   const profileIsShadowBanned = Boolean(
     profileStatus?.shadow_banned || (profileShadowBannedUntil && profileShadowBannedUntil > new Date())
@@ -1532,6 +1540,21 @@ export default function ProfileEditor() {
     () => normalizeSellerProducts(profileDisplay.shop_products),
     [profileDisplay.shop_products]
   );
+
+  const handleCopyFanChatInvite = useCallback(async () => {
+    if (!displayUsername || typeof window === "undefined") {
+      setStatus({ type: "error", text: "Your chat invite link is not ready yet." });
+      return;
+    }
+
+    try {
+      const inviteUrl = `${window.location.origin}/profile/${encodeURIComponent(displayUsername)}/fan-chat`;
+      await navigator.clipboard.writeText(inviteUrl);
+      setStatus({ type: "success", text: "Fan chat invite link copied." });
+    } catch {
+      setStatus({ type: "error", text: "Could not copy chat invite link right now." });
+    }
+  }, [displayUsername]);
 
   const shopProductPosts = useMemo(() => {
     if (!profileIsVerified || !profileUserId) return [] as ProfilePost[];
@@ -1808,7 +1831,7 @@ export default function ProfileEditor() {
                     Edit Profile
                   </button>
                 )}
-                {!isOwner && profileDisplay.username && (
+                {!isOwner && profileDisplay.username && !profileIsGhostRidin && (
                   <button
                     className="rounded-full border border-cyan-300/70 bg-black/45 px-5 py-2 text-sm font-semibold text-cyan-100 shadow-lg backdrop-blur-md transition hover:scale-[1.02] hover:bg-black/60 disabled:opacity-60"
                     onClick={() => void handleFollowToggle()}
@@ -1976,6 +1999,15 @@ export default function ProfileEditor() {
                         >
                           My Fan Chat Group
                         </Link>
+                        {isOwner ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleCopyFanChatInvite()}
+                            className="inline-flex items-center justify-center rounded-2xl border border-fuchsia-300/60 bg-fuchsia-950/30 px-4 py-2 text-sm font-semibold text-fuchsia-100 transition hover:bg-fuchsia-400/15 hover:text-fuchsia-50"
+                          >
+                            Invite to My Chat Group
+                          </button>
+                        ) : null}
                         {viewerCanAccessSmokeLounge ? (
                           <Link
                             href="/chat/smoke-room-2"
@@ -2247,7 +2279,53 @@ export default function ProfileEditor() {
                               <span>Report</span>
                             </button>
                           ) : null}
-                          {!isShopListing && (isOwner || isAdmin) ? (
+                          {(isOwner || isAdmin) && post.is_for_sale ? (
+                            <>
+                              {isOwner ? (
+                                isShopListing ? (
+                                  <Link
+                                    href={`/profile/${encodeURIComponent(routeUsername)}/shop/manage`}
+                                    className="rounded-full border border-cyan-300/25 bg-black/20 px-4 py-2 text-xs text-cyan-300 transition hover:bg-cyan-900/30"
+                                  >
+                                    Edit
+                                  </Link>
+                                ) : editingPostId !== post.id ? (
+                                  <button
+                                    type="button"
+                                    className="rounded-full border border-cyan-300/25 bg-black/20 px-4 py-2 text-xs text-cyan-300 hover:bg-cyan-900/30 transition"
+                                    onClick={() => {
+                                      setEditingPostId(post.id);
+                                      setEditPostContent(stripAffiliateProductTokens(post.content));
+                                      setEditPostAffiliateProductIds(extractAffiliateProductIds(post.content));
+                                    }}
+                                  >
+                                    Edit
+                                  </button>
+                                ) : null
+                              ) : null}
+                              {isOwner ? (
+                                <button
+                                  type="button"
+                                  className="rounded-full border border-rose-300/25 bg-black/20 px-4 py-2 text-xs text-rose-300 hover:bg-rose-900/30 transition"
+                                  onClick={() => void handleDeletePost(post)}
+                                >
+                                  Delete
+                                </button>
+                              ) : null}
+                              {isAdmin ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="rounded-full border border-amber-300/35 bg-amber-500/10 px-4 py-2 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/20"
+                                    onClick={() => void handleDeletePost(post)}
+                                  >
+                                    Remove Listing
+                                  </button>
+                                  <AdminActionMenu targetUserId={post.user_id} onAction={handleAdminAction} label="ADMIN" />
+                                </>
+                              ) : null}
+                            </>
+                          ) : !isShopListing && (isOwner || isAdmin) ? (
                             <>
                               {isOwner && editingPostId !== post.id ? (
                                 <button
@@ -2265,7 +2343,7 @@ export default function ProfileEditor() {
                               <button
                                 type="button"
                                 className="rounded-full border border-rose-300/25 bg-black/20 px-4 py-2 text-xs text-rose-300 hover:bg-rose-900/30 transition"
-                                onClick={() => void handleDeletePost(post.id)}
+                                onClick={() => void handleDeletePost(post)}
                               >
                                 Delete
                               </button>

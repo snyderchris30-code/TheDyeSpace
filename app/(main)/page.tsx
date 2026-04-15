@@ -165,6 +165,12 @@ type InfinitePostsCache = {
   pageParams: unknown[];
 };
 
+type BeforeInstallPromptEvent = Event & {
+  platform?: string;
+  prompt: () => Promise<void>;
+  userChoice?: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
+
 function removePostFromInfiniteCache(cache: InfinitePostsCache | undefined, postId: string) {
   if (!cache) {
     return cache;
@@ -216,8 +222,53 @@ export default function MainFeedPage() {
   const [interactionBusyPostId, setInteractionBusyPostId] = useState<string | null>(null);
   const [interactionStatus, setInteractionStatus] = useState<string | null>(null);
   const [adminActionStatus, setAdminActionStatus] = useState<string | null>(null);
+  const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installStatus, setInstallStatus] = useState<string | null>(null);
 
   const [deletedPostIds, setDeletedPostIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPromptEvent(event as BeforeInstallPromptEvent);
+    };
+
+    const handleInstalled = () => {
+      setInstallPromptEvent(null);
+      setInstallStatus("App installed successfully.");
+      window.setTimeout(() => setInstallStatus(null), 2500);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt as EventListener);
+    window.addEventListener("appinstalled", handleInstalled);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt as EventListener);
+      window.removeEventListener("appinstalled", handleInstalled);
+    };
+  }, []);
+
+  const handleInstallApp = useCallback(async () => {
+    if (!installPromptEvent) {
+      setInstallStatus("Install is not available yet on this device/browser.");
+      return;
+    }
+
+    try {
+      await installPromptEvent.prompt();
+      const choice = await installPromptEvent.userChoice;
+      if (choice?.outcome === "accepted") {
+        setInstallStatus("Installing app...");
+      } else {
+        setInstallStatus("Install dismissed.");
+      }
+    } catch {
+      setInstallStatus("Install failed. Please try again.");
+    } finally {
+      setInstallPromptEvent(null);
+      window.setTimeout(() => setInstallStatus(null), 2500);
+    }
+  }, [installPromptEvent]);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editPostContent, setEditPostContent] = useState("");
   const [editPostAffiliateProductIds, setEditPostAffiliateProductIds] = useState<string[]>([]);
@@ -445,11 +496,16 @@ export default function MainFeedPage() {
     [commentDrafts, session?.user, setPostCounts]
   );
 
-  const handleDeletePost = useCallback(async (postId: string) => {
+  const handleDeletePost = useCallback(async (post: Pick<Post, "id" | "user_id" | "is_shop_listing">) => {
     if (!confirm("Delete this post? This cannot be undone.")) return;
-    const res = await fetch(`/api/posts/manage?postId=${postId}`, { method: "DELETE" });
+    const query = new URLSearchParams({ postId: post.id });
+    if (post.is_shop_listing) {
+      query.set("sellerUserId", post.user_id);
+    }
+
+    const res = await fetch(`/api/posts/manage?${query.toString()}`, { method: "DELETE" });
     if (res.ok) {
-      setDeletedPostIds((prev) => new Set([...prev, postId]));
+      setDeletedPostIds((prev) => new Set([...prev, post.id]));
     } else {
       setInteractionStatus("Could not delete post. Please try again.");
     }
@@ -555,14 +611,16 @@ export default function MainFeedPage() {
         </h1>
       </div>
       <div className="mb-4">
-        <Link
-          href="/chat"
-          prefetch={false}
-          className="inline-flex items-center gap-2 rounded-full border-4 border-red-600 bg-gradient-to-br from-red-700 via-red-500 to-red-700 px-8 py-4 text-2xl font-extrabold text-white shadow-lg hover:scale-105 hover:bg-red-700/90 transition-all"
-          style={{ boxShadow: "0 0 32px 4px rgba(239,68,68,0.25)" }}
+        <button
+          type="button"
+          onClick={() => void handleInstallApp()}
+          className="inline-flex items-center gap-2 rounded-full border-4 border-emerald-500 bg-gradient-to-br from-emerald-600 via-teal-500 to-cyan-500 px-8 py-4 text-2xl font-extrabold text-white shadow-[0_0_32px_4px_rgba(16,185,129,0.25)] transition-all hover:scale-105 hover:brightness-110"
         >
-          The Dye Chat
-        </Link>
+          Install App
+        </button>
+        {installStatus ? (
+          <p className="mt-2 text-sm text-emerald-200/90">{installStatus}</p>
+        ) : null}
       </div>
       <div className="mb-4 sm:mb-6">
         <Link
@@ -616,6 +674,9 @@ export default function MainFeedPage() {
           const isBusy = interactionBusyPostId === post.id;
           const isOwner = !!session?.user && session.user.id === post.user_id;
           const isShopListing = post.is_shop_listing === true;
+          const shopManageHref = post.author_username
+            ? `/profile/${encodeURIComponent(post.author_username)}/shop/manage`
+            : null;
           const displayContent = editedPostContent[post.id] ?? post.content;
           const categoryMeta = getCategoryMeta(displayContent);
           const visibleContent = stripCategoryTag(stripAffiliateProductTokens(displayContent));
@@ -785,7 +846,53 @@ export default function MainFeedPage() {
                   ))}
                 </div>
               )}
-              {!isShopListing && (isOwner || isAdmin) ? (
+              {(isOwner || isAdmin) && post.is_for_sale ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {isOwner ? (
+                    isShopListing && shopManageHref ? (
+                      <Link
+                        href={shopManageHref}
+                        className="rounded-full border border-cyan-300/25 bg-black/20 px-3 py-1 text-xs text-cyan-300 transition hover:bg-cyan-900/30"
+                      >
+                        Edit
+                      </Link>
+                    ) : (
+                      <button
+                        type="button"
+                        className="rounded-full border border-cyan-300/25 bg-black/20 px-3 py-1 text-xs text-cyan-300 hover:bg-cyan-900/30 transition"
+                        onClick={() => {
+                          setEditingPostId(post.id);
+                          setEditPostContent(stripAffiliateProductTokens(displayContent ?? ""));
+                          setEditPostAffiliateProductIds(extractAffiliateProductIds(displayContent));
+                        }}
+                      >
+                        Edit
+                      </button>
+                    )
+                  ) : null}
+                  {isOwner ? (
+                    <button
+                      type="button"
+                      className="rounded-full border border-rose-300/25 bg-black/20 px-3 py-1 text-xs text-rose-300 hover:bg-rose-900/30 transition"
+                      onClick={() => void handleDeletePost(post)}
+                    >
+                      Delete
+                    </button>
+                  ) : null}
+                  {isAdmin ? (
+                    <>
+                      <button
+                        type="button"
+                        className="rounded-full border border-amber-300/35 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/20"
+                        onClick={() => void handleDeletePost(post)}
+                      >
+                        Remove Listing
+                      </button>
+                      <AdminActionMenu targetUserId={post.user_id} onAction={handleAdminAction} label="ADMIN" />
+                    </>
+                  ) : null}
+                </div>
+              ) : !isShopListing && (isOwner || isAdmin) ? (
                 <div className="flex flex-wrap items-center gap-2">
                   {isOwner ? (
                     <button
@@ -803,7 +910,7 @@ export default function MainFeedPage() {
                   <button
                     type="button"
                     className="rounded-full border border-rose-300/25 bg-black/20 px-3 py-1 text-xs text-rose-300 hover:bg-rose-900/30 transition"
-                    onClick={() => void handleDeletePost(post.id)}
+                    onClick={() => void handleDeletePost(post)}
                   >
                     Delete
                   </button>
