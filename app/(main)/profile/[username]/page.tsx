@@ -24,7 +24,7 @@ import { hasAdminAccess, runAdminUserAction, type AdminActionName } from "@/lib/
 import { appendEmojiToText, buildCustomEmojiAsset } from "@/lib/custom-emojis";
 import { buildPostContentWithAffiliateProducts, extractAffiliateProductIds, stripAffiliateProductTokens } from "@/lib/post-affiliate-products";
 import { submitModerationReport } from "@/lib/report-client";
-import { buildYoutubeEmbedUrl, extractYoutubeVideoId } from "@/lib/youtube-media";
+import { buildYoutubeEmbedUrl, extractYoutubeVideoId, normalizeMusicPlayerUrls } from "@/lib/youtube-media";
 import {
   DEFAULT_BACKGROUND_COLOR,
   DEFAULT_FONT_STYLE,
@@ -41,6 +41,7 @@ import {
 import { resolveProfileUsername, sanitizeUsernameInput } from "@/lib/profile-identity";
 import { canAccessSmokeLounge, normalizeSellerProducts, type VerifiedSellerContactRequestStatus } from "@/lib/verified-seller";
 import type { SellerProduct } from "@/types/database";
+import { useMusicPlayerContext } from "@/app/MusicPlayerContext";
 const LightboxModal = dynamic(() => import("../../../LightboxModal"), { ssr: false });
 
 const DEFAULT_BANNER_URL = "https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=1400&q=80";
@@ -288,6 +289,7 @@ export default function ProfileEditor() {
   const [reportReason, setReportReason] = useState("");
   const [reportStatus, setReportStatus] = useState<string | null>(null);
   const params = useParams<{ username: string }>();
+  const { setIsVisible: setMusicPlayerVisible } = useMusicPlayerContext();
   const router = useRouter();
   const searchParams = useSearchParams();
   const shouldAutoOpenEditor = searchParams.get("edit") === "1";
@@ -364,6 +366,7 @@ export default function ProfileEditor() {
   const commentTextAreaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const [interactionBusyPostId, setInteractionBusyPostId] = useState<string | null>(null);
   const [songInput, setSongInput] = useState("");
+  const [isAddingToPlayer, setIsAddingToPlayer] = useState(false);
   const [playerSong, setPlayerSong] = useState<PlaylistSong | null>(null);
   const [isPlayerExpanded, setIsPlayerExpanded] = useState(false);
   const [videoTitles, setVideoTitles] = useState<Record<string, string>>({});
@@ -1004,6 +1007,44 @@ export default function ProfileEditor() {
     }));
   };
 
+    const addSongsToMusicPlayer = async () => {
+      const rawCandidates = songInput
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+      if (!rawCandidates.length) {
+        setStatus({ type: "error", text: "Please paste at least one YouTube URL." });
+        return;
+      }
+
+      const normalized = normalizeMusicPlayerUrls(rawCandidates);
+      if (!normalized.length) {
+        setStatus({ type: "error", text: "Only valid YouTube video or playlist URLs can be added to the music player." });
+        return;
+      }
+
+      setIsAddingToPlayer(true);
+      setStatus(null);
+      try {
+        const response = await fetch("/api/profile/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ music_player_urls: normalized }),
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(body?.error || "Could not save to music player.");
+        }
+        setSongInput("");
+        setStatus({ type: "success", text: `${normalized.length} song${normalized.length > 1 ? "s" : ""} added to your music player.` });
+      } catch (error: any) {
+        setStatus({ type: "error", text: typeof error?.message === "string" ? error.message : "Could not save to music player." });
+      } finally {
+        setIsAddingToPlayer(false);
+      }
+    };
+
   const handleFollowToggle = async () => {
     if (!profileUserId) return;
     if (!session?.user) {
@@ -1118,6 +1159,7 @@ export default function ProfileEditor() {
         controller.signal
       );
       setEditing(false);
+      setMusicPlayerVisible(draft.show_music_player);
       const savedUsername = resolveProfileUsername(refreshedProfile?.username, nextUsername);
       if (savedUsername && routeUsername !== savedUsername) {
         router.replace(`/profile/${encodeURIComponent(savedUsername)}`);
@@ -2578,21 +2620,36 @@ export default function ProfileEditor() {
                     <Music2 className="h-4 w-4 text-cyan-300" />
                     <span className="text-sm font-semibold">YouTube Music Playlist</span>
                   </div>
-                  <p className="mb-3 text-xs text-cyan-100/70">Add one YouTube video URL per line, then click Add Song.</p>
+                    <p className="mb-1 text-xs text-cyan-100/70">Paste one or more YouTube URLs, then choose where to add them:</p>
+                    <ul className="mb-3 ml-3 list-disc text-xs text-cyan-100/55 space-y-0.5">
+                      <li><span className="text-cyan-200 font-medium">Add to My Profile Music</span> — embedded videos shown on your profile page (saved when you click Save Profile below)</li>
+                      <li><span className="text-cyan-200 font-medium">Add to Global Music Player</span> — your personal floating music player playlist (saved immediately)</li>
+                    </ul>
                   <textarea
                     className="min-h-24 w-full rounded-2xl border border-white/15 bg-black/30 px-4 py-3 text-white outline-none focus:border-cyan-300/50"
                     value={songInput}
                     onChange={(e) => setSongInput(e.target.value)}
-                    placeholder="https://www.youtube.com/watch?v=..."
+                      placeholder="Paste YouTube video or playlist URLs, one per line"
                   />
-                  <button
-                    type="button"
-                    className="mt-3 inline-flex items-center gap-2 rounded-full border border-cyan-300/40 bg-cyan-300/15 px-4 py-2 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-300/25"
-                    onClick={addSongsToDraft}
-                  >
-                    <Plus className="h-4 w-4" />
-                    Add Song
-                  </button>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-2 rounded-full border border-cyan-300/40 bg-cyan-300/15 px-4 py-2 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-300/25 disabled:opacity-60"
+                        onClick={addSongsToDraft}
+                      >
+                        <Plus className="h-4 w-4" />
+                        Add to My Profile Music
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-2 rounded-full border border-violet-400/40 bg-violet-500/15 px-4 py-2 text-sm font-semibold text-violet-100 transition hover:bg-violet-500/25 disabled:opacity-60"
+                        onClick={() => void addSongsToMusicPlayer()}
+                        disabled={isAddingToPlayer}
+                      >
+                        <Plus className="h-4 w-4" />
+                        {isAddingToPlayer ? "Saving..." : "Add to Global Music Player"}
+                      </button>
+                    </div>
 
                   {(draft.youtube_urls || []).length > 0 ? (
                     <div className="mt-4 space-y-2">

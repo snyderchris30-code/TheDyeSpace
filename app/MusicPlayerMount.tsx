@@ -1,25 +1,19 @@
 "use client";
 import dynamic from 'next/dynamic';
-import { useMemo } from 'react';
 import { usePathname } from 'next/navigation';
+import { useMusicPlayerContext } from './MusicPlayerContext';
 
 const GlobalMusicPlayer = dynamic(() => import('./(main)/GlobalMusicPlayer'), { ssr: false });
 
+const AUTH_PATHS_RE = /^(?:\/login|\/signup|\/forgot-password|\/reset-password|\/confirm)(?:$|\/)/;
+
 export default function MusicPlayerMount() {
   const pathname = usePathname() || '';
+  const { isVisible } = useMusicPlayerContext();
 
-  const show = useMemo(() => {
-    const hideOnAuthPage = /^(?:\/login|\/signup|\/forgot-password|\/reset-password|\/confirm)(?:$|\/)/.test(pathname);
-    if (hideOnAuthPage) {
-      return false;
-    }
+  if (AUTH_PATHS_RE.test(pathname) || !isVisible) {
+    return null;
+  }
 
-    try {
-      return window.localStorage.getItem('dyespace.music_player_visible') !== 'false';
-    } catch {
-      return false;
-    }
-  }, [pathname]);
-
-  return show ? <GlobalMusicPlayer /> : null;
+  return <GlobalMusicPlayer />;
 }

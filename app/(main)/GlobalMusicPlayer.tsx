@@ -652,8 +652,8 @@ export default function GlobalMusicPlayer() {
   return (
     <>
       <div ref={playerMountRef} className="pointer-events-none absolute h-px w-px overflow-hidden opacity-0" aria-hidden="true" />
-      <div className="fixed bottom-4 right-4 z-[9998] w-[min(92vw,24rem)]">
-        <div className="overflow-hidden rounded-[1.75rem] border border-cyan-300/30 bg-[linear-gradient(135deg,rgba(6,12,24,0.94),rgba(10,20,34,0.92),rgba(8,28,31,0.9))] shadow-[0_24px_60px_rgba(0,0,0,0.42)] backdrop-blur-xl">
+      <div className="fixed bottom-6 right-4 z-[9998] w-[min(92vw,22rem)] max-h-[85vh] flex flex-col">
+        <div className="flex flex-col overflow-hidden rounded-[1.75rem] border border-cyan-300/25 bg-[linear-gradient(135deg,rgba(6,12,24,0.78),rgba(10,20,34,0.75),rgba(8,28,31,0.72))] shadow-[0_12px_40px_rgba(0,0,0,0.28)] backdrop-blur-2xl max-h-[85vh] overflow-y-auto">
           <div className="flex items-center justify-between gap-3 border-b border-cyan-300/15 px-4 py-3">
             <div className="min-w-0">
               <p className="text-[10px] uppercase tracking-[0.35em] text-cyan-300/75">Music Player</p>
@@ -753,7 +753,7 @@ export default function GlobalMusicPlayer() {
 
               {!isEditorMode ? (
                 <div className="rounded-[1.35rem] border border-cyan-300/20 bg-black/20 p-3">
-                  <label className="mb-2 block text-[11px] uppercase tracking-[0.24em] text-cyan-300/75">Music Player Editor</label>
+                    <label className="mb-2 block text-[11px] uppercase tracking-[0.24em] text-cyan-300/75">My Music Player</label>
                   <button
                     type="button"
                     className="inline-flex items-center justify-center gap-2 rounded-full border border-cyan-300/35 bg-cyan-300/15 px-4 py-2 text-sm font-semibold text-cyan-50 hover:bg-cyan-300/25"
@@ -762,11 +762,11 @@ export default function GlobalMusicPlayer() {
                     <Plus className="h-4 w-4" />
                     Add Songs
                   </button>
-                  <p className="mt-2 text-[11px] text-cyan-100/65">Manage your YouTube or Spotify playlists in the editor. This player uses the official YouTube embed API and keeps playback running while you scroll, switch pages, or hide this panel.</p>
+                    <p className="mt-2 text-[11px] text-cyan-100/65">Add YouTube or Spotify links to your personal music player. Your playlist follows you across the site — add profile videos separately in your profile editor.</p>
                 </div>
               ) : (
                 <div className="rounded-[1.35rem] border border-cyan-300/20 bg-black/20 p-4">
-                  <label className="mb-2 block text-xs uppercase tracking-[0.24em] text-cyan-300/75">Add YouTube Links</label>
+                  <label className="mb-2 block text-xs uppercase tracking-[0.24em] text-cyan-300/75">Add to My Music Player</label>
                   <textarea
                     className="min-h-20 w-full rounded-2xl border border-cyan-300/25 bg-black/35 px-4 py-3 text-cyan-50 outline-none transition focus:border-cyan-300/55"
                     placeholder="Paste YouTube video or playlist URLs, one per line"
