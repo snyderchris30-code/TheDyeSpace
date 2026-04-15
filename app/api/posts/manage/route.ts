@@ -2,40 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { ADMIN_USER_UID } from "@/lib/admin-actions";
+import { resolveShopListingContext } from "@/lib/shop-listings";
 import { normalizeSellerProducts } from "@/lib/verified-seller";
-
-function resolveShopListingContext(postId: string, sellerUserId?: string | null) {
-  if (!postId.startsWith("shop-product-")) {
-    return null;
-  }
-
-  const suffix = postId.slice("shop-product-".length);
-  if (!suffix) {
-    return null;
-  }
-
-  if (sellerUserId) {
-    const sellerPrefix = `${sellerUserId}-`;
-    if (suffix.startsWith(sellerPrefix)) {
-      const productId = suffix.slice(sellerPrefix.length);
-      return productId ? { sellerUserId, productId } : null;
-    }
-    return { sellerUserId, productId: suffix };
-  }
-
-  const separatorIndex = suffix.indexOf("-");
-  if (separatorIndex <= 0) {
-    return null;
-  }
-
-  const parsedSellerUserId = suffix.slice(0, separatorIndex);
-  const productId = suffix.slice(separatorIndex + 1);
-  if (!parsedSellerUserId || !productId) {
-    return null;
-  }
-
-  return { sellerUserId: parsedSellerUserId, productId };
-}
 
 function createAdminClient() {
   const serviceUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;

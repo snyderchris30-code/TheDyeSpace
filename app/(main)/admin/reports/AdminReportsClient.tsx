@@ -15,6 +15,7 @@ type ModerationReport = {
   postId: string | null;
   deletedAt: string | null;
   targetMissing: boolean;
+  isShopListing?: boolean;
   preview: string;
   parentPostPreview: string | null;
   reporter: {
@@ -372,7 +373,7 @@ export default function AdminReportsClient() {
       }
 
       setReports((current) => current.filter((item) => !(item.type === report.type && item.targetId === report.targetId)));
-      setStatus({ type: "success", text: report.type === "post" ? "Reported post removed and cleared from the queue." : "Reported comment removed and cleared from the queue." });
+      setStatus({ type: "success", text: report.type === "post" ? (report.isShopListing ? "Reported For Sale item removed and cleared from the queue." : "Reported post removed and cleared from the queue.") : "Reported comment removed and cleared from the queue." });
     } catch (deleteError: any) {
       setStatus({
         type: "error",

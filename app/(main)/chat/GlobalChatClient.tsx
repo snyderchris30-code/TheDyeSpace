@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ImagePlus, Mic, Users as UsersIcon } from "lucide-react";
+import { ImagePlus, Menu, Mic, Users as UsersIcon, X } from "lucide-react";
 import AsyncStateCard from "@/app/AsyncStateCard";
 import AdminActionMenu from "@/app/AdminActionMenu";
 import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
@@ -167,6 +167,7 @@ export default function GlobalChatClient() {
   const [editText, setEditText] = useState("");
   const [voiceParticipants, setVoiceParticipants] = useState<VoiceParticipant[]>([]);
   const [voiceJoined, setVoiceJoined] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
   const [verifiedSellerChats, setVerifiedSellerChats] = useState<VerifiedSellerChat[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -225,6 +226,133 @@ export default function GlobalChatClient() {
 
   const activeMessages = messagesByRoom[activeRoomMeta.id] || [];
   const voiceIsFull = !voiceJoined && voiceParticipants.length >= VOICE_LIMIT;
+
+  const closeMobileSidebar = useCallback(() => {
+    setMobileSidebarOpen(false);
+  }, []);
+
+  const sidebarContent = (
+    <>
+      <div className="border-b border-cyan-300/10 px-4 py-4 sm:px-5 sm:py-5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-cyan-300/80">The Dye Chat</p>
+        <h2 className="mt-2 text-lg font-semibold text-slate-100 sm:text-xl">Channels</h2>
+        <p className="mt-1 text-xs text-slate-400 sm:text-sm">Realtime rooms, voice, and seller chats</p>
+      </div>
+
+      <div className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
+        <section>
+          <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.26em] text-slate-500">Text Channels</p>
+          <div className="space-y-2">
+            {visibleRooms.map((room) => {
+              const active = activePanel.kind === "text" && room.id === activePanel.roomId;
+              const unreadCount = unreadByRoom[room.id];
+
+              return (
+                <button
+                  key={room.id}
+                  type="button"
+                  onClick={() => {
+                    setActivePanel({ kind: "text", roomId: room.id });
+                    closeMobileSidebar();
+                  }}
+                  className={`group flex w-full items-center justify-between rounded-2xl border px-3 py-3 text-left transition-all duration-200 ${
+                    active
+                      ? "border-cyan-200/40 bg-cyan-300/12 shadow-[0_0_0_1px_rgba(34,211,238,0.35),0_0_26px_rgba(34,211,238,0.16)]"
+                      : `border-slate-700/60 bg-slate-900/55 hover:-translate-y-[1px] hover:border-slate-500/80 ${room.sidebarGlowClassName}`
+                  }`}
+                >
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${room.dotClassName}`} />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold text-slate-100">{room.name}</span>
+                      <span className="block truncate text-xs text-slate-400">{room.subtitle}</span>
+                    </span>
+                  </span>
+                  {unreadCount > 0 ? (
+                    <span className="inline-flex min-w-6 items-center justify-center rounded-full border border-cyan-200/40 bg-cyan-400/20 px-2 py-0.5 text-[11px] font-semibold text-cyan-100">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <section>
+          <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.26em] text-slate-500">Voice Chat</p>
+          <button
+            type="button"
+            onClick={() => {
+              setActivePanel({ kind: "voice" });
+              closeMobileSidebar();
+            }}
+            className={`group flex w-full items-center justify-between rounded-2xl border px-3 py-3 text-left transition-all duration-200 ${
+              activePanel.kind === "voice"
+                ? "border-fuchsia-200/40 bg-fuchsia-300/10 shadow-[0_0_0_1px_rgba(244,114,182,0.3),0_0_26px_rgba(217,70,239,0.15)]"
+                : "border-slate-700/60 bg-slate-900/55 hover:-translate-y-[1px] hover:border-fuchsia-300/40"
+            }`}
+          >
+            <span className="flex min-w-0 items-center gap-3">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full border border-fuchsia-300/35 bg-fuchsia-500/15 text-fuchsia-100">
+                <Mic className="h-3.5 w-3.5" />
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold text-slate-100">Voice Chat</span>
+                <span className="block truncate text-xs text-slate-400">Max 6 people live</span>
+              </span>
+            </span>
+            <span className="inline-flex min-w-14 items-center justify-center rounded-full border border-fuchsia-300/35 bg-fuchsia-500/15 px-2 py-0.5 text-[11px] font-semibold text-fuchsia-100">
+              {voiceParticipants.length}/{VOICE_LIMIT}
+            </span>
+          </button>
+          {voiceIsFull ? (
+            <p className="mt-2 rounded-xl border border-rose-300/25 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-100">Voice Chat Full</p>
+          ) : null}
+        </section>
+
+        <section>
+          <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.26em] text-slate-500">Verified Seller Chats</p>
+          <div className="space-y-2">
+            {visibleVerifiedSellerChats.length === 0 ? (
+              <div className="rounded-2xl border border-slate-700/60 bg-slate-900/50 px-3 py-3 text-xs text-slate-400">
+                No verified seller chats are visible right now.
+              </div>
+            ) : (
+              visibleVerifiedSellerChats.map((seller) => (
+                <button
+                  key={seller.id}
+                  type="button"
+                  onClick={() => {
+                    if (!seller.username) return;
+                    closeMobileSidebar();
+                    window.location.href = `/profile/${encodeURIComponent(seller.username)}/fan-chat`;
+                  }}
+                  className="group flex w-full items-center justify-between rounded-2xl border border-slate-700/60 bg-slate-900/55 px-3 py-3 text-left transition-all duration-200 hover:-translate-y-[1px] hover:border-fuchsia-300/40 hover:shadow-[0_0_0_1px_rgba(217,70,239,0.18),0_0_24px_rgba(217,70,239,0.1)]"
+                >
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-fuchsia-300" />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold text-slate-100">
+                        {seller.display_name || seller.username || "Verified Seller"}
+                      </span>
+                      <span className="block truncate text-xs text-slate-400">
+                        @{seller.username}
+                        {seller.ghost_ridin === true && (isAdmin || seller.id === user?.id) ? " • Ghost Rider hidden" : " • Fan chat"}
+                      </span>
+                    </span>
+                  </span>
+                  <span className="rounded-full border border-fuchsia-300/30 bg-fuchsia-500/10 px-2 py-0.5 text-[10px] font-semibold text-fuchsia-100">
+                    Join
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        </section>
+      </div>
+    </>
+  );
 
   const ensureProfileBuckets = useCallback(async () => {
     const response = await fetch("/api/storage/profile-buckets", { method: "POST" });
@@ -661,14 +789,50 @@ export default function GlobalChatClient() {
 
   return (
     <>
-      <div className="relative h-[calc(100dvh-5.75rem)] min-h-[720px] overflow-hidden rounded-[2rem] border border-cyan-300/20 bg-slate-950/80 shadow-[0_24px_90px_rgba(0,0,0,0.55)] backdrop-blur-xl max-md:h-auto max-md:min-h-[calc(100dvh-6.5rem)]">
+      <div className="relative h-[100dvh] min-h-[100dvh] overflow-hidden bg-slate-950 text-slate-100 lg:h-[calc(100dvh-5.75rem)] lg:min-h-[720px] lg:rounded-[2rem] lg:border lg:border-cyan-300/20 lg:bg-slate-950/80 lg:shadow-[0_24px_90px_rgba(0,0,0,0.55)] lg:backdrop-blur-xl">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_10%,rgba(45,212,191,0.12),transparent_38%),radial-gradient(circle_at_90%_0%,rgba(244,114,182,0.10),transparent_30%),radial-gradient(circle_at_100%_100%,rgba(34,211,238,0.10),transparent_40%)]" />
+
+        <button
+          type="button"
+          onClick={() => setMobileSidebarOpen(true)}
+          className="absolute left-1/2 top-3 z-30 flex -translate-x-1/2 items-center justify-center rounded-full border border-slate-700 bg-black/70 px-4 py-2 text-slate-100 shadow-lg backdrop-blur-sm transition hover:border-cyan-300/50 lg:hidden"
+          aria-label="Open chat sidebar"
+        >
+          <Menu className="h-4 w-4" />
+        </button>
+
+        {mobileSidebarOpen ? (
+          <button
+            type="button"
+            aria-label="Close sidebar overlay"
+            className="absolute inset-0 z-40 bg-black/65 lg:hidden"
+            onClick={closeMobileSidebar}
+          />
+        ) : null}
+
+        <aside
+          className={`absolute inset-y-0 left-0 z-50 flex w-[88vw] max-w-[340px] flex-col border-r border-cyan-300/20 bg-slate-950/95 shadow-[0_20px_60px_rgba(0,0,0,0.55)] backdrop-blur-xl transition-transform duration-300 lg:hidden ${
+            mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
+          <div className="flex items-center justify-end border-b border-cyan-300/10 px-3 py-3">
+            <button
+              type="button"
+              onClick={closeMobileSidebar}
+              className="rounded-full border border-slate-700 bg-black/40 p-2 text-slate-100 hover:border-cyan-300/50"
+              aria-label="Close chat sidebar"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          {sidebarContent}
+        </aside>
 
         <div className="relative grid h-full min-h-0 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_240px]">
           <section className="flex h-full min-h-0 flex-col overflow-hidden bg-slate-950/45 lg:border-r lg:border-cyan-300/10">
             {activePanel.kind === "text" ? (
               <>
-                <header className="flex items-center justify-between border-b border-cyan-300/10 px-5 py-4">
+                <header className="flex items-center justify-between border-b border-cyan-300/10 px-4 pb-3 pt-14 sm:px-6 lg:px-5 lg:py-4">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className={`h-2.5 w-2.5 rounded-full ${activeRoomMeta.dotClassName}`} />
@@ -683,7 +847,7 @@ export default function GlobalChatClient() {
                   ) : null}
                 </header>
 
-                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 pb-6 sm:px-6">
+                <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 pb-6 sm:px-6">
                   {loading ? (
                     <AsyncStateCard compact loading title="Loading Chat" message="Syncing channels and recent messages." />
                   ) : error ? (
@@ -840,9 +1004,9 @@ export default function GlobalChatClient() {
                   )}
                 </div>
 
-                <footer className="border-t border-cyan-300/10 px-4 py-4 sm:px-6">
+                <footer className="border-t border-cyan-300/10 px-3 pb-[max(env(safe-area-inset-bottom),0.6rem)] pt-3 sm:px-6 sm:py-4">
                   {user ? (
-                    <form onSubmit={sendMessage} className="space-y-3">
+                    <form onSubmit={sendMessage} className="space-y-2">
                       {pendingPhotoUrls.length ? (
                         <div className="flex flex-wrap gap-2">
                           {pendingPhotoUrls.map((photoUrl) => (
@@ -860,15 +1024,15 @@ export default function GlobalChatClient() {
                         </div>
                       ) : null}
 
-                      <div className="flex items-end gap-3">
+                      <div className="flex items-end gap-2 sm:gap-3">
                         <div className="relative flex-1">
                           <textarea
-                            className="max-h-32 min-h-[48px] w-full resize-y rounded-2xl border border-cyan-300/25 bg-black/35 px-4 py-3 text-sm text-cyan-100 outline-none transition focus:border-cyan-300/55 focus:ring-2 focus:ring-cyan-400/35"
+                            className="max-h-32 min-h-[40px] w-full resize-y rounded-xl border border-slate-700 bg-black/45 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-300/55 focus:ring-2 focus:ring-cyan-400/35 sm:min-h-[48px] sm:rounded-2xl sm:px-4 sm:py-3"
                             value={input}
                             onChange={(event) => setInput(event.target.value)}
                             placeholder={`Message ${activeRoomMeta.name}`}
                             maxLength={500}
-                            rows={2}
+                            rows={1}
                           />
                           <span className="pointer-events-none absolute bottom-2 right-3 text-[10px] text-slate-500">{input.length}/500</span>
                         </div>
@@ -891,7 +1055,7 @@ export default function GlobalChatClient() {
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-300/30 bg-black/35 text-cyan-100 transition hover:border-cyan-300/55 hover:bg-cyan-500/20"
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-300/30 bg-black/35 text-cyan-100 transition hover:border-cyan-300/55 hover:bg-cyan-500/20 sm:h-12 sm:w-12 sm:rounded-2xl"
                           title="Upload photos"
                           disabled={uploadingPhotos}
                         >
@@ -900,7 +1064,7 @@ export default function GlobalChatClient() {
 
                         <button
                           type="submit"
-                          className="rounded-2xl bg-gradient-to-br from-cyan-400 via-teal-400 to-emerald-400 px-4 py-3 text-sm font-semibold text-slate-950 shadow-[0_10px_30px_rgba(20,184,166,0.35)] transition hover:-translate-y-[1px] hover:brightness-110 disabled:opacity-60"
+                          className="rounded-xl bg-gradient-to-br from-cyan-400 via-teal-400 to-emerald-400 px-3 py-2 text-sm font-semibold text-slate-950 shadow-[0_10px_30px_rgba(20,184,166,0.35)] transition hover:-translate-y-[1px] hover:brightness-110 disabled:opacity-60 sm:rounded-2xl sm:px-4 sm:py-3"
                           disabled={uploadingPhotos || (!input.trim() && pendingPhotoUrls.length === 0)}
                         >
                           {uploadingPhotos ? "Uploading..." : "Send"}
@@ -914,7 +1078,7 @@ export default function GlobalChatClient() {
               </>
             ) : (
               <>
-                <header className="flex items-center justify-between border-b border-fuchsia-300/15 px-5 py-4">
+                <header className="flex items-center justify-between border-b border-fuchsia-300/15 px-4 pb-3 pt-14 sm:px-6 lg:px-5 lg:py-4">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <Mic className="h-4 w-4 text-fuchsia-200" />
@@ -975,118 +1139,8 @@ export default function GlobalChatClient() {
             )}
           </section>
 
-          <aside className="flex h-full min-h-0 flex-col border-t border-cyan-300/10 bg-slate-950/90 lg:border-l lg:border-t-0 lg:border-cyan-300/10">
-            <div className="border-b border-cyan-300/10 px-5 py-5">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-cyan-300/80">The Dye Chat</p>
-              <h2 className="mt-2 text-xl font-semibold text-slate-100">Channels</h2>
-              <p className="mt-1 text-sm text-slate-400">Realtime rooms, voice, and seller chats</p>
-            </div>
-
-            <div className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
-              <section>
-                <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.26em] text-slate-500">Text Channels</p>
-                <div className="space-y-2">
-                  {visibleRooms.map((room) => {
-                    const active = activePanel.kind === "text" && room.id === activePanel.roomId;
-                    const unreadCount = unreadByRoom[room.id];
-
-                    return (
-                      <button
-                        key={room.id}
-                        type="button"
-                        onClick={() => setActivePanel({ kind: "text", roomId: room.id })}
-                        className={`group flex w-full items-center justify-between rounded-2xl border px-3 py-3 text-left transition-all duration-200 ${
-                          active
-                            ? "border-cyan-200/40 bg-cyan-300/12 shadow-[0_0_0_1px_rgba(34,211,238,0.35),0_0_26px_rgba(34,211,238,0.16)]"
-                            : `border-slate-700/60 bg-slate-900/55 hover:-translate-y-[1px] hover:border-slate-500/80 ${room.sidebarGlowClassName}`
-                        }`}
-                      >
-                        <span className="flex min-w-0 items-center gap-3">
-                          <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${room.dotClassName}`} />
-                          <span className="min-w-0">
-                            <span className="block truncate text-sm font-semibold text-slate-100">{room.name}</span>
-                            <span className="block truncate text-xs text-slate-400">{room.subtitle}</span>
-                          </span>
-                        </span>
-                        {unreadCount > 0 ? (
-                          <span className="inline-flex min-w-6 items-center justify-center rounded-full border border-cyan-200/40 bg-cyan-400/20 px-2 py-0.5 text-[11px] font-semibold text-cyan-100">
-                            {unreadCount > 99 ? "99+" : unreadCount}
-                          </span>
-                        ) : null}
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-
-              <section>
-                <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.26em] text-slate-500">Voice Chat</p>
-                <button
-                  type="button"
-                  onClick={() => setActivePanel({ kind: "voice" })}
-                  className={`group flex w-full items-center justify-between rounded-2xl border px-3 py-3 text-left transition-all duration-200 ${
-                    activePanel.kind === "voice"
-                      ? "border-fuchsia-200/40 bg-fuchsia-300/10 shadow-[0_0_0_1px_rgba(244,114,182,0.3),0_0_26px_rgba(217,70,239,0.15)]"
-                      : "border-slate-700/60 bg-slate-900/55 hover:-translate-y-[1px] hover:border-fuchsia-300/40"
-                  }`}
-                >
-                  <span className="flex min-w-0 items-center gap-3">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full border border-fuchsia-300/35 bg-fuchsia-500/15 text-fuchsia-100">
-                      <Mic className="h-3.5 w-3.5" />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-semibold text-slate-100">Voice Chat</span>
-                      <span className="block truncate text-xs text-slate-400">Max 6 people live</span>
-                    </span>
-                  </span>
-                  <span className="inline-flex min-w-14 items-center justify-center rounded-full border border-fuchsia-300/35 bg-fuchsia-500/15 px-2 py-0.5 text-[11px] font-semibold text-fuchsia-100">
-                    {voiceParticipants.length}/{VOICE_LIMIT}
-                  </span>
-                </button>
-                {voiceIsFull ? (
-                  <p className="mt-2 rounded-xl border border-rose-300/25 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-100">Voice Chat Full</p>
-                ) : null}
-              </section>
-
-              <section>
-                <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.26em] text-slate-500">Verified Seller Chats</p>
-                <div className="space-y-2">
-                  {visibleVerifiedSellerChats.length === 0 ? (
-                    <div className="rounded-2xl border border-slate-700/60 bg-slate-900/50 px-3 py-3 text-xs text-slate-400">
-                      No verified seller chats are visible right now.
-                    </div>
-                  ) : (
-                    visibleVerifiedSellerChats.map((seller) => (
-                      <button
-                        key={seller.id}
-                        type="button"
-                        onClick={() => {
-                          if (!seller.username) return;
-                          window.location.href = `/profile/${encodeURIComponent(seller.username)}/fan-chat`;
-                        }}
-                        className="group flex w-full items-center justify-between rounded-2xl border border-slate-700/60 bg-slate-900/55 px-3 py-3 text-left transition-all duration-200 hover:-translate-y-[1px] hover:border-fuchsia-300/40 hover:shadow-[0_0_0_1px_rgba(217,70,239,0.18),0_0_24px_rgba(217,70,239,0.1)]"
-                      >
-                        <span className="flex min-w-0 items-center gap-3">
-                          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-fuchsia-300" />
-                          <span className="min-w-0">
-                            <span className="block truncate text-sm font-semibold text-slate-100">
-                              {seller.display_name || seller.username || "Verified Seller"}
-                            </span>
-                            <span className="block truncate text-xs text-slate-400">
-                              @{seller.username}
-                              {seller.ghost_ridin === true && (isAdmin || seller.id === user?.id) ? " • Ghost Rider hidden" : " • Fan chat"}
-                            </span>
-                          </span>
-                        </span>
-                        <span className="rounded-full border border-fuchsia-300/30 bg-fuchsia-500/10 px-2 py-0.5 text-[10px] font-semibold text-fuchsia-100">
-                          Join
-                        </span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </section>
-            </div>
+          <aside className="hidden h-full min-h-0 flex-col border-l border-cyan-300/10 bg-slate-950/90 lg:flex">
+            {sidebarContent}
           </aside>
         </div>
       </div>

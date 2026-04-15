@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_USER_UID } from "@/lib/admin-actions";
 import { createAdminClient } from "@/lib/admin-utils";
 import { sendPushNotificationsForSources } from "@/lib/push-notifications";
+import { isUuid, resolveShopListingContext } from "@/lib/shop-listings";
 import { applyRateLimit, getClientIp, hasSuspiciousInput, sanitizeUserText } from "@/lib/security/request-guards";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { normalizeSellerProducts } from "@/lib/verified-seller";
 
 type ReportType = "post" | "comment" | "user";
 
@@ -15,9 +17,12 @@ type ReportBody = {
 
 type ReportTargetContext = {
   postId: string | null;
+  reportedId: string | null;
+  reportedKey: string;
   targetHandle: string | null;
   targetUserId: string | null;
   contentUrl: string;
+  isShopListing: boolean;
 };
 
 function normalizeHandle(value: string | null | undefined) {
@@ -80,6 +85,49 @@ async function resolveReportTargetContext(
   targetId: string
 ): Promise<ReportTargetContext> {
   if (type === "post") {
+    const shopListingContext = resolveShopListingContext(targetId);
+    if (shopListingContext) {
+      const { data: sellerProfile, error: sellerProfileError } = await adminClient
+        .from("profiles")
+        .select("id,username,display_name,theme_settings")
+        .eq("id", shopListingContext.sellerUserId)
+        .limit(1)
+        .maybeSingle<{
+          id: string;
+          username: string | null;
+          display_name: string | null;
+          theme_settings: Record<string, unknown> | null;
+        }>();
+
+      if (sellerProfileError) {
+        throw sellerProfileError;
+      }
+
+      if (!sellerProfile) {
+        throw new Error("That seller listing could not be found.");
+      }
+
+      const shopProducts = normalizeSellerProducts(sellerProfile.theme_settings?.shop_products);
+      const product = shopProducts.find((candidate) => candidate.id === shopListingContext.productId);
+      if (!product) {
+        throw new Error("That seller listing could not be found.");
+      }
+
+      const username = normalizeHandle(sellerProfile.username);
+
+      return {
+        postId: null,
+        reportedId: null,
+        reportedKey: targetId,
+        targetHandle: username ?? normalizeHandle(sellerProfile.display_name),
+        targetUserId: sellerProfile.id,
+        contentUrl: username
+          ? `/profile/${encodeURIComponent(username)}/shop`
+          : `/profile?userId=${encodeURIComponent(sellerProfile.id)}`,
+        isShopListing: true,
+      };
+    }
+
     const { data: post, error: postError } = await adminClient
       .from("posts")
       .select("id,user_id")
@@ -98,9 +146,12 @@ async function resolveReportTargetContext(
     if (!post.user_id) {
       return {
         postId: post.id,
+        reportedId: post.id,
+        reportedKey: post.id,
         targetHandle: null,
         targetUserId: null,
         contentUrl: `/explore?postId=${encodeURIComponent(post.id)}`,
+        isShopListing: false,
       };
     }
 
@@ -117,9 +168,12 @@ async function resolveReportTargetContext(
 
     return {
       postId: post.id,
+      reportedId: post.id,
+      reportedKey: post.id,
       targetHandle: normalizeHandle(author?.username) ?? normalizeHandle(author?.display_name),
       targetUserId: post.user_id,
       contentUrl: `/explore?postId=${encodeURIComponent(post.id)}`,
+      isShopListing: false,
     };
   }
 
@@ -143,11 +197,14 @@ async function resolveReportTargetContext(
 
     return {
       postId: null,
+      reportedId: profile.id,
+      reportedKey: profile.id,
       targetHandle: username ?? normalizeHandle(profile.display_name),
       targetUserId: profile.id,
       contentUrl: username
         ? `/profile/${encodeURIComponent(username)}`
         : `/explore?profileId=${encodeURIComponent(profile.id)}`,
+      isShopListing: false,
     };
   }
 
@@ -175,9 +232,12 @@ async function resolveReportTargetContext(
 
     return {
       postId: comment.post_id ?? null,
+      reportedId: comment.id,
+      reportedKey: comment.id,
       targetHandle: null,
       targetUserId: null,
       contentUrl: `/explore?${params.toString()}`,
+      isShopListing: false,
     };
   }
 
@@ -200,9 +260,12 @@ async function resolveReportTargetContext(
 
   return {
     postId: comment.post_id ?? null,
+    reportedId: comment.id,
+    reportedKey: comment.id,
     targetHandle: normalizeHandle(author?.username) ?? normalizeHandle(author?.display_name),
     targetUserId: comment.user_id,
     contentUrl: `/explore?${params.toString()}`,
+    isShopListing: false,
   };
 }
 
@@ -230,7 +293,9 @@ async function createAdminReportNotifications(
   const targetLabel = targetContext.targetHandle ? ` by @${targetContext.targetHandle}` : "";
   const message =
     reportType === "post"
-      ? `New report on post${targetLabel}. Open the Moderation Queue.`
+      ? targetContext.isShopListing
+        ? `New report on For Sale item${targetLabel}. Open the Moderation Queue.`
+        : `New report on post${targetLabel}. Open the Moderation Queue.`
       : reportType === "comment"
         ? `New report on comment${targetLabel}. Open the Moderation Queue.`
         : `New report on profile${targetLabel}. Open the Moderation Queue.`;
@@ -280,8 +345,8 @@ async function upsertReportWatcherSignal(
       {
         entity_type: entityType,
         entity_id: params.targetId,
-        related_post_id: params.reportType === "post" ? params.targetId : params.targetContext.postId,
-        related_comment_id: params.reportType === "comment" ? params.targetId : null,
+        related_post_id: params.targetContext.postId,
+        related_comment_id: params.reportType === "comment" ? params.targetContext.reportedId : null,
         related_profile_id: params.targetContext.targetUserId,
         actor_user_id: params.reporterId,
         content_url: params.targetContext.contentUrl,
@@ -377,7 +442,8 @@ export async function POST(req: NextRequest) {
       .from("reports")
       .insert({
         type,
-        reported_id: targetId,
+        reported_id: targetContext.reportedId,
+        reported_key: targetContext.reportedKey,
         reported_user_id: targetContext.targetUserId,
         reporter_id: user.id,
         reported_by: user.id,
@@ -401,7 +467,7 @@ export async function POST(req: NextRequest) {
     await upsertReportWatcherSignal(adminClient, {
       reportId: reportRow.id,
       reportType: type,
-      targetId,
+      targetId: targetContext.reportedKey,
       reporterId: user.id,
       reporterHandle,
       reason,

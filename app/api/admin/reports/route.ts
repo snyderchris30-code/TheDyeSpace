@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient, userIsAdmin } from "@/lib/admin-utils";
+import { isShopListingId, isUuid, resolveShopListingContext } from "@/lib/shop-listings";
 import { createRequestLogContext, logError, logInfo, logWarn } from "@/lib/server-logging";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { normalizeSellerProducts } from "@/lib/verified-seller";
 
 type ApiErrorCode =
   | "UNAUTHORIZED"
@@ -15,6 +17,7 @@ type RawReportRecord = {
   id: string;
   reporter_id: string | null;
   reported_id: string | null;
+  reported_key: string | null;
   reported_user_id: string | null;
   reason: string;
   created_at: string;
@@ -26,6 +29,7 @@ type ProfileSummary = {
   username: string | null;
   display_name: string | null;
   bio?: string | null;
+  theme_settings?: Record<string, unknown> | null;
 };
 
 type PostSummary = {
@@ -133,7 +137,7 @@ export async function GET(req: NextRequest) {
 
     const { data: rawReports, error: reportsError } = await adminClient
       .from("reports")
-      .select("id, reporter_id, reported_id, reported_user_id, reason, created_at, type")
+      .select("id, reporter_id, reported_id, reported_key, reported_user_id, reason, created_at, type")
       .order("created_at", { ascending: false });
 
     if (reportsError) {
@@ -155,7 +159,7 @@ export async function GET(req: NextRequest) {
 
         const normalizedTargetId = normalizedType === "user"
           ? report.reported_user_id
-          : report.reported_id;
+          : report.reported_key ?? report.reported_id;
 
         if (!normalizedType || !normalizedTargetId) {
           return null;
@@ -164,15 +168,24 @@ export async function GET(req: NextRequest) {
         return {
           ...report,
           type: normalizedType,
-          reported_id: normalizedTargetId,
+          reported_key: normalizedTargetId,
         };
       })
-      .filter((report): report is RawReportRecord & { reported_id: string; type: ModerationReportType } => Boolean(report));
+      .filter((report): report is RawReportRecord & { reported_key: string; type: ModerationReportType } => Boolean(report));
 
     const reporterIds = [...new Set(reports.map((report) => report.reporter_id).filter((value): value is string => Boolean(value)))];
-    const commentIds = reports.filter((report) => report.type === "comment").map((report) => report.reported_id);
-    const directPostIds = reports.filter((report) => report.type === "post").map((report) => report.reported_id);
-    const reportedUserIds = reports.filter((report) => report.type === "user").map((report) => report.reported_id);
+    const commentIds = reports
+      .filter((report) => report.type === "comment" && isUuid(report.reported_key))
+      .map((report) => report.reported_key);
+    const directPostIds = reports
+      .filter((report) => report.type === "post" && isUuid(report.reported_key))
+      .map((report) => report.reported_key);
+    const reportedUserIds = reports.filter((report) => report.type === "user").map((report) => report.reported_key);
+    const shopListingSellerIds = reports
+      .filter((report) => report.type === "post")
+      .map((report) => resolveShopListingContext(report.reported_key))
+      .filter((context): context is { sellerUserId: string; productId: string } => Boolean(context))
+      .map((context) => context.sellerUserId);
 
     const [{ data: commentsData, error: commentsError }] = await Promise.all([
       commentIds.length
@@ -225,7 +238,7 @@ export async function GET(req: NextRequest) {
       authorIds.length
         ? adminClient
             .from("profiles")
-            .select("id, username, display_name, bio")
+            .select("id, username, display_name, bio, theme_settings")
             .in("id", authorIds)
         : Promise.resolve({ data: [], error: null }),
     ]);
@@ -244,19 +257,33 @@ export async function GET(req: NextRequest) {
     const profilesById = new Map<string, ProfileSummary>(((profilesData || []) as ProfileSummary[]).map((profile) => [profile.id, profile]));
 
     const queue = reports.map((report) => {
+      const shopListingContext = report.type === "post" ? resolveShopListingContext(report.reported_key) : null;
       const reporter = report.reporter_id ? profilesById.get(report.reporter_id) : null;
-      const targetPost = report.type === "post" ? postsById.get(report.reported_id) : null;
-      const targetComment = report.type === "comment" ? commentsById.get(report.reported_id) : null;
-      const targetUserProfile = report.type === "user" ? profilesById.get(report.reported_id) : null;
+      const targetPost = report.type === "post" && !shopListingContext && isUuid(report.reported_key) ? postsById.get(report.reported_key) : null;
+      const targetComment = report.type === "comment" ? commentsById.get(report.reported_key) : null;
+      const targetUserProfile = report.type === "user" ? profilesById.get(report.reported_key) : null;
+      const shopListingProfile = shopListingContext ? profilesById.get(shopListingContext.sellerUserId) : null;
+      const shopListing = shopListingContext
+        ? normalizeSellerProducts(shopListingProfile?.theme_settings?.shop_products).find((product) => product.id === shopListingContext.productId) ?? null
+        : null;
       const targetAuthorId = report.type === "post"
-        ? targetPost?.user_id ?? null
+        ? shopListingContext
+          ? shopListingProfile?.id ?? shopListingContext.sellerUserId
+          : targetPost?.user_id ?? null
         : report.type === "comment"
           ? targetComment?.user_id ?? null
-          : report.reported_id;
+          : report.reported_key;
       const targetAuthor = targetAuthorId ? profilesById.get(targetAuthorId) : null;
       const parentPost = report.type === "comment" && targetComment?.post_id ? postsById.get(targetComment.post_id) : null;
       const preview = report.type === "post"
-        ? truncateText(targetPost?.content, 240) || "Image-only post"
+        ? shopListingContext
+          ? truncateText(
+              [shopListing?.title?.trim(), shopListing?.price ? `$${shopListing.price}` : null, shopListing?.description?.trim()]
+                .filter(Boolean)
+                .join(" • "),
+              240
+            ) || shopListing?.title || "Verified Seller Listing"
+          : truncateText(targetPost?.content, 240) || "Image-only post"
         : report.type === "comment"
           ? truncateText(targetComment?.content, 200) || "Comment content unavailable"
           : truncateText(targetUserProfile?.bio, 200) || `Profile report for ${targetUserProfile?.display_name ?? targetUserProfile?.username ?? "Unknown user"}`;
@@ -266,10 +293,11 @@ export async function GET(req: NextRequest) {
         type: report.type,
         reason: report.reason,
         createdAt: report.created_at,
-        targetId: report.reported_id,
-        postId: report.type === "post" ? report.reported_id : report.type === "comment" ? targetComment?.post_id ?? null : null,
+        targetId: report.reported_key,
+        postId: report.type === "post" ? (shopListingContext ? null : report.reported_key) : report.type === "comment" ? targetComment?.post_id ?? null : null,
         deletedAt: report.type === "post" ? targetPost?.deleted_at ?? null : report.type === "comment" ? targetComment?.deleted_at ?? null : null,
-        targetMissing: report.type === "post" ? !targetPost : report.type === "comment" ? !targetComment : !targetUserProfile,
+        targetMissing: report.type === "post" ? (shopListingContext ? !shopListing : !targetPost) : report.type === "comment" ? !targetComment : !targetUserProfile,
+        isShopListing: Boolean(shopListingContext),
         preview,
         parentPostPreview: report.type === "comment" ? truncateText(parentPost?.content, 160) || "Original post unavailable" : null,
         reporter: {
@@ -342,7 +370,7 @@ export async function PATCH(req: NextRequest) {
       const { error } = await adminClient
         .from("reports")
         .delete()
-        .eq("reported_id", body.targetId)
+        .eq("reported_key", body.targetId)
         .eq("type", body.reportType);
 
       if (error) {
@@ -368,7 +396,7 @@ export async function PATCH(req: NextRequest) {
       const { error } = await adminClient
         .from("reports")
         .delete()
-        .or(`and(type.eq.user,reported_id.eq.${body.targetId}),reported_user_id.eq.${body.targetId}`);
+        .or(`and(type.eq.user,reported_key.eq.${body.targetId}),reported_user_id.eq.${body.targetId}`);
 
       if (error) {
         logError("admin/reports", "Failed to dismiss all user reports for target", error, {

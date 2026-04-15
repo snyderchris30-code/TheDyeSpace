@@ -103,6 +103,7 @@ export interface Report {
   reporter_id: string | null;
   reported_user_id: string | null;
   reported_id?: string | null;
+  reported_key?: string | null;
   reported_by?: string | null;
   type?: string | null;
   reason: string;
