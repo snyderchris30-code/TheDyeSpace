@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ImagePlus, Menu, Mic, Users as UsersIcon, X } from "lucide-react";
 import AsyncStateCard from "@/app/AsyncStateCard";
 import AdminActionMenu from "@/app/AdminActionMenu";
@@ -11,7 +12,8 @@ import { canAccessSmokeLounge } from "@/lib/verified-seller";
 import { canAccessPrivateRoom, type PrivateRoomAccessProfile } from "@/lib/private-rooms";
 
 type ChatRoomId = "smoke_room" | "smoke_room_2" | "psychonautics" | "admin_room";
-type ChatPanel = { kind: "text"; roomId: ChatRoomId } | { kind: "voice" };
+type RoomId = ChatRoomId | `fan_chat_${string}`;
+type ChatPanel = { kind: "text"; roomId: RoomId } | { kind: "voice" };
 
 type RoomDefinition = {
   id: ChatRoomId;
@@ -98,12 +100,19 @@ const ROOM_DEFINITIONS: RoomDefinition[] = [
   },
 ];
 
-function normalizeMessageRoom(room: string | null | undefined): ChatRoomId {
+function normalizeMessageRoom(room: string | null | undefined): RoomId {
   if (!room || room === "smoke_room") return "smoke_room";
   if (room === "smoke_room_2") return "smoke_room_2";
   if (room === "psychonautics") return "psychonautics";
   if (room === "admin_room") return "admin_room";
+  if (/^fan_chat_[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(room)) {
+    return room as RoomId;
+  }
   return "smoke_room";
+}
+
+function sellerRoomId(sellerId: string) {
+  return `fan_chat_${sellerId}` as RoomId;
 }
 
 function profileIsShadowBanned(profile?: ProfileFlags | null) {
@@ -141,13 +150,14 @@ function stripPhotoTokens(message: string | null | undefined) {
 }
 
 export default function GlobalChatClient() {
-  const [messagesByRoom, setMessagesByRoom] = useState<Record<ChatRoomId, ChatMessage[]>>({
+  const searchParams = useSearchParams();
+  const [messagesByRoom, setMessagesByRoom] = useState<Record<string, ChatMessage[]>>({
     smoke_room: [],
     smoke_room_2: [],
     psychonautics: [],
     admin_room: [],
   });
-  const [unreadByRoom, setUnreadByRoom] = useState<Record<ChatRoomId, number>>({
+  const [unreadByRoom, setUnreadByRoom] = useState<Record<string, number>>({
     smoke_room: 0,
     smoke_room_2: 0,
     psychonautics: 0,
@@ -212,6 +222,22 @@ export default function GlobalChatClient() {
     [isAdmin, user?.id, verifiedSellerChats]
   );
 
+  const visibleVerifiedSellerRoomIds = useMemo(
+    () => visibleVerifiedSellerChats.map((seller) => sellerRoomId(seller.id)),
+    [visibleVerifiedSellerChats]
+  );
+
+  const roomIsAccessible = useCallback(
+    (roomId: RoomId) => {
+      if (roomId.startsWith("fan_chat_")) {
+        return visibleVerifiedSellerRoomIds.includes(roomId);
+      }
+
+      return roomAccess[roomId as ChatRoomId];
+    },
+    [roomAccess, visibleVerifiedSellerRoomIds]
+  );
+
   const activeRoomId = useMemo(() => {
     if (activePanel.kind === "text") {
       return activePanel.roomId;
@@ -219,12 +245,35 @@ export default function GlobalChatClient() {
     return visibleRooms[0]?.id ?? "smoke_room";
   }, [activePanel, visibleRooms]);
 
+  const activeSellerChat = useMemo(
+    () => visibleVerifiedSellerChats.find((seller) => sellerRoomId(seller.id) === activeRoomId) ?? null,
+    [activeRoomId, visibleVerifiedSellerChats]
+  );
+
   const activeRoomMeta = useMemo(
     () => visibleRooms.find((room) => room.id === activeRoomId) ?? visibleRooms[0] ?? ROOM_DEFINITIONS[0],
     [activeRoomId, visibleRooms]
   );
 
-  const activeMessages = messagesByRoom[activeRoomMeta.id] || [];
+  const activeRoomLabel = useMemo(() => {
+    if (!activeSellerChat) {
+      return {
+        name: activeRoomMeta.name,
+        subtitle: activeRoomMeta.subtitle,
+        dotClassName: activeRoomMeta.dotClassName,
+        bubbleClassName: activeRoomMeta.bubbleClassName,
+      };
+    }
+
+    return {
+      name: `${activeSellerChat.display_name || activeSellerChat.username || "Verified Seller"} Fan Chat`,
+      subtitle: "Private verified seller chat",
+      dotClassName: "bg-fuchsia-300",
+      bubbleClassName: "from-fuchsia-500/18 to-cyan-500/12",
+    };
+  }, [activeRoomMeta, activeSellerChat]);
+
+  const activeMessages = messagesByRoom[activeRoomId] || [];
   const voiceIsFull = !voiceJoined && voiceParticipants.length >= VOICE_LIMIT;
 
   const closeMobileSidebar = useCallback(() => {
@@ -326,8 +375,9 @@ export default function GlobalChatClient() {
                   onClick={() => {
                     if (!seller.username) return;
                     closeMobileSidebar();
-                    window.location.href = `/profile/${encodeURIComponent(seller.username)}/fan-chat`;
+                    setActivePanel({ kind: "text", roomId: sellerRoomId(seller.id) });
                   }}
+                  aria-label={`Open ${seller.display_name || seller.username || "seller"} fan chat`}
                   className="group flex w-full items-center justify-between rounded-2xl border border-slate-700/60 bg-slate-900/55 px-3 py-3 text-left transition-all duration-200 hover:-translate-y-[1px] hover:border-fuchsia-300/40 hover:shadow-[0_0_0_1px_rgba(217,70,239,0.18),0_0_24px_rgba(217,70,239,0.1)]"
                 >
                   <span className="flex min-w-0 items-center gap-3">
@@ -362,14 +412,18 @@ export default function GlobalChatClient() {
   }, []);
 
   const fetchMessages = useCallback(async () => {
-    const roomFilters = ROOM_DEFINITIONS.filter((room) => roomAccess[room.id]);
+    const roomFilters = [
+      ...ROOM_DEFINITIONS.filter((room) => roomAccess[room.id]).map((room) => room.id),
+      ...visibleVerifiedSellerRoomIds,
+    ];
+
     if (!roomFilters.length) {
       setMessagesByRoom({ smoke_room: [], smoke_room_2: [], psychonautics: [], admin_room: [] });
       setLoading(false);
       return;
     }
 
-    const response = await fetch(`/api/chat/messages?rooms=${encodeURIComponent(roomFilters.map((room) => room.id).join(","))}`, {
+    const response = await fetch(`/api/chat/messages?rooms=${encodeURIComponent(roomFilters.join(","))}`, {
       cache: "no-store",
     });
     const body = await response.json().catch(() => ({}));
@@ -382,9 +436,9 @@ export default function GlobalChatClient() {
 
     setError(null);
 
-    const rows = (body.messages as ChatMessage[]).filter((msg) => roomAccess[normalizeMessageRoom(msg.room)]);
+    const rows = (body.messages as ChatMessage[]).filter((msg) => roomIsAccessible(normalizeMessageRoom(msg.room)));
 
-    const nextByRoom: Record<ChatRoomId, ChatMessage[]> = {
+    const nextByRoom: Record<string, ChatMessage[]> = {
       smoke_room: [],
       smoke_room_2: [],
       psychonautics: [],
@@ -396,12 +450,15 @@ export default function GlobalChatClient() {
       if (!isAdmin && msg.user_id !== user?.id && profileIsShadowBanned(msg.author)) {
         return;
       }
+      if (!nextByRoom[roomId]) {
+        nextByRoom[roomId] = [];
+      }
       nextByRoom[roomId].push(msg);
     });
 
     setMessagesByRoom(nextByRoom);
     setLoading(false);
-  }, [isAdmin, roomAccess, user?.id]);
+  }, [isAdmin, roomAccess, roomIsAccessible, user?.id, visibleVerifiedSellerRoomIds]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -479,9 +536,28 @@ export default function GlobalChatClient() {
 
   useEffect(() => {
     if (activePanel.kind === "text" && !visibleRooms.some((room) => room.id === activePanel.roomId)) {
-      setActivePanel({ kind: "text", roomId: visibleRooms[0]?.id ?? "smoke_room" });
+      if (!roomIsAccessible(activePanel.roomId)) {
+        setActivePanel({ kind: "text", roomId: visibleRooms[0]?.id ?? "smoke_room" });
+      }
     }
-  }, [activePanel, visibleRooms]);
+  }, [activePanel, roomIsAccessible, visibleRooms]);
+
+  useEffect(() => {
+    const requestedRoom = normalizeMessageRoom(searchParams.get("room"));
+    const requestedSeller = (searchParams.get("seller") || "").trim().toLowerCase();
+
+    if (requestedSeller) {
+      const seller = visibleVerifiedSellerChats.find((entry) => (entry.username || "").toLowerCase() === requestedSeller);
+      if (seller) {
+        setActivePanel({ kind: "text", roomId: sellerRoomId(seller.id) });
+        return;
+      }
+    }
+
+    if (requestedRoom && roomIsAccessible(requestedRoom)) {
+      setActivePanel({ kind: "text", roomId: requestedRoom });
+    }
+  }, [roomIsAccessible, searchParams, visibleVerifiedSellerChats]);
 
   useEffect(() => {
     void fetchMessages();
@@ -515,7 +591,7 @@ export default function GlobalChatClient() {
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages" }, (payload) => {
         const next = payload.new as ChatMessage;
         const roomId = normalizeMessageRoom(next.room);
-        if (!roomAccess[roomId]) return;
+        if (!roomIsAccessible(roomId)) return;
 
         if (next.user_id !== user?.id && (activePanel.kind !== "text" || roomId !== activePanel.roomId)) {
           setUnreadByRoom((prev) => ({ ...prev, [roomId]: prev[roomId] + 1 }));
@@ -537,7 +613,7 @@ export default function GlobalChatClient() {
       }
       supabase.removeChannel(channel);
     };
-  }, [activePanel, fetchMessages, roomAccess, user?.id]);
+  }, [activePanel, fetchMessages, roomIsAccessible, user?.id]);
 
   useEffect(() => {
     if (activePanel.kind === "text") {
@@ -840,10 +916,10 @@ export default function GlobalChatClient() {
                 <header className="flex items-center justify-between border-b border-cyan-300/10 px-4 pb-3 pt-14 sm:px-6 lg:px-5 lg:py-4">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className={`h-2.5 w-2.5 rounded-full ${activeRoomMeta.dotClassName}`} />
-                      <h1 className="truncate text-lg font-semibold text-slate-100">{activeRoomMeta.name}</h1>
+                      <span className={`h-2.5 w-2.5 rounded-full ${activeRoomLabel.dotClassName}`} />
+                      <h1 className="truncate text-lg font-semibold text-slate-100">{activeRoomLabel.name}</h1>
                     </div>
-                    <p className="mt-1 truncate text-xs text-slate-400">{activeRoomMeta.subtitle}</p>
+                    <p className="mt-1 truncate text-xs text-slate-400">{activeRoomLabel.subtitle}</p>
                   </div>
                   {adminActionStatus ? (
                     <div className="max-w-[52%] truncate rounded-xl border border-cyan-300/30 bg-cyan-500/10 px-3 py-1 text-xs text-cyan-100">
@@ -907,7 +983,7 @@ export default function GlobalChatClient() {
                                 className={`w-full rounded-2xl border px-3 py-2 text-sm leading-6 text-slate-100 shadow-[0_8px_24px_rgba(0,0,0,0.22)] transition-all duration-200 ${
                                   own
                                     ? "border-cyan-300/30 bg-gradient-to-br from-cyan-500/22 to-blue-500/16"
-                                    : `border-slate-700/70 bg-gradient-to-br ${activeRoomMeta.bubbleClassName}`
+                                    : `border-slate-700/70 bg-gradient-to-br ${activeRoomLabel.bubbleClassName}`
                                 }`}
                               >
                                 {editingMessageId === message.id ? (
@@ -1035,7 +1111,7 @@ export default function GlobalChatClient() {
                             className="max-h-32 min-h-[40px] w-full resize-y rounded-xl border border-slate-700 bg-black/45 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-cyan-300/55 focus:ring-2 focus:ring-cyan-400/35 sm:min-h-[48px] sm:rounded-2xl sm:px-4 sm:py-3"
                             value={input}
                             onChange={(event) => setInput(event.target.value)}
-                            placeholder={`Message ${activeRoomMeta.name}`}
+                            placeholder={`Message ${activeRoomLabel.name}`}
                             maxLength={500}
                             rows={1}
                           />

@@ -220,7 +220,7 @@ export default function ShopPage() {
 
   const sellerName = profile?.username || username || profile?.display_name || "Seller";
   const profileHref = username ? `/profile/${encodeURIComponent(username)}` : "/profile";
-  const fanChatHref = username ? `/profile/${encodeURIComponent(username)}/fan-chat` : "/profile";
+  const fanChatHref = username ? `/chat?seller=${encodeURIComponent(username)}` : "/chat";
   const manageShopHref = username ? `/profile/${encodeURIComponent(username)}/shop/manage` : null;
 
   const handleAdminAction = async (targetUserId: string, action: AdminActionName, durationHours?: number) => {

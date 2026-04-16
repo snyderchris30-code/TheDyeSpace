@@ -61,6 +61,11 @@ function buildRoomOrFilter(rooms: string[]) {
     .join(",");
 }
 
+function hasMissingColumnError(error: unknown, columnName: string) {
+  const text = typeof (error as any)?.message === "string" ? (error as any).message.toLowerCase() : "";
+  return text.includes("could not find") && text.includes(`'${columnName.toLowerCase()}'`);
+}
+
 async function loadAuthenticatedUser() {
   const supabase = await createSupabaseServerClient();
   const {
@@ -125,18 +130,38 @@ function canAccessChatRoom(room: string, userId: string | null, profile: ViewerP
 
 async function loadMessagesForRooms(dataClient: Awaited<ReturnType<typeof createChatDataClient>>, rooms: string[]) {
   const roomFilter = buildRoomOrFilter(rooms);
-  const query = dataClient
+  const queryWithRoom = dataClient
     .from("chat_messages")
     .select("id, user_id, content, created_at, room")
     .order("created_at", { ascending: true });
 
-  const response = roomFilter ? await query.or(roomFilter) : await query;
+  const responseWithRoom = roomFilter ? await queryWithRoom.or(roomFilter) : await queryWithRoom;
 
-  if (response.error) {
+  if (!responseWithRoom.error) {
+    return (responseWithRoom.data || []) as ChatMessageRow[];
+  }
+
+  if (!hasMissingColumnError(responseWithRoom.error, "room")) {
     return [] as ChatMessageRow[];
   }
 
-  return (response.data || []) as ChatMessageRow[];
+  if (!rooms.includes("smoke_room")) {
+    return [] as ChatMessageRow[];
+  }
+
+  const responseWithoutRoom = await dataClient
+    .from("chat_messages")
+    .select("id, user_id, content, created_at")
+    .order("created_at", { ascending: true });
+
+  if (responseWithoutRoom.error) {
+    return [] as ChatMessageRow[];
+  }
+
+  return ((responseWithoutRoom.data || []) as Array<Omit<ChatMessageRow, "room">>).map((row) => ({
+    ...row,
+    room: "smoke_room",
+  }));
 }
 
 async function loadAuthors(dataClient: Awaited<ReturnType<typeof createChatDataClient>>, messages: ChatMessageRow[]) {
@@ -233,6 +258,30 @@ export async function POST(req: NextRequest) {
       .limit(1)
       .maybeSingle<ChatMessageRow>();
 
+    if (error && hasMissingColumnError(error, "room")) {
+      if (room !== "smoke_room") {
+        return NextResponse.json({ error: "This room is temporarily unavailable." }, { status: 503 });
+      }
+
+      const fallbackInsert = await dataClient
+        .from("chat_messages")
+        .insert({
+          user_id: user.id,
+          content: message,
+        })
+        .select("id, user_id, content, created_at")
+        .limit(1)
+        .maybeSingle<Omit<ChatMessageRow, "room">>();
+
+      if (fallbackInsert.error || !fallbackInsert.data) {
+        throw fallbackInsert.error || new Error("Failed to save chat message.");
+      }
+
+      const inserted = { ...fallbackInsert.data, room: "smoke_room" } as ChatMessageRow;
+      const authors = await loadAuthors(dataClient, [inserted]);
+      return NextResponse.json({ message: serializeMessages([inserted], authors)[0] });
+    }
+
     if (error || !data) {
       throw error || new Error("Failed to save chat message.");
     }
@@ -263,12 +312,29 @@ export async function PATCH(req: NextRequest) {
     }
 
     const dataClient = await createChatDataClient();
-    const { data: existing, error: existingError } = await dataClient
+    let existing: { id: string; user_id: string; room: string | null } | null = null;
+    let existingError: any = null;
+
+    const existingWithRoom = await dataClient
       .from("chat_messages")
       .select("id, user_id, room")
       .eq("id", messageId)
-      .limit(1)
-      .maybeSingle<{ id: string; user_id: string; room: string | null }>();
+      .limit(1);
+
+    if (existingWithRoom.error && hasMissingColumnError(existingWithRoom.error, "room")) {
+      const fallbackExisting = await dataClient
+        .from("chat_messages")
+        .select("id, user_id")
+        .eq("id", messageId)
+        .limit(1)
+        .maybeSingle<{ id: string; user_id: string }>();
+
+      existingError = fallbackExisting.error;
+      existing = fallbackExisting.data ? { ...fallbackExisting.data, room: "smoke_room" } : null;
+    } else {
+      existingError = existingWithRoom.error;
+      existing = existingWithRoom.data as { id: string; user_id: string; room: string | null } | null;
+    }
 
     if (existingError || !existing) {
       return NextResponse.json({ error: "Message not found." }, { status: 404 });
@@ -278,13 +344,30 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { data, error } = await dataClient
+    const updateWithRoom = await dataClient
       .from("chat_messages")
       .update({ content: message })
       .eq("id", messageId)
       .select("id, user_id, content, created_at, room")
-      .limit(1)
-      .maybeSingle<ChatMessageRow>();
+      .limit(1);
+
+    let data: ChatMessageRow | null = null;
+    let error: any = updateWithRoom.error;
+
+    if (updateWithRoom.error && hasMissingColumnError(updateWithRoom.error, "room")) {
+      const fallbackUpdate = await dataClient
+        .from("chat_messages")
+        .update({ content: message })
+        .eq("id", messageId)
+        .select("id, user_id, content, created_at")
+        .limit(1)
+        .maybeSingle<Omit<ChatMessageRow, "room">>();
+
+      error = fallbackUpdate.error;
+      data = fallbackUpdate.data ? ({ ...fallbackUpdate.data, room: "smoke_room" } as ChatMessageRow) : null;
+    } else {
+      data = updateWithRoom.data as ChatMessageRow | null;
+    }
 
     if (error || !data) {
       throw error || new Error("Failed to update chat message.");

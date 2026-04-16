@@ -1549,7 +1549,7 @@ export default function ProfileEditor() {
     }
 
     try {
-      const inviteUrl = `${window.location.origin}/profile/${encodeURIComponent(displayUsername)}/fan-chat`;
+      const inviteUrl = `${window.location.origin}/chat?seller=${encodeURIComponent(displayUsername)}`;
       await navigator.clipboard.writeText(inviteUrl);
       setStatus({ type: "success", text: "Fan chat invite link copied." });
     } catch {
@@ -1999,7 +1999,7 @@ export default function ProfileEditor() {
                           </Link>
                         ) : null}
                         <Link
-                          href={`/profile/${encodeURIComponent(displayUsername)}/fan-chat`}
+                          href={`/chat?seller=${encodeURIComponent(displayUsername)}`}
                           className="inline-flex items-center justify-center rounded-2xl border border-fuchsia-300/60 bg-fuchsia-400/10 px-4 py-2 text-sm font-semibold text-fuchsia-100 transition hover:bg-fuchsia-400/15 hover:text-fuchsia-50"
                         >
                           My Fan Chat Group
@@ -2015,7 +2015,7 @@ export default function ProfileEditor() {
                         ) : null}
                         {viewerCanAccessSmokeLounge ? (
                           <Link
-                            href="/chat/smoke-room-2"
+                            href="/chat?room=smoke_room_2"
                             className="inline-flex items-center justify-center rounded-2xl border border-amber-300/60 bg-amber-400/10 px-4 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-400/15 hover:text-amber-50"
                           >
                             Join The Smoke Lounge 2.0

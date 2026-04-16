@@ -244,7 +244,7 @@ function SettingsContent() {
     }
 
     try {
-      const inviteUrl = `${window.location.origin}/profile/${encodeURIComponent(username)}/fan-chat`;
+      const inviteUrl = `${window.location.origin}/chat?seller=${encodeURIComponent(username)}`;
       await navigator.clipboard.writeText(inviteUrl);
       setMessage("Fan chat invite link copied.");
     } catch {
