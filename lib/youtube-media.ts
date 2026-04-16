@@ -121,9 +121,11 @@ export function buildYoutubeEmbedUrl(
     params.set("enablejsapi", "1");
   }
 
-  const safeOrigin = resolveYoutubeEmbedOrigin(options.origin);
-  if (safeOrigin) {
-    params.set("origin", safeOrigin);
+  if (options.enableJsApi) {
+    const safeOrigin = resolveYoutubeEmbedOrigin(options.origin);
+    if (safeOrigin) {
+      params.set("origin", safeOrigin);
+    }
   }
 
   const host = options.privacyEnhanced === false ? "https://www.youtube.com" : "https://www.youtube-nocookie.com";

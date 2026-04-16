@@ -2,16 +2,16 @@ import type { Metadata } from 'next';
 import { Audiowide, Bebas_Neue, Cormorant_Garamond, DM_Serif_Display, Inter, JetBrains_Mono, Orbitron, Playfair_Display, Space_Grotesk, Syne } from 'next/font/google';
 import MainLayoutClient from './MainLayoutClient';
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
-const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], variable: '--font-space-grotesk' });
-const bebasNeue = Bebas_Neue({ subsets: ['latin'], variable: '--font-bebas-neue', weight: '400' });
-const cormorantGaramond = Cormorant_Garamond({ subsets: ['latin'], variable: '--font-cormorant-garamond' });
-const dmSerifDisplay = DM_Serif_Display({ subsets: ['latin'], variable: '--font-dm-serif-display', weight: '400' });
-const orbitron = Orbitron({ subsets: ['latin'], variable: '--font-orbitron' });
-const playfairDisplay = Playfair_Display({ subsets: ['latin'], variable: '--font-playfair-display' });
-const syne = Syne({ subsets: ['latin'], variable: '--font-syne' });
-const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains-mono' });
-const audiowide = Audiowide({ subsets: ['latin'], variable: '--font-audiowide', weight: '400' });
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter', preload: false, display: 'swap' });
+const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], variable: '--font-space-grotesk', preload: false, display: 'swap' });
+const bebasNeue = Bebas_Neue({ subsets: ['latin'], variable: '--font-bebas-neue', weight: '400', preload: false, display: 'swap' });
+const cormorantGaramond = Cormorant_Garamond({ subsets: ['latin'], variable: '--font-cormorant-garamond', preload: false, display: 'swap' });
+const dmSerifDisplay = DM_Serif_Display({ subsets: ['latin'], variable: '--font-dm-serif-display', weight: '400', preload: false, display: 'swap' });
+const orbitron = Orbitron({ subsets: ['latin'], variable: '--font-orbitron', preload: false, display: 'swap' });
+const playfairDisplay = Playfair_Display({ subsets: ['latin'], variable: '--font-playfair-display', preload: false, display: 'swap' });
+const syne = Syne({ subsets: ['latin'], variable: '--font-syne', preload: false, display: 'swap' });
+const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains-mono', preload: false, display: 'swap' });
+const audiowide = Audiowide({ subsets: ['latin'], variable: '--font-audiowide', weight: '400', preload: false, display: 'swap' });
 
 export const metadata: Metadata = {
   title: 'TheDyeSpace',

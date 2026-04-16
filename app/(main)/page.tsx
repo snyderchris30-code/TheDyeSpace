@@ -224,6 +224,7 @@ export default function MainFeedPage() {
   const [adminActionStatus, setAdminActionStatus] = useState<string | null>(null);
   const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [installStatus, setInstallStatus] = useState<string | null>(null);
+  const [installAttempted, setInstallAttempted] = useState(false);
 
   const [deletedPostIds, setDeletedPostIds] = useState<Set<string>>(new Set());
 
@@ -249,8 +250,11 @@ export default function MainFeedPage() {
   }, []);
 
   const handleInstallApp = useCallback(async () => {
+    setInstallAttempted(true);
+
     if (!installPromptEvent) {
-      setInstallStatus("Install is not available yet on this device/browser.");
+      setInstallStatus("Install not supported in this browser. Try Chrome or Edge for best results.");
+      window.setTimeout(() => setInstallStatus(null), 3500);
       return;
     }
 
@@ -263,10 +267,10 @@ export default function MainFeedPage() {
         setInstallStatus("Install dismissed.");
       }
     } catch {
-      setInstallStatus("Install failed. Please try again.");
+      setInstallStatus("Install not supported in this browser. Try Chrome or Edge for best results.");
     } finally {
       setInstallPromptEvent(null);
-      window.setTimeout(() => setInstallStatus(null), 2500);
+      window.setTimeout(() => setInstallStatus(null), 3500);
     }
   }, [installPromptEvent]);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
@@ -620,6 +624,10 @@ export default function MainFeedPage() {
         </button>
         {installStatus ? (
           <p className="mt-2 text-sm text-emerald-200/90">{installStatus}</p>
+        ) : installAttempted && !installPromptEvent ? (
+          <p className="mt-2 text-sm text-emerald-200/90">
+            Install not supported in this browser. Try Chrome or Edge for best results.
+          </p>
         ) : null}
       </div>
       <div className="mb-4 sm:mb-6">

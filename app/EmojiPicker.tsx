@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 function isAdminUser() {
   if (typeof window === "undefined") return false;
   try {
-    const user = JSON.parse(localStorage.getItem("supabase.auth.token") || "{}")?.currentSession?.user;
+    const user = JSON.parse(window.localStorage.getItem("supabase.auth.token") || "{}")?.currentSession?.user;
     return user?.id === "794077c7-ad51-47cc-8c25-20171edfb017";
   } catch { return false; }
 }
@@ -79,12 +79,12 @@ function readStoredRecentlyUsedReactions() {
     return [] as string[];
   }
 
-  const stored = window.localStorage.getItem(RECENT_REACTIONS_STORAGE_KEY);
-  if (!stored) {
-    return [] as string[];
-  }
-
   try {
+    const stored = window.localStorage.getItem(RECENT_REACTIONS_STORAGE_KEY);
+    if (!stored) {
+      return [] as string[];
+    }
+
     const parsed = JSON.parse(stored) as string[];
     if (Array.isArray(parsed)) {
       return parsed.filter((item) => typeof item === "string");
@@ -149,15 +149,16 @@ export default function EmojiPicker({
       return;
     }
 
-    const handlePointerDown = (event: MouseEvent) => {
+    const eventOptions = { passive: true } as AddEventListenerOptions;
+    const handlePointerDown = (event: Event) => {
       if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
         setOpen(false);
       }
     };
 
-    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("pointerdown", handlePointerDown, eventOptions);
     return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("pointerdown", handlePointerDown, eventOptions);
     };
   }, [open]);
 
@@ -179,7 +180,11 @@ export default function EmojiPicker({
 
     setRecentlyUsed((previous) => {
       const next = [emojiFileName, ...previous.filter((item) => item !== emojiFileName)].slice(0, RECENT_REACTIONS_LIMIT);
-      window.localStorage.setItem(RECENT_REACTIONS_STORAGE_KEY, JSON.stringify(next));
+      try {
+        window.localStorage.setItem(RECENT_REACTIONS_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // Ignore storage failures in privacy-restricted browsing contexts.
+      }
       return next;
     });
   };

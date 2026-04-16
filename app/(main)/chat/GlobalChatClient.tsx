@@ -181,6 +181,8 @@ export default function GlobalChatClient() {
   const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
   const [verifiedSellerChats, setVerifiedSellerChats] = useState<VerifiedSellerChat[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const previousMessageCountRef = useRef<number>(0);
   const refreshTimerRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const voiceChannelRef = useRef<any>(null);
@@ -622,8 +624,32 @@ export default function GlobalChatClient() {
   }, [activePanel]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [activeMessages, activePanel]);
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const isAtBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight < 50;
+
+    const prevCount = previousMessageCountRef.current;
+    const currentCount = activeMessages.length;
+
+    // Only auto-scroll to bottom if: user was already at bottom AND a new message was added
+    if (isAtBottom && currentCount > prevCount) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+
+    previousMessageCountRef.current = currentCount;
+  }, [activeMessages]);
+
+  // Scroll to bottom when switching rooms
+  useEffect(() => {
+    if (activePanel.kind === "text") {
+      previousMessageCountRef.current = activeMessages.length;
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+      }, 0);
+    }
+  }, [activePanel]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -928,7 +954,7 @@ export default function GlobalChatClient() {
                   ) : null}
                 </header>
 
-                <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 pb-6 sm:px-6">
+                <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-4 pb-6 sm:px-6">
                   {loading ? (
                     <AsyncStateCard compact loading title="Loading Chat" message="Syncing channels and recent messages." />
                   ) : error ? (
