@@ -50,14 +50,10 @@ export default function FanChatRoomClient({ room, allowed, sellerDisplayName, se
   const fetchMessages = useCallback(async () => {
     if (!allowed) return;
     setLoading(true);
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from("chat_messages")
-      .select("*")
-      .eq("room", room)
-      .order("created_at", { ascending: true });
+    const response = await fetch(`/api/chat/messages?room=${encodeURIComponent(room)}`, { cache: "no-store" });
+    const body = await response.json().catch(() => ({}));
 
-    if (error || !data) {
+    if (!response.ok || !Array.isArray(body?.messages)) {
       setMessages([]);
       setError("Could not load chat messages right now. Please try again later.");
       setLoading(false);
@@ -65,28 +61,7 @@ export default function FanChatRoomClient({ room, allowed, sellerDisplayName, se
     }
 
     setError(null);
-    const rows = data as ChatMessage[];
-    const userIds = [...new Set(rows.map((row) => row.user_id).filter(Boolean))];
-
-    if (!userIds.length) {
-      setMessages(rows);
-      setLoading(false);
-      return;
-    }
-
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id,username,display_name,verified_badge,member_number")
-      .in("id", userIds);
-
-    const profileById = new Map<string, ProfileFlags>();
-    (profiles || []).forEach((profile) => {
-      if (profile && typeof profile.id === "string") {
-        profileById.set(profile.id, profile as ProfileFlags);
-      }
-    });
-
-    setMessages(rows.map((msg) => ({ ...msg, author: profileById.get(msg.user_id) ?? null })));
+    setMessages(body.messages as ChatMessage[]);
     setLoading(false);
   }, [allowed, room]);
 
@@ -138,7 +113,6 @@ export default function FanChatRoomClient({ room, allowed, sellerDisplayName, se
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       if (!input.trim() || !user) return;
-      const supabase = createClient();
       const text = input.trim();
       const optimistic: ChatMessage = {
         id: `opt-${Date.now()}`,
@@ -152,24 +126,37 @@ export default function FanChatRoomClient({ room, allowed, sellerDisplayName, se
       setMessages((prev) => [...prev, optimistic]);
       setInput("");
 
-      const { data: inserted, error } = await supabase.from("chat_messages").insert({
-        user_id: user.id,
-        username: user.user_metadata?.username || user.email || "Anonymous",
-        message: text,
-        room,
-      }).select().single();
+      const response = await fetch("/api/chat/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ room, message: text }),
+      });
+      const body = await response.json().catch(() => ({}));
 
-      if (error) {
+      if (!response.ok || !body?.message) {
+        setMessages((prev) => prev.filter((msg) => msg.id !== optimistic.id));
         setError("Could not send message. Please try again.");
         return;
       }
 
-      if (inserted) {
-        setMessages((prev) => prev.map((msg) => (msg.id === optimistic.id ? (inserted as ChatMessage) : msg)));
-      }
+      setMessages((prev) => prev.map((msg) => (msg.id === optimistic.id ? (body.message as ChatMessage) : msg)));
     },
     [input, room, user, viewerProfile]
   );
+
+  useEffect(() => {
+    if (!allowed) return;
+
+    const intervalId = window.setInterval(() => {
+      if (!document.hidden) {
+        void fetchMessages();
+      }
+    }, 15000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [allowed, fetchMessages]);
 
   if (!allowed) {
     return (

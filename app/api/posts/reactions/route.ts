@@ -15,6 +15,7 @@ import { normalizeCustomEmojiStorageValue } from "@/lib/custom-emojis";
 import { loadLegacyInteraction, loadRelationalInteraction } from "@/lib/post-interaction-loaders";
 import { getCustomEmojiFileNameSet } from "@/lib/custom-emoji-registry";
 import { sendPushNotificationsForSources } from "@/lib/push-notifications";
+import { resolveShopListingContext } from "@/lib/shop-listings";
 
 import { resolveProfileUsername } from "@/lib/profile-identity";
 
@@ -30,12 +31,7 @@ type ReactionsGetResponse = {
 };
 
 function isShopListingPostId(postId?: string | null) {
-  return typeof postId === "string" && postId.startsWith("shop-product-");
-}
-
-function extractShopListingOwnerId(postId: string) {
-  const match = /^shop-product-([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})-/i.exec(postId);
-  return match?.[1] ?? null;
+  return typeof postId === "string" && Boolean(resolveShopListingContext(postId));
 }
 
 export async function GET(req: NextRequest) {
@@ -214,8 +210,8 @@ export async function POST(req: NextRequest) {
   }
 
   const emoji = normalizedEmoji;
-  const shopListingOwnerId = body.postId ? extractShopListingOwnerId(body.postId) : null;
-  const isShopListing = isShopListingPostId(body.postId);
+  const shopListingContext = body.postId ? resolveShopListingContext(body.postId) : null;
+  const isShopListing = Boolean(shopListingContext);
 
   try {
     const adminClient = createAdminClient();
@@ -229,10 +225,10 @@ export async function POST(req: NextRequest) {
 
     let postOwnerId: string | null = null;
     if (isShopListing) {
-      if (!shopListingOwnerId) {
+      if (!shopListingContext) {
         return NextResponse.json({ error: "Post not found." }, { status: 404 });
       }
-      postOwnerId = shopListingOwnerId;
+      postOwnerId = shopListingContext.sellerUserId;
     } else {
       const { data: post, error: postError } = await adminClient
         .from("posts")
@@ -356,7 +352,10 @@ export async function POST(req: NextRequest) {
       .limit(1)
       .maybeSingle();
 
-    const existingThemeSettings = normalizeThemeSettings(existingProfile?.theme_settings);
+    const rawThemeSettings = existingProfile?.theme_settings && typeof existingProfile.theme_settings === "object"
+      ? (existingProfile.theme_settings as Record<string, any>)
+      : {};
+    const existingThemeSettings = normalizeThemeSettings(rawThemeSettings as any);
     const existingReactions = getStoredPostReactions(existingThemeSettings);
     const legacyCurrentReaction = existingReactions.find((reaction) => reaction.post_id === body.postId);
     const nextReactions = existingReactions.filter((reaction) => reaction.post_id !== body.postId);
@@ -380,7 +379,7 @@ export async function POST(req: NextRequest) {
         banner_url: existingProfile?.banner_url ?? null,
         verified_badge: existingProfile?.verified_badge ?? false,
         theme_settings: {
-          ...existingThemeSettings,
+          ...rawThemeSettings,
           post_comments: getStoredPostComments(existingThemeSettings),
           post_reactions: nextReactions,
           comment_reactions: getStoredCommentReactions(existingThemeSettings),

@@ -24,6 +24,7 @@ import { hasAdminAccess, runAdminUserAction, type AdminActionName } from "@/lib/
 import { appendEmojiToText, buildCustomEmojiAsset } from "@/lib/custom-emojis";
 import { buildPostContentWithAffiliateProducts, extractAffiliateProductIds, stripAffiliateProductTokens } from "@/lib/post-affiliate-products";
 import { submitModerationReport } from "@/lib/report-client";
+import { buildShopListingId } from "@/lib/shop-listings";
 import { buildYoutubeEmbedUrl, extractYoutubeVideoId, normalizeMusicPlayerUrls } from "@/lib/youtube-media";
 import {
   DEFAULT_BACKGROUND_COLOR,
@@ -1566,7 +1567,7 @@ export default function ProfileEditor() {
         .map(String);
 
       return {
-        id: `shop-product-${product.id}`,
+        id: buildShopListingId(profileUserId, product.id),
         user_id: profileUserId,
         content: descriptionParts.join(" • ") || product.title || "Verified Seller Listing",
         image_urls: imageUrls.length ? imageUrls : null,
@@ -2264,12 +2265,9 @@ export default function ProfileEditor() {
                             className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-black/25 px-4 py-2 text-sm text-cyan-100 transition hover:border-cyan-300/40 hover:bg-black/40"
                             type="button"
                             onClick={() => {
-                              if (!isShopListing) {
-                                setExpandedComments((prev) => ({ ...prev, [post.id]: !prev[post.id] }));
-                              }
+                              setExpandedComments((prev) => ({ ...prev, [post.id]: !prev[post.id] }));
                             }}
                             aria-label={isCommentsOpen ? "Hide comments" : "Show comments"}
-                            disabled={isShopListing}
                           >
                             <MessageCircle className="h-4 w-4" />
                             <span className="text-sm">{post.comments_count}</span>
@@ -2408,7 +2406,7 @@ export default function ProfileEditor() {
                           <p className="text-sm text-[color:var(--profile-text)]/70">{formatPostDate(post.created_at)}</p>
                         </div>
 
-                        {!isShopListing && isCommentsOpen ? (
+                        {isCommentsOpen ? (
                           <div className="mt-5 rounded-[1.5rem] border border-cyan-300/15 bg-black/20 p-4 backdrop-blur-xl sm:p-5">
                             <div className="space-y-4">
                               {postInteraction.comments.length === 0 ? (

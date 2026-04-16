@@ -9,10 +9,12 @@ import {
   getStoredPostComments,
   getStoredPostReactions,
   isMissingInteractionTablesError,
+  type StoredPostComment,
   normalizeThemeSettings,
 } from "@/lib/post-interactions";
 import { loadLegacyInteraction, loadRelationalInteraction } from "@/lib/post-interaction-loaders";
 import { sendPushNotificationsForSources } from "@/lib/push-notifications";
+import { resolveShopListingContext } from "@/lib/shop-listings";
 
 type CommentBody = {
   postId?: string;
@@ -213,6 +215,45 @@ async function createMentionNotifications(
   return createdSources;
 }
 
+async function findLegacyCommentOwner(
+  adminClient: ReturnType<typeof createAdminClient>,
+  commentId: string,
+  postId: string,
+  viewerId: string,
+  viewerIsAdmin: boolean
+) {
+  let profilesQuery = adminClient.from("profiles").select("id, theme_settings");
+  if (!viewerIsAdmin) {
+    profilesQuery = profilesQuery.eq("id", viewerId);
+  }
+
+  const { data, error } = await profilesQuery;
+  if (error) {
+    throw error;
+  }
+
+  for (const profile of data || []) {
+    const rawThemeSettings = profile.theme_settings && typeof profile.theme_settings === "object"
+      ? (profile.theme_settings as Record<string, any>)
+      : {};
+    const normalizedThemeSettings = normalizeThemeSettings(rawThemeSettings as any);
+    const comment = getStoredPostComments(normalizedThemeSettings).find(
+      (candidate) => candidate.id === commentId && candidate.post_id === postId
+    );
+
+    if (comment) {
+      return {
+        profileId: profile.id,
+        rawThemeSettings,
+        normalizedThemeSettings,
+        comment,
+      };
+    }
+  }
+
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req);
   const ipLimit = applyRateLimit({ key: `api:comments:create:ip:${ip}`, windowMs: 60_000, max: 15, blockMs: 5 * 60_000 });
@@ -248,6 +289,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Post ID and comment content are required." }, { status: 400 });
   }
 
+  const shopListingContext = resolveShopListingContext(body.postId);
+
   try {
     const adminClient = createAdminClient();
     const viewerIsAdmin = await userIsAdmin(adminClient, user.id);
@@ -256,14 +299,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "You are muted and cannot post comments at this time." }, { status: 403 });
     }
 
-    const { data: post, error: postError } = await adminClient
-      .from("posts")
-      .select("id, user_id")
-      .eq("id", body.postId)
-      .is("deleted_at", null)
-      .maybeSingle();
+    const postOwnerId = shopListingContext
+      ? shopListingContext.sellerUserId
+      : await (async () => {
+          const { data: post, error: postError } = await adminClient
+            .from("posts")
+            .select("id, user_id")
+            .eq("id", body.postId)
+            .is("deleted_at", null)
+            .maybeSingle();
 
-    if (postError || !post) {
+          if (postError || !post) {
+            return null;
+          }
+
+          return post.user_id;
+        })();
+
+    if (!postOwnerId) {
       return NextResponse.json({ error: "Post not found." }, { status: 404 });
     }
 
@@ -283,15 +336,23 @@ export async function POST(req: NextRequest) {
     const mentionMatches = Array.from(content.matchAll(/(?:^|\s)@([a-z0-9._-]{3,30})\b/gi)).map((match) => match[1].toLowerCase());
     const mentionedUsernames = Array.from(new Set(mentionMatches));
 
-    const { data: insertedComment, error: insertError } = await adminClient
-      .from("post_comments")
-      .insert({
-        post_id: body.postId,
-        user_id: user.id,
-        content,
-      })
-      .select("id, post_id, user_id")
-      .maybeSingle();
+    let insertedComment: { id: string; post_id: string; user_id: string } | null = null;
+    let insertError: any = { code: "PGRST205", message: "shop listing uses legacy storage" };
+
+    if (!shopListingContext) {
+      const relationalInsert = await adminClient
+        .from("post_comments")
+        .insert({
+          post_id: body.postId,
+          user_id: user.id,
+          content,
+        })
+        .select("id, post_id, user_id")
+        .maybeSingle();
+
+      insertedComment = relationalInsert.data;
+      insertError = relationalInsert.error;
+    }
 
     if (!insertError && insertedComment) {
       const interaction = await loadRelationalInteraction(adminClient, body.postId, user.id, viewerIsAdmin);
@@ -306,7 +367,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: updatePostError.message }, { status: 500 });
       }
 
-      const pushSources = await createCommentNotification(adminClient, post.user_id, user.id, actorName, body.postId, insertedComment.id);
+      const pushSources = await createCommentNotification(adminClient, postOwnerId, user.id, actorName, body.postId, insertedComment.id);
       if (mentionedUsernames.length) {
         const mentionPushSources = await createMentionNotifications(
           adminClient,
@@ -359,7 +420,10 @@ export async function POST(req: NextRequest) {
       .limit(1)
       .maybeSingle();
 
-    const existingThemeSettings = normalizeThemeSettings(existingProfile?.theme_settings);
+    const rawThemeSettings = existingProfile?.theme_settings && typeof existingProfile.theme_settings === "object"
+      ? (existingProfile.theme_settings as Record<string, any>)
+      : {};
+    const existingThemeSettings = normalizeThemeSettings(rawThemeSettings as any);
     const nextComments = [
       ...getStoredPostComments(existingThemeSettings),
       {
@@ -377,8 +441,10 @@ export async function POST(req: NextRequest) {
         display_name: existingProfile?.display_name ?? "",
         bio: existingProfile?.bio ?? "",
         avatar_url: existingProfile?.avatar_url ?? null,
-        banner_url: existingProfile?.banner_url ?? null,        verified_badge: existingProfile?.verified_badge ?? false,        theme_settings: {
-          ...existingThemeSettings,
+        banner_url: existingProfile?.banner_url ?? null,
+        verified_badge: existingProfile?.verified_badge ?? false,
+        theme_settings: {
+          ...rawThemeSettings,
           post_comments: nextComments,
           post_reactions: getStoredPostReactions(existingThemeSettings),
           comment_reactions: getStoredCommentReactions(existingThemeSettings),
@@ -405,7 +471,7 @@ export async function POST(req: NextRequest) {
 
     const fallbackCommentId = nextComments[nextComments.length - 1]?.id;
     if (fallbackCommentId) {
-      const pushSources = await createCommentNotification(adminClient, post.user_id, user.id, actorName, body.postId, fallbackCommentId, false);
+      const pushSources = await createCommentNotification(adminClient, postOwnerId, user.id, actorName, body.postId, fallbackCommentId, false);
       if (mentionedUsernames.length) {
         const mentionPushSources = await createMentionNotifications(
           adminClient,
@@ -459,7 +525,43 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "commentId, postId, and content are required" }, { status: 400 });
   }
 
+  const shopListingContext = resolveShopListingContext(body.postId);
+
   const adminClient = createAdminClient();
+  const viewerIsAdmin = await userIsAdmin(adminClient, user.id);
+
+  if (shopListingContext) {
+    const legacyCommentOwner = await findLegacyCommentOwner(adminClient, body.commentId, body.postId, user.id, viewerIsAdmin);
+    if (!legacyCommentOwner) {
+      return NextResponse.json({ error: "Comment not found" }, { status: 404 });
+    }
+
+    if (legacyCommentOwner.profileId !== user.id && !viewerIsAdmin) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const nextComments = getStoredPostComments(legacyCommentOwner.normalizedThemeSettings).map((comment) =>
+      comment.id === body.commentId ? { ...comment, content } : comment
+    );
+
+    const { error: updateThemeError } = await adminClient
+      .from("profiles")
+      .update({
+        theme_settings: {
+          ...legacyCommentOwner.rawThemeSettings,
+          post_comments: nextComments,
+        },
+      })
+      .eq("id", legacyCommentOwner.profileId);
+
+    if (updateThemeError) {
+      return NextResponse.json({ error: updateThemeError.message }, { status: 500 });
+    }
+
+    const interaction = await loadLegacyInteraction(adminClient, body.postId, user.id);
+    return NextResponse.json({ interaction, commentsCount: interaction?.comments.length ?? 0 });
+  }
+
   const { data: comment, error: fetchError } = await adminClient
     .from("post_comments")
     .select("id, user_id")
@@ -485,7 +587,6 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
   }
 
-  const viewerIsAdmin = await userIsAdmin(adminClient, user.id);
   const interaction = await loadRelationalInteraction(adminClient, body.postId, user.id, viewerIsAdmin);
   return NextResponse.json({ interaction, commentsCount: interaction?.comments.length ?? 0 });
 }
@@ -509,7 +610,40 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "commentId and postId are required" }, { status: 400 });
   }
 
+  const shopListingContext = resolveShopListingContext(postId);
+
   const adminClient = createAdminClient();
+  const viewerIsAdmin = await userIsAdmin(adminClient, user.id);
+
+  if (shopListingContext) {
+    const legacyCommentOwner = await findLegacyCommentOwner(adminClient, commentId, postId, user.id, viewerIsAdmin);
+    if (!legacyCommentOwner) {
+      return NextResponse.json({ error: "Comment not found" }, { status: 404 });
+    }
+
+    if (legacyCommentOwner.profileId !== user.id && !viewerIsAdmin) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const nextComments = getStoredPostComments(legacyCommentOwner.normalizedThemeSettings).filter((comment) => comment.id !== commentId);
+    const { error: updateThemeError } = await adminClient
+      .from("profiles")
+      .update({
+        theme_settings: {
+          ...legacyCommentOwner.rawThemeSettings,
+          post_comments: nextComments,
+        },
+      })
+      .eq("id", legacyCommentOwner.profileId);
+
+    if (updateThemeError) {
+      return NextResponse.json({ error: updateThemeError.message }, { status: 500 });
+    }
+
+    const interaction = await loadLegacyInteraction(adminClient, postId, user.id);
+    return NextResponse.json({ interaction, commentsCount: interaction?.comments.length ?? 0 });
+  }
+
   const { data: comment, error: fetchError } = await adminClient
     .from("post_comments")
     .select("id, user_id")
@@ -563,7 +697,6 @@ export async function DELETE(req: NextRequest) {
     }
   }
 
-  const viewerIsAdmin = await userIsAdmin(adminClient, user.id);
   const interaction = await loadRelationalInteraction(adminClient, postId, user.id, viewerIsAdmin);
   const commentsCount = interaction?.comments.length ?? 0;
   await adminClient.from("posts").update({ comments_count: commentsCount }).eq("id", postId);

@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createAdminClient, userIsAdmin, isVoided } from "@/lib/admin-utils";
 import { isMissingInteractionTablesError } from "@/lib/post-interactions";
 import { loadLegacyInteractions, loadRelationalInteractions } from "@/lib/post-interaction-loaders";
+import { resolveShopListingContext } from "@/lib/shop-listings";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -13,21 +14,23 @@ function parseValidPostIds(rawValue: string) {
     .map((value) => value.trim())
     .filter(Boolean);
 
-  const validPostIds = parsed.filter((postId) => UUID_RE.test(postId));
-  const invalidPostIds = parsed.filter((postId) => !UUID_RE.test(postId));
+  const relationalPostIds = parsed.filter((postId) => UUID_RE.test(postId));
+  const shopListingPostIds = parsed.filter((postId) => !UUID_RE.test(postId) && Boolean(resolveShopListingContext(postId)));
+  const invalidPostIds = parsed.filter((postId) => !UUID_RE.test(postId) && !resolveShopListingContext(postId));
 
   return {
-    validPostIds,
+    relationalPostIds,
+    shopListingPostIds,
     invalidPostIds,
   };
 }
 
 export async function GET(req: NextRequest) {
-  const { validPostIds, invalidPostIds } = parseValidPostIds(
+  const { relationalPostIds, shopListingPostIds, invalidPostIds } = parseValidPostIds(
     req.nextUrl.searchParams.get("postIds") || ""
   );
 
-  if (!validPostIds.length) {
+  if (!relationalPostIds.length && !shopListingPostIds.length) {
     if (invalidPostIds.length) {
       console.warn("[posts/interactions] Ignoring malformed postIds", {
         invalidCount: invalidPostIds.length,
@@ -58,15 +61,17 @@ export async function GET(req: NextRequest) {
 
     const viewerIsAdmin = user ? await userIsAdmin(adminClient, user.id) : false;
     try {
-      const interactionsByPostId = await loadRelationalInteractions(
-        adminClient,
-        validPostIds,
-        user?.id || null,
-        viewerIsAdmin
-      );
+      const interactionsByPostId = {
+        ...(relationalPostIds.length
+          ? await loadRelationalInteractions(adminClient, relationalPostIds, user?.id || null, viewerIsAdmin)
+          : {}),
+        ...(shopListingPostIds.length
+          ? await loadLegacyInteractions(adminClient, shopListingPostIds, user?.id || null, viewerIsAdmin)
+          : {}),
+      };
       return NextResponse.json({
         interactionsByPostId,
-        storage: "relational",
+        storage: relationalPostIds.length ? "relational" : "legacy",
         degraded: invalidPostIds.length > 0,
         ignoredInvalidPostIds: invalidPostIds.length || undefined,
       });
@@ -79,12 +84,8 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const interactionsByPostId = await loadLegacyInteractions(
-      adminClient,
-      validPostIds,
-      user?.id || null,
-      viewerIsAdmin
-    );
+    const allSupportedPostIds = [...relationalPostIds, ...shopListingPostIds];
+    const interactionsByPostId = await loadLegacyInteractions(adminClient, allSupportedPostIds, user?.id || null, viewerIsAdmin);
     return NextResponse.json({
       interactionsByPostId,
       storage: "legacy",

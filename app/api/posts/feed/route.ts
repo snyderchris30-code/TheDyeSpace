@@ -3,6 +3,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { hasAdminAccess } from "@/lib/admin-actions";
 import type { ProfileAppearance } from "@/lib/profile-theme";
 import { normalizePostImageUrls } from "@/lib/post-media";
+import { buildShopListingId } from "@/lib/shop-listings";
 import { normalizeSellerProducts } from "@/lib/verified-seller";
 
 const PAGE_SIZE = 8;
@@ -215,7 +216,7 @@ export async function GET(request: NextRequest) {
           .map(String);
         const imageUrls = normalizePostImageUrls(product.photo_urls || null);
         return {
-          id: `shop-product-${profile.id}-${product.id}`,
+          id: buildShopListingId(profile.id, product.id),
           user_id: profile.id,
           content: descriptionParts.join(" • ") || product.title || "Verified Seller Listing",
           image_urls: imageUrls.length ? imageUrls : null,

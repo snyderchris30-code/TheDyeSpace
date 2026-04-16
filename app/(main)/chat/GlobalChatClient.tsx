@@ -362,7 +362,6 @@ export default function GlobalChatClient() {
   }, []);
 
   const fetchMessages = useCallback(async () => {
-    const supabase = createClient();
     const roomFilters = ROOM_DEFINITIONS.filter((room) => roomAccess[room.id]);
     if (!roomFilters.length) {
       setMessagesByRoom({ smoke_room: [], smoke_room_2: [], psychonautics: [], admin_room: [] });
@@ -370,22 +369,12 @@ export default function GlobalChatClient() {
       return;
     }
 
-    const orConditions = roomFilters
-      .map((room) => {
-        if (room.id === "smoke_room") {
-          return "room.eq.smoke_room,room.is.null";
-        }
-        return `room.eq.${room.id}`;
-      })
-      .join(",");
+    const response = await fetch(`/api/chat/messages?rooms=${encodeURIComponent(roomFilters.map((room) => room.id).join(","))}`, {
+      cache: "no-store",
+    });
+    const body = await response.json().catch(() => ({}));
 
-    const { data, error } = await supabase
-      .from("chat_messages")
-      .select("*")
-      .or(orConditions)
-      .order("created_at", { ascending: true });
-
-    if (error || !data) {
+    if (!response.ok || !Array.isArray(body?.messages)) {
       setError("Could not load chat rooms right now. Please try again.");
       setLoading(false);
       return;
@@ -393,18 +382,7 @@ export default function GlobalChatClient() {
 
     setError(null);
 
-    const rows = (data as ChatMessage[]).filter((msg) => roomAccess[normalizeMessageRoom(msg.room)]);
-    const userIds = [...new Set(rows.map((row) => row.user_id).filter(Boolean))];
-
-    const profileById = new Map<string, ProfileFlags>();
-    if (userIds.length) {
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id,username,display_name,verified_badge,member_number,shadow_banned,shadow_banned_until,avatar_url")
-        .in("id", userIds);
-
-      (profiles || []).forEach((profile) => profileById.set(profile.id, profile as ProfileFlags));
-    }
+    const rows = (body.messages as ChatMessage[]).filter((msg) => roomAccess[normalizeMessageRoom(msg.room)]);
 
     const nextByRoom: Record<ChatRoomId, ChatMessage[]> = {
       smoke_room: [],
@@ -415,11 +393,10 @@ export default function GlobalChatClient() {
 
     rows.forEach((msg) => {
       const roomId = normalizeMessageRoom(msg.room);
-      const author = profileById.get(msg.user_id) ?? null;
-      if (!isAdmin && msg.user_id !== user?.id && profileIsShadowBanned(author)) {
+      if (!isAdmin && msg.user_id !== user?.id && profileIsShadowBanned(msg.author)) {
         return;
       }
-      nextByRoom[roomId].push({ ...msg, author });
+      nextByRoom[roomId].push(msg);
     });
 
     setMessagesByRoom(nextByRoom);
@@ -508,6 +485,18 @@ export default function GlobalChatClient() {
 
   useEffect(() => {
     void fetchMessages();
+  }, [fetchMessages]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      if (!document.hidden) {
+        void fetchMessages();
+      }
+    }, 15000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
   }, [fetchMessages]);
 
   useEffect(() => {
@@ -672,24 +661,28 @@ export default function GlobalChatClient() {
         [activePanel.roomId]: [...prev[activePanel.roomId], optimistic],
       }));
 
-      const supabase = createClient();
-      const { data: inserted } = await supabase
-        .from("chat_messages")
-        .insert({
-          user_id: user.id,
-          username: user.user_metadata?.username || user.email,
-          message: messageBody,
-          room: activePanel.roomId,
-        })
-        .select()
-        .single();
+      const response = await fetch("/api/chat/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ room: activePanel.roomId, message: messageBody }),
+      });
+      const body = await response.json().catch(() => ({}));
 
-      if (inserted) {
-        const insertedMessage = inserted as ChatMessage;
+      if (!response.ok || !body?.message) {
+        setMessagesByRoom((prev) => ({
+          ...prev,
+          [activePanel.roomId]: prev[activePanel.roomId].filter((msg) => msg.id !== optimistic.id),
+        }));
+        setError(body?.error || "Could not send your message. Please try again.");
+        return;
+      }
+
+      const insertedMessage = body.message as ChatMessage;
+      if (insertedMessage) {
         setMessagesByRoom((prev) => ({
           ...prev,
           [activePanel.roomId]: prev[activePanel.roomId].map((msg) =>
-            msg.id === optimistic.id ? { ...insertedMessage, author: viewerProfile } : msg
+            msg.id === optimistic.id ? insertedMessage : msg
           ),
         }));
       }
@@ -705,17 +698,22 @@ export default function GlobalChatClient() {
   const saveEditMessage = useCallback(
     async (messageId: string) => {
       if (!user || !editText.trim() || activePanel.kind !== "text") return;
-      const supabase = createClient();
-      await supabase
-        .from("chat_messages")
-        .update({ message: editText.trim() })
-        .eq("id", messageId)
-        .eq("user_id", user.id);
+      const response = await fetch("/api/chat/messages", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId, message: editText.trim() }),
+      });
+      const body = await response.json().catch(() => ({}));
+
+      if (!response.ok || !body?.message) {
+        setError(body?.error || "Could not update your message. Please try again.");
+        return;
+      }
 
       setMessagesByRoom((prev) => ({
         ...prev,
         [activePanel.roomId]: prev[activePanel.roomId].map((msg) =>
-          msg.id === messageId ? { ...msg, message: editText.trim() } : msg
+          msg.id === messageId ? (body.message as ChatMessage) : msg
         ),
       }));
 
@@ -728,8 +726,15 @@ export default function GlobalChatClient() {
   const deleteMessage = useCallback(
     async (messageId: string) => {
       if (!user || activePanel.kind !== "text" || !confirm("Delete this message?")) return;
-      const supabase = createClient();
-      await supabase.from("chat_messages").delete().eq("id", messageId).eq("user_id", user.id);
+      const response = await fetch(`/api/chat/messages?messageId=${encodeURIComponent(messageId)}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        setError(body?.error || "Could not delete your message. Please try again.");
+        return;
+      }
+
       setMessagesByRoom((prev) => ({
         ...prev,
         [activePanel.roomId]: prev[activePanel.roomId].filter((msg) => msg.id !== messageId),

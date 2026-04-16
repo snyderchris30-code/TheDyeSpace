@@ -760,9 +760,7 @@ export default function MainFeedPage() {
                   aria-label={isCommentsOpen ? "Hide comments" : "Show comments"}
                   className="block w-full text-left transition hover:opacity-90"
                   onClick={() => {
-                    if (!isShopListing) {
-                      setExpandedComments((prev) => ({ ...prev, [post.id]: !prev[post.id] }));
-                    }
+                    setExpandedComments((prev) => ({ ...prev, [post.id]: !prev[post.id] }));
                   }}
                 >
                   <InlineEmojiText
@@ -802,24 +800,21 @@ export default function MainFeedPage() {
                       type="button"
                       className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-black/20 px-4 py-2 text-sm text-cyan-100 transition hover:border-cyan-300/40 hover:bg-black/35"
                       onClick={() => {
-                        if (!isShopListing) {
                           setExpandedComments((prev) => ({ ...prev, [post.id]: !prev[post.id] }));
-                        }
                       }}
                       aria-label={isCommentsOpen ? "Hide comments" : "Show comments"}
-                      disabled={isShopListing}
                     >
                       <MessageCircle className="h-4 w-4" />
                       <span className="text-sm">{post.comments_count}</span>
                     </button>
                     {!isShopListing ? (
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-2 rounded-full border border-pink-400/45 bg-pink-900/30 px-4 py-2 text-sm text-pink-200 transition hover:bg-pink-900/50"
-                      onClick={() => void handleReportPost(post.id)}
-                    >
-                      <span>Report</span>
-                    </button>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-2 rounded-full border border-pink-400/45 bg-pink-900/30 px-4 py-2 text-sm text-pink-200 transition hover:bg-pink-900/50"
+                        onClick={() => void handleReportPost(post.id)}
+                      >
+                        <span>Report</span>
+                      </button>
                     ) : null}
                   </div>
                 ) : authResolved ? (
@@ -946,7 +941,7 @@ export default function MainFeedPage() {
               </div>
               <div className="text-xs text-[color:var(--post-text)]/70">{new Date(post.created_at).toLocaleString()}</div>
             </div>
-            {!isShopListing && isCommentsOpen && (
+            {isCommentsOpen && (
               <div className="mt-5 rounded-[1.5rem] border border-cyan-300/15 bg-black/20 p-4 backdrop-blur-xl sm:p-5">
                 <div className="space-y-4">
                   {postInteraction.comments.length === 0 ? (

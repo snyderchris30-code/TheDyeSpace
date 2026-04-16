@@ -30,6 +30,7 @@ import {
   extractAffiliateProductIds,
   stripAffiliateProductTokens,
 } from "@/lib/post-affiliate-products";
+import { buildShopListingId } from "@/lib/shop-listings";
 import { normalizeSellerProducts } from "@/lib/verified-seller";
 
 type ExplorePost = {
@@ -210,7 +211,7 @@ async function fetchExplorePosts({ queryKey }: { queryKey: unknown[] }) {
       const imageUrls = normalizePostImageUrls(product.photo_urls || null);
 
       shopListingRows.push({
-        id: `shop-product-${userId}-${product.id}`,
+        id: buildShopListingId(userId, product.id),
         user_id: userId,
         content: descriptionParts.join(" • ") || product.title || "Verified Seller Listing",
         image_urls: imageUrls.length ? imageUrls : null,
@@ -1059,7 +1060,7 @@ export default function ExplorePage() {
                 <div className="text-xs text-[color:var(--post-text)]/75">{new Date(post.created_at).toLocaleString()}</div>
               </div>
 
-              {!post.is_shop_listing && isCommentsOpen ? (
+              {isCommentsOpen ? (
                 <div className="mt-5 rounded-[1.5rem] border border-cyan-300/15 bg-black/20 p-4 backdrop-blur-xl sm:p-5">
                   <div className="space-y-4">
                     {postInteraction.comments.length === 0 ? (

@@ -10,6 +10,10 @@ export function isShopListingId(value: string | null | undefined) {
   return typeof value === "string" && value.startsWith(SHOP_PRODUCT_PREFIX);
 }
 
+export function buildShopListingId(sellerUserId: string, productId: string) {
+  return `${SHOP_PRODUCT_PREFIX}${sellerUserId}-${productId}`;
+}
+
 export function resolveShopListingContext(postId: string, sellerUserId?: string | null) {
   if (!isShopListingId(postId)) {
     return null;

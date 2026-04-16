@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/client";
 import { resolveClientAuth, fetchClientProfile } from "@/lib/client-auth";
 import { fetchProfileLookupByUsername, type ProfileLookupResponse } from "@/lib/profile-fetch";
 import { normalizePostImageUrls } from "@/lib/post-media";
+import { buildShopListingId } from "@/lib/shop-listings";
 import { normalizeSellerProducts } from "@/lib/verified-seller";
 import { sanitizeUsernameInput } from "@/lib/profile-identity";
 import { hasAdminAccess, runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
@@ -251,7 +252,7 @@ export default function ShopPage() {
     }
 
     if (post.is_shop_listing) {
-      setShopProducts((prev) => prev.filter((product) => `shop-product-${product.id}` !== post.id));
+      setShopProducts((prev) => prev.filter((product) => buildShopListingId(post.user_id, product.id) !== post.id));
     } else {
       setSalePosts((prev) => prev.filter((item) => item.id !== post.id));
     }
@@ -259,7 +260,7 @@ export default function ShopPage() {
 
   const visibleListings = shopProducts.length > 0
     ? shopProducts.map((product) => ({
-        id: `shop-product-${product.id}`,
+        id: buildShopListingId(profile?.id || "", product.id),
         user_id: profile?.id || "",
         content: [product.title, product.price ? `$${product.price}` : null, product.description]
           .filter(Boolean)

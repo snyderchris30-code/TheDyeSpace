@@ -14,6 +14,7 @@ import {
 import { normalizeCustomEmojiStorageValue } from "@/lib/custom-emojis";
 import { resolveProfileUsername } from "@/lib/profile-identity";
 import { sendPushNotificationsForSources } from "@/lib/push-notifications";
+import { resolveShopListingContext } from "@/lib/shop-listings";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type CommentReactionBody = {
@@ -128,6 +129,40 @@ async function createCommentLikeNotification(
   }
 }
 
+async function findLegacyCommentOwner(
+  adminClient: ReturnType<typeof createAdminClient>,
+  commentId: string,
+  postId: string,
+  viewerId: string,
+  viewerIsAdmin: boolean
+) {
+  let profilesQuery = adminClient.from("profiles").select("id, theme_settings");
+  if (!viewerIsAdmin) {
+    profilesQuery = profilesQuery.eq("id", viewerId);
+  }
+
+  const { data, error } = await profilesQuery;
+  if (error) {
+    throw error;
+  }
+
+  for (const profile of data || []) {
+    const normalizedThemeSettings = normalizeThemeSettings(profile.theme_settings as any);
+    const comment = getStoredPostComments(normalizedThemeSettings).find(
+      (candidate) => candidate.id === commentId && candidate.post_id === postId
+    );
+
+    if (comment) {
+      return {
+        profileId: profile.id,
+        comment,
+      };
+    }
+  }
+
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   const supabase = await createSupabaseServerClient();
   const {
@@ -160,6 +195,7 @@ export async function POST(req: NextRequest) {
   }
 
   const emoji = normalizedEmoji;
+  const shopListingContext = resolveShopListingContext(body.postId);
 
   try {
     const adminClient = createAdminClient();
@@ -171,20 +207,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "You are muted and cannot react at this time." }, { status: 403 });
     }
 
-    const { data: post, error: postError } = await adminClient
-      .from("posts")
-      .select("id")
-      .eq("id", body.postId)
-      .is("deleted_at", null)
-      .maybeSingle();
+    if (!shopListingContext) {
+      const { data: post, error: postError } = await adminClient
+        .from("posts")
+        .select("id")
+        .eq("id", body.postId)
+        .is("deleted_at", null)
+        .maybeSingle();
 
-    if (postError || !post) {
-      // eslint-disable-next-line no-console
-      console.error("[posts/comment-reactions] Post not found", { postId: body.postId, postError });
-      return NextResponse.json({ error: "Post not found." }, { status: 404 });
+      if (postError || !post) {
+        // eslint-disable-next-line no-console
+        console.error("[posts/comment-reactions] Post not found", { postId: body.postId, postError });
+        return NextResponse.json({ error: "Post not found." }, { status: 404 });
+      }
     }
 
-    const comment = await loadTargetComment(adminClient, body.commentId, body.postId);
+    const legacyCommentOwner = shopListingContext
+      ? await findLegacyCommentOwner(adminClient, body.commentId, body.postId, user.id, viewerIsAdmin)
+      : null;
+    const comment = legacyCommentOwner
+      ? { id: body.commentId, post_id: body.postId, user_id: legacyCommentOwner.profileId }
+      : await loadTargetComment(adminClient, body.commentId, body.postId);
+
     if (!comment) {
       // eslint-disable-next-line no-console
       console.error("[posts/comment-reactions] Comment not found", { commentId: body.commentId, postId: body.postId });
@@ -204,12 +248,14 @@ export async function POST(req: NextRequest) {
       user.id
     ).replace(/^@+/, "");
 
-    const { data: currentReaction, error: currentReactionError } = await adminClient
-      .from("post_comment_reactions")
-      .select("emoji")
-      .eq("comment_id", body.commentId)
-      .eq("user_id", user.id)
-      .maybeSingle();
+    const { data: currentReaction, error: currentReactionError } = shopListingContext
+      ? { data: null, error: { code: "PGRST205", message: "shop listing uses legacy storage" } as any }
+      : await adminClient
+          .from("post_comment_reactions")
+          .select("emoji")
+          .eq("comment_id", body.commentId)
+          .eq("user_id", user.id)
+          .maybeSingle();
 
     if (!currentReactionError) {
       let shouldNotify = false;
@@ -288,7 +334,10 @@ export async function POST(req: NextRequest) {
       .limit(1)
       .maybeSingle();
 
-    const existingThemeSettings = normalizeThemeSettings(existingProfile?.theme_settings);
+    const rawThemeSettings = existingProfile?.theme_settings && typeof existingProfile.theme_settings === "object"
+      ? (existingProfile.theme_settings as Record<string, any>)
+      : {};
+    const existingThemeSettings = normalizeThemeSettings(rawThemeSettings as any);
     const existingCommentReactions = getStoredCommentReactions(existingThemeSettings);
     const legacyCurrentReaction = existingCommentReactions.find((reaction) => reaction.comment_id === body.commentId);
     const nextCommentReactions = existingCommentReactions.filter((reaction) => reaction.comment_id !== body.commentId);
@@ -313,7 +362,7 @@ export async function POST(req: NextRequest) {
         banner_url: existingProfile?.banner_url ?? null,
         verified_badge: existingProfile?.verified_badge ?? false,
         theme_settings: {
-          ...existingThemeSettings,
+          ...rawThemeSettings,
           post_comments: getStoredPostComments(existingThemeSettings),
           post_reactions: getStoredPostReactions(existingThemeSettings),
           comment_reactions: nextCommentReactions,

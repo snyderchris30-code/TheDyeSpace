@@ -71,14 +71,10 @@ export default function SmokeRoom2Client({ allowed }: { allowed: boolean }) {
 
   const fetchMessages = useCallback(async () => {
     if (!allowed) return;
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from("chat_messages")
-      .select("*")
-      .eq("room", "smoke_room_2")
-      .order("created_at", { ascending: true });
+    const response = await fetch("/api/chat/messages?room=smoke_room_2", { cache: "no-store" });
+    const body = await response.json().catch(() => ({}));
 
-    if (error || !data) {
+    if (!response.ok || !Array.isArray(body?.messages)) {
       setMessages([]);
       setError("Couldn\'t load The Smoke Lounge 2.0 right now. Please try again.");
       setLoading(false);
@@ -87,28 +83,12 @@ export default function SmokeRoom2Client({ allowed }: { allowed: boolean }) {
 
     setError(null);
 
-    const rows = data as ChatMessage[];
-
-    const userIds = [...new Set(rows.map((row) => row.user_id).filter(Boolean))];
-    if (!userIds.length) {
-      setMessages(rows);
-      setLoading(false);
-      return;
-    }
-
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id,username,display_name,verified_badge,member_number,shadow_banned,shadow_banned_until")
-      .in("id", userIds);
-
-    const profileById = new Map<string, ProfileFlags>();
-    (profiles || []).forEach((profile) => profileById.set(profile.id, profile as ProfileFlags));
-
+    const rows = body.messages as ChatMessage[];
     const visibleRows = isAdmin ? rows : rows.filter((msg) => {
         if (msg.user_id === user?.id) return true;
-        return !profileIsShadowBanned(profileById.get(msg.user_id));
+        return !profileIsShadowBanned(msg.author);
       });
-    setMessages(visibleRows.map((msg) => ({ ...msg, author: profileById.get(msg.user_id) ?? null })));
+    setMessages(visibleRows);
     setLoading(false);
   }, [allowed, isAdmin, user?.id]);
 
@@ -149,7 +129,6 @@ export default function SmokeRoom2Client({ allowed }: { allowed: boolean }) {
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim() || !user) return;
-    const supabase = createClient();
     const text = input.trim();
     const optimistic: ChatMessage = {
       id: `opt-${Date.now()}`,
@@ -162,16 +141,35 @@ export default function SmokeRoom2Client({ allowed }: { allowed: boolean }) {
     };
     setMessages((msgs) => [...msgs, optimistic]);
     setInput("");
-    const { data: inserted } = await supabase.from("chat_messages").insert({
-      user_id: user.id,
-      username: user.user_metadata?.username || user.email,
-      message: text,
-      room: "smoke_room_2",
-    }).select().single();
-    if (inserted) {
-      setMessages((msgs) => msgs.map((m) => (m.id === optimistic.id ? (inserted as ChatMessage) : m)));
+    const response = await fetch("/api/chat/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ room: "smoke_room_2", message: text }),
+    });
+    const body = await response.json().catch(() => ({}));
+
+    if (!response.ok || !body?.message) {
+      setMessages((msgs) => msgs.filter((msg) => msg.id !== optimistic.id));
+      setError(body?.error || "Couldn\'t send your message. Please try again.");
+      return;
     }
+
+    setMessages((msgs) => msgs.map((m) => (m.id === optimistic.id ? (body.message as ChatMessage) : m)));
   }
+
+  useEffect(() => {
+    if (!allowed) return;
+
+    const intervalId = window.setInterval(() => {
+      if (!document.hidden) {
+        void fetchMessages();
+      }
+    }, 15000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [allowed, fetchMessages]);
 
   const handleAdminAction = useCallback(
     async (
