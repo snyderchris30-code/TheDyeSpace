@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient, loadProfileStatus } from "@/lib/admin-utils";
+import { createAdminClient } from "@/lib/admin-utils";
 import { canAccessPrivateRoom, parsePrivateRoomKey } from "@/lib/private-rooms";
 import { resolveProfileUsername } from "@/lib/profile-identity";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -25,6 +25,13 @@ type ChatAuthorRow = {
   shadow_banned?: boolean | null;
   shadow_banned_until?: string | null;
   avatar_url?: string | null;
+};
+
+type ViewerProfile = ChatAuthorRow & {
+  role?: string | null;
+  smoke_room_2_invited?: boolean | null;
+  psychonautics_access?: boolean | null;
+  admin_room_access?: boolean | null;
 };
 
 function normalizeChatRoom(room: string | null | undefined) {
@@ -64,17 +71,36 @@ async function loadAuthenticatedUser() {
   return user ?? null;
 }
 
-async function loadViewerStatus(userId: string | null) {
+async function createChatDataClient() {
+  try {
+    return createAdminClient();
+  } catch {
+    return await createSupabaseServerClient();
+  }
+}
+
+async function loadViewerStatus(userId: string | null, dataClient: Awaited<ReturnType<typeof createChatDataClient>>) {
   if (!userId) {
     return null;
   }
 
-  const adminClient = createAdminClient();
-  const profile = await loadProfileStatus(adminClient, userId);
-  return profile;
+  const { data, error } = await dataClient
+    .from("profiles")
+    .select(
+      "id,role,verified_badge,member_number,shadow_banned,shadow_banned_until,smoke_room_2_invited,psychonautics_access,admin_room_access,username,display_name,avatar_url"
+    )
+    .eq("id", userId)
+    .limit(1)
+    .maybeSingle<ViewerProfile>();
+
+  if (error) {
+    return null;
+  }
+
+  return data || null;
 }
 
-function canAccessChatRoom(room: string, userId: string | null, profile: Awaited<ReturnType<typeof loadViewerStatus>>) {
+function canAccessChatRoom(room: string, userId: string | null, profile: ViewerProfile | null) {
   if (room === "smoke_room") {
     return true;
   }
@@ -99,9 +125,9 @@ function canAccessChatRoom(room: string, userId: string | null, profile: Awaited
   return false;
 }
 
-async function loadMessagesForRooms(adminClient: ReturnType<typeof createAdminClient>, rooms: string[]) {
+async function loadMessagesForRooms(dataClient: Awaited<ReturnType<typeof createChatDataClient>>, rooms: string[]) {
   const roomFilter = buildRoomOrFilter(rooms);
-  const query = adminClient
+  const query = dataClient
     .from("chat_messages")
     .select("id, user_id, username, message, created_at, room")
     .order("created_at", { ascending: true });
@@ -115,19 +141,19 @@ async function loadMessagesForRooms(adminClient: ReturnType<typeof createAdminCl
   return (response.data || []) as ChatMessageRow[];
 }
 
-async function loadAuthors(adminClient: ReturnType<typeof createAdminClient>, messages: ChatMessageRow[]) {
+async function loadAuthors(dataClient: Awaited<ReturnType<typeof createChatDataClient>>, messages: ChatMessageRow[]) {
   const userIds = Array.from(new Set(messages.map((message) => message.user_id).filter(Boolean)));
   if (!userIds.length) {
     return new Map<string, ChatAuthorRow>();
   }
 
-  const { data, error } = await adminClient
+  const { data, error } = await dataClient
     .from("profiles")
     .select("id, username, display_name, verified_badge, member_number, shadow_banned, shadow_banned_until, avatar_url")
     .in("id", userIds);
 
   if (error) {
-    throw error;
+    return new Map<string, ChatAuthorRow>();
   }
 
   return new Map<string, ChatAuthorRow>((data || []).map((profile) => [profile.id, profile as ChatAuthorRow]));
@@ -153,16 +179,16 @@ export async function GET(req: NextRequest) {
     }
 
     const user = await loadAuthenticatedUser();
-    const profile = await loadViewerStatus(user?.id || null);
+    const dataClient = await createChatDataClient();
+    const profile = await loadViewerStatus(user?.id || null, dataClient);
     const allowedRooms = requestedRooms.filter((room) => canAccessChatRoom(room, user?.id || null, profile));
 
     if (!allowedRooms.length) {
       return NextResponse.json({ error: "Not authorized." }, { status: 403 });
     }
 
-    const adminClient = createAdminClient();
-    const messages = await loadMessagesForRooms(adminClient, allowedRooms);
-    const authors = await loadAuthors(adminClient, messages);
+    const messages = await loadMessagesForRooms(dataClient, allowedRooms);
+    const authors = await loadAuthors(dataClient, messages);
     return NextResponse.json({ messages: serializeMessages(messages, authors) });
   } catch (error: any) {
     return NextResponse.json(
@@ -187,14 +213,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Room and message are required." }, { status: 400 });
     }
 
-    const profile = await loadViewerStatus(user.id);
+    const dataClient = await createChatDataClient();
+    const profile = await loadViewerStatus(user.id, dataClient);
     if (!canAccessChatRoom(room, user.id, profile)) {
       return NextResponse.json({ error: "Not authorized." }, { status: 403 });
     }
 
-    const adminClient = createAdminClient();
     const actorName = resolveProfileUsername(undefined, user.user_metadata?.username, user.email, user.id);
-    const { data, error } = await adminClient
+    const { data, error } = await dataClient
       .from("chat_messages")
       .insert({
         user_id: user.id,
@@ -210,7 +236,7 @@ export async function POST(req: NextRequest) {
       throw error || new Error("Failed to save chat message.");
     }
 
-    const authors = await loadAuthors(adminClient, [data]);
+    const authors = await loadAuthors(dataClient, [data]);
     return NextResponse.json({ message: serializeMessages([data], authors)[0] });
   } catch (error: any) {
     return NextResponse.json(
@@ -235,8 +261,8 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "messageId and message are required." }, { status: 400 });
     }
 
-    const adminClient = createAdminClient();
-    const { data: existing, error: existingError } = await adminClient
+    const dataClient = await createChatDataClient();
+    const { data: existing, error: existingError } = await dataClient
       .from("chat_messages")
       .select("id, user_id, room")
       .eq("id", messageId)
@@ -251,7 +277,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { data, error } = await adminClient
+    const { data, error } = await dataClient
       .from("chat_messages")
       .update({ message })
       .eq("id", messageId)
@@ -263,7 +289,7 @@ export async function PATCH(req: NextRequest) {
       throw error || new Error("Failed to update chat message.");
     }
 
-    const authors = await loadAuthors(adminClient, [data]);
+    const authors = await loadAuthors(dataClient, [data]);
     return NextResponse.json({ message: serializeMessages([data], authors)[0] });
   } catch (error: any) {
     return NextResponse.json(
@@ -285,8 +311,8 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "messageId is required." }, { status: 400 });
     }
 
-    const adminClient = createAdminClient();
-    const { data: existing, error: existingError } = await adminClient
+    const dataClient = await createChatDataClient();
+    const { data: existing, error: existingError } = await dataClient
       .from("chat_messages")
       .select("id, user_id")
       .eq("id", messageId)
@@ -301,7 +327,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { error } = await adminClient.from("chat_messages").delete().eq("id", messageId);
+    const { error } = await dataClient.from("chat_messages").delete().eq("id", messageId);
     if (error) {
       throw error;
     }
