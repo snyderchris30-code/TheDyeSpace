@@ -76,10 +76,17 @@ export default function MainNavbar() {
       setProfileHref("/profile");
 
       try {
-        const profileData = await fetchClientProfile<PrivateRoomAccessProfile>(supabase, user.id, PRIVATE_ROOM_PROFILE_SELECT, {
+        const profileData = await fetchClientProfile<PrivateRoomAccessProfile & { username?: string | null }>(
+          supabase,
+          user.id,
+          `${PRIVATE_ROOM_PROFILE_SELECT}, username`,
+          {
           ensureProfile: true,
-        });
+          }
+        );
         if (active) {
+          const username = typeof profileData?.username === "string" ? profileData.username.trim() : "";
+          setProfileHref(username ? `/profile/${encodeURIComponent(username)}` : "/profile");
           setIsAdmin(hasAdminAccess(user.id, profileData?.role ?? null));
           setPrivateRoomAccess({
             psychonautics: canAccessPrivateRoom(profileData, "psychonautics"),
