@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/admin-utils";
 import { canAccessPrivateRoom, parsePrivateRoomKey } from "@/lib/private-rooms";
-import { resolveProfileUsername } from "@/lib/profile-identity";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { canAccessSmokeLounge } from "@/lib/verified-seller";
 
@@ -10,8 +9,7 @@ type ChatRoomId = "smoke_room" | "smoke_room_2" | "psychonautics" | "admin_room"
 type ChatMessageRow = {
   id: string;
   user_id: string;
-  username: string;
-  message: string;
+  content: string;
   created_at: string;
   room: string | null;
 };
@@ -129,7 +127,7 @@ async function loadMessagesForRooms(dataClient: Awaited<ReturnType<typeof create
   const roomFilter = buildRoomOrFilter(rooms);
   const query = dataClient
     .from("chat_messages")
-    .select("id, user_id, username, message, created_at, room")
+    .select("id, user_id, content, created_at, room")
     .order("created_at", { ascending: true });
 
   const response = roomFilter ? await query.or(roomFilter) : await query;
@@ -160,11 +158,18 @@ async function loadAuthors(dataClient: Awaited<ReturnType<typeof createChatDataC
 }
 
 function serializeMessages(messages: ChatMessageRow[], authors: Map<string, ChatAuthorRow>) {
-  return messages.map((message) => ({
-    ...message,
-    room: normalizeChatRoom(message.room) || message.room,
-    author: authors.get(message.user_id) || null,
-  }));
+  return messages.map((message) => {
+    const author = authors.get(message.user_id) || null;
+    return {
+      id: message.id,
+      user_id: message.user_id,
+      username: author?.username || author?.display_name || "DyeSpace User",
+      message: message.content,
+      created_at: message.created_at,
+      room: normalizeChatRoom(message.room) || message.room,
+      author,
+    };
+  });
 }
 
 export async function GET(req: NextRequest) {
@@ -217,16 +222,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Not authorized." }, { status: 403 });
     }
 
-    const actorName = resolveProfileUsername(undefined, user.user_metadata?.username, user.email, user.id);
     const { data, error } = await dataClient
       .from("chat_messages")
       .insert({
         user_id: user.id,
-        username: actorName,
-        message,
+        content: message,
         room,
       })
-      .select("id, user_id, username, message, created_at, room")
+      .select("id, user_id, content, created_at, room")
       .limit(1)
       .maybeSingle<ChatMessageRow>();
 
@@ -277,9 +280,9 @@ export async function PATCH(req: NextRequest) {
 
     const { data, error } = await dataClient
       .from("chat_messages")
-      .update({ message })
+      .update({ content: message })
       .eq("id", messageId)
-      .select("id, user_id, username, message, created_at, room")
+      .select("id, user_id, content, created_at, room")
       .limit(1)
       .maybeSingle<ChatMessageRow>();
 
