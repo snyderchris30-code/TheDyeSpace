@@ -230,6 +230,7 @@ export async function GET(req: NextRequest) {
     const authorIds = [...new Set([
       ...reporterIds,
       ...reportedUserIds,
+      ...shopListingSellerIds,
       ...posts.map((post) => post.user_id).filter((value): value is string => Boolean(value)),
       ...comments.map((comment) => comment.user_id).filter((value): value is string => Boolean(value)),
     ])];

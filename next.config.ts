@@ -43,6 +43,7 @@ const nextConfig: NextConfig = {
     "http://192.168.1.102:3000",
     "192.168.1.102",
     "172.31.0.1",
+    "172.19.192.1",
   ],
   async headers() {
     const cspReportOnly = [

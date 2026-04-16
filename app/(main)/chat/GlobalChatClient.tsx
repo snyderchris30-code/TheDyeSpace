@@ -447,6 +447,10 @@ export default function GlobalChatClient() {
       admin_room: [],
     };
 
+    visibleVerifiedSellerRoomIds.forEach((roomId) => {
+      nextByRoom[roomId] = [];
+    });
+
     rows.forEach((msg) => {
       const roomId = normalizeMessageRoom(msg.room);
       if (!isAdmin && msg.user_id !== user?.id && profileIsShadowBanned(msg.author)) {
@@ -760,7 +764,7 @@ export default function GlobalChatClient() {
       setPendingPhotoUrls([]);
       setMessagesByRoom((prev) => ({
         ...prev,
-        [activePanel.roomId]: [...prev[activePanel.roomId], optimistic],
+        [activePanel.roomId]: [...(prev[activePanel.roomId] || []), optimistic],
       }));
 
       const response = await fetch("/api/chat/messages", {
@@ -773,7 +777,7 @@ export default function GlobalChatClient() {
       if (!response.ok || !body?.message) {
         setMessagesByRoom((prev) => ({
           ...prev,
-          [activePanel.roomId]: prev[activePanel.roomId].filter((msg) => msg.id !== optimistic.id),
+          [activePanel.roomId]: (prev[activePanel.roomId] || []).filter((msg) => msg.id !== optimistic.id),
         }));
         setError(body?.error || "Could not send your message. Please try again.");
         return;
@@ -783,7 +787,7 @@ export default function GlobalChatClient() {
       if (insertedMessage) {
         setMessagesByRoom((prev) => ({
           ...prev,
-          [activePanel.roomId]: prev[activePanel.roomId].map((msg) =>
+          [activePanel.roomId]: (prev[activePanel.roomId] || []).map((msg) =>
             msg.id === optimistic.id ? insertedMessage : msg
           ),
         }));
@@ -814,7 +818,7 @@ export default function GlobalChatClient() {
 
       setMessagesByRoom((prev) => ({
         ...prev,
-        [activePanel.roomId]: prev[activePanel.roomId].map((msg) =>
+        [activePanel.roomId]: (prev[activePanel.roomId] || []).map((msg) =>
           msg.id === messageId ? (body.message as ChatMessage) : msg
         ),
       }));
@@ -839,7 +843,7 @@ export default function GlobalChatClient() {
 
       setMessagesByRoom((prev) => ({
         ...prev,
-        [activePanel.roomId]: prev[activePanel.roomId].filter((msg) => msg.id !== messageId),
+        [activePanel.roomId]: (prev[activePanel.roomId] || []).filter((msg) => msg.id !== messageId),
       }));
     },
     [activePanel, user]

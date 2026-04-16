@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/client";
 import { resolveClientAuth, fetchClientProfile } from "@/lib/client-auth";
 import { fetchProfileLookupByUsername, type ProfileLookupResponse } from "@/lib/profile-fetch";
 import { normalizePostImageUrls } from "@/lib/post-media";
+import { submitModerationReport } from "@/lib/report-client";
 import { buildShopListingId } from "@/lib/shop-listings";
 import { normalizeSellerProducts } from "@/lib/verified-seller";
 import { sanitizeUsernameInput } from "@/lib/profile-identity";
@@ -59,6 +60,7 @@ export default function ShopPage() {
   const [postsLoading, setPostsLoading] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [interactionStatus, setInteractionStatus] = useState<string | null>(null);
   const [adminActionStatus, setAdminActionStatus] = useState<string | null>(null);
   const supabase = useMemo(() => createClient(), []);
@@ -191,6 +193,7 @@ export default function ShopPage() {
       try {
         const auth = await resolveClientAuth(supabase);
         if (!active) return;
+        setSessionUserId(auth.user?.id ?? null);
         setIsOwner(Boolean(auth.user?.id && auth.user.id === profileUserId));
         if (auth.user?.id) {
           try {
@@ -208,6 +211,7 @@ export default function ShopPage() {
         if (!active) return;
         setIsOwner(false);
         setIsAdmin(false);
+        setSessionUserId(null);
       }
     };
 
@@ -255,6 +259,29 @@ export default function ShopPage() {
       setShopProducts((prev) => prev.filter((product) => buildShopListingId(post.user_id, product.id) !== post.id));
     } else {
       setSalePosts((prev) => prev.filter((item) => item.id !== post.id));
+    }
+  };
+
+  const handleReportListing = async (postId: string) => {
+    if (!sessionUserId) {
+      setInteractionStatus("Please sign in before reporting listings.");
+      return;
+    }
+
+    const reason = prompt("Reason for reporting this listing?");
+    if (!reason?.trim()) {
+      return;
+    }
+
+    try {
+      await submitModerationReport({
+        type: "post",
+        targetId: postId,
+        reason: reason.trim(),
+      });
+      setInteractionStatus("Listing reported. Thank you.");
+    } catch (error: any) {
+      setInteractionStatus(typeof error?.message === "string" ? error.message : "Could not submit report. Please try again.");
     }
   };
 
@@ -396,7 +423,17 @@ export default function ShopPage() {
                           </>
                         ) : null}
                       </div>
-                    ) : null}
+                    ) : (
+                      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-cyan-300/10 pt-3">
+                        <button
+                          type="button"
+                          className="rounded-full border border-pink-400/60 bg-pink-900/40 px-3 py-1 text-xs font-semibold text-pink-200 transition hover:bg-pink-900/80 hover:text-white"
+                          onClick={() => void handleReportListing(post.id)}
+                        >
+                          Report
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

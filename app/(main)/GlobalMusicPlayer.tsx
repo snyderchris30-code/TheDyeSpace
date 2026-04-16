@@ -241,6 +241,32 @@ export default function GlobalMusicPlayer() {
     }
   }, [defaultPublicUrl]);
 
+  const persistVisibilityPreference = useCallback(
+    async (nextVisible: boolean) => {
+      setIsVisible(nextVisible);
+
+      if (!session?.user) {
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/profile/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ show_music_player: nextVisible }),
+        });
+
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(body?.error || "Could not update music player visibility.");
+        }
+      } catch (error: any) {
+        setStatus(typeof error?.message === "string" ? error.message : "Could not update music player visibility.");
+      }
+    },
+    [session?.user, setIsVisible]
+  );
+
   useEffect(() => {
     setCurrentIndex((prev) => {
       if (!queue.length) return 0;
@@ -647,7 +673,19 @@ export default function GlobalMusicPlayer() {
     : "Nothing playing";
 
   if (session?.user && !isVisible) {
-    return null;
+    return (
+      <button
+        type="button"
+        className="fixed bottom-6 right-4 z-[9998] inline-flex items-center gap-2 rounded-full border border-cyan-300/35 bg-slate-950/85 px-4 py-3 text-sm font-semibold text-cyan-50 shadow-[0_12px_40px_rgba(0,0,0,0.28)] backdrop-blur-xl hover:bg-slate-900"
+        onClick={() => {
+          setIsMinimized(false);
+          void persistVisibilityPreference(true);
+        }}
+      >
+        <Music2 className="h-4 w-4" />
+        Open Music Player
+      </button>
+    );
   }
 
   return (
@@ -669,7 +707,7 @@ export default function GlobalMusicPlayer() {
                 className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1 text-[11px] font-semibold text-cyan-100 hover:bg-cyan-300/20"
                 onClick={() => setIsMinimized((prev) => !prev)}
               >
-                {isMinimized ? "Open" : "Hide"}
+                {isMinimized ? "Open" : "Minimize"}
               </button>
               <button
                 type="button"
@@ -678,6 +716,17 @@ export default function GlobalMusicPlayer() {
               >
                 Queue
               </button>
+              {session?.user ? (
+                <button
+                  type="button"
+                  className="rounded-full border border-rose-300/25 bg-rose-500/10 px-3 py-1 text-[11px] font-semibold text-rose-100 hover:bg-rose-500/20"
+                  aria-label="Hide music player"
+                  title="Hide music player"
+                  onClick={() => void persistVisibilityPreference(false)}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
             </div>
           </div>
 
