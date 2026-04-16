@@ -47,7 +47,7 @@ export default function NotificationsPage() {
     queryFn: async () => {
       const body = await dedupeApiFetchJson<{ notifications?: Notification[] }>(
         "/api/notifications",
-        { cache: "no-store" }
+        { cache: "no-store", credentials: "same-origin" }
       );
       return Array.isArray(body.notifications) ? body.notifications : [];
     },
@@ -129,6 +129,7 @@ export default function NotificationsPage() {
   const markAllAsRead = useCallback(async () => {
     const response = await fetch("/api/notifications", {
       method: "PATCH",
+      credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ markAll: true }),
     });
@@ -273,6 +274,7 @@ export default function NotificationsPage() {
 
     const response = await fetch("/api/notifications", {
       method: "PATCH",
+      credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ notificationId: notifId }),
     });

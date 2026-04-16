@@ -19,7 +19,7 @@ type NotificationItem = { id: string; actor_name: string; type: string; message:
 async function fetchNotifications(): Promise<NotificationItem[]> {
   const body = await dedupeApiFetchJson<{ notifications?: NotificationItem[] }>(
     "/api/notifications",
-    { cache: "no-store" }
+    { cache: "no-store", credentials: "same-origin" }
   );
   return Array.isArray(body.notifications) ? body.notifications : [];
 }
@@ -362,6 +362,7 @@ export default function MainNavbar() {
 
     const response = await fetch("/api/notifications", {
       method: "PATCH",
+      credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ markAll: true }),
     });

@@ -1860,6 +1860,10 @@ export default function ProfileEditor() {
             onSubmit={async (e) => {
               e.preventDefault();
               setReportStatus(null);
+              if (!session?.user?.id) {
+                setReportStatus("Please sign in to report users.");
+                return;
+              }
               if (!reportReason.trim()) {
                 setReportStatus("Please provide a reason for your report.");
                 return;

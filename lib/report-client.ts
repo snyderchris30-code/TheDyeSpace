@@ -7,6 +7,7 @@ type SubmitModerationReportInput = {
 export async function submitModerationReport(input: SubmitModerationReportInput) {
   const response = await fetch("/api/reports", {
     method: "POST",
+    credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });

@@ -334,10 +334,15 @@ function removePostFromExploreCache(cache: ExplorePost[] | undefined, postId: st
   return cache.filter((post) => post.id !== postId);
 }
 
-function ReportPostButton({ postId }: { postId: string }) {
+function ReportPostButton({ postId, isSignedIn }: { postId: string; isSignedIn: boolean }) {
   const handleReport = useCallback(async () => {
+    if (!isSignedIn) {
+      alert("Please sign in before reporting posts.");
+      return;
+    }
+
     const reason = prompt("Reason for reporting this post?");
-    if (!reason) return;
+    if (!reason?.trim()) return;
 
     try {
       await submitModerationReport({
@@ -349,7 +354,7 @@ function ReportPostButton({ postId }: { postId: string }) {
     } catch (error: any) {
       alert(typeof error?.message === "string" ? error.message : "Could not submit report. Please try again.");
     }
-  }, [postId]);
+  }, [isSignedIn, postId]);
   return (
     <button
       className="rounded-full border border-pink-400/60 bg-pink-900/40 px-3 py-1 text-xs font-semibold text-pink-200 hover:bg-pink-900/80 hover:text-white transition"
@@ -906,7 +911,7 @@ export default function ExplorePage() {
                     <MessageCircle className="h-4 w-4" />
                     <span className="text-sm">{post.comments_count}</span>
                   </button>
-                  <ReportPostButton postId={post.id} />
+                  <ReportPostButton postId={post.id} isSignedIn={!!sessionUserId} />
                 </div>
               ) : (
                 <p className="text-sm italic text-cyan-300/80">Sign in to interact with posts.</p>
