@@ -300,6 +300,7 @@ export default function ProfileEditor() {
   const supabase = useMemo(() => createClient(), []);
   const viewRef = useRef<HTMLDivElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
+  const profileLookupAbortRef = useRef<AbortController | null>(null);
   const [session, setSession] = useState<any>(null);
   const [sessionValidationError, setSessionValidationError] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -487,7 +488,7 @@ export default function ProfileEditor() {
         .select("id, username, display_name, bio, avatar_url, banner_url, theme_settings, created_at, role, muted_until, voided_until, verified_badge, member_number, shadow_banned, shadow_banned_until, ghost_ridin")
         .eq("id", userId)
         .limit(1)
-        .maybeSingle<ProfileRow>();
+        .maybeSingle();
 
       if (error) {
         throw error;
@@ -503,11 +504,17 @@ export default function ProfileEditor() {
   }, []);
 
   const fetchProfileSnapshotWithRetry = useCallback(
-    async (username: string) => {
+    async (username: string, signal?: AbortSignal) => {
       let lastError: unknown = null;
 
       for (let attempt = 1; attempt <= PROFILE_FETCH_MAX_ATTEMPTS; attempt += 1) {
+        if (signal?.aborted) {
+          throw new DOMException("The user aborted a request.", "AbortError");
+        }
+
         const controller = new AbortController();
+        const relayAbort = () => controller.abort();
+        signal?.addEventListener("abort", relayAbort, { once: true });
         const timeoutId = window.setTimeout(() => controller.abort(), PROFILE_FETCH_TIMEOUT_MS);
 
         try {
@@ -535,6 +542,7 @@ export default function ProfileEditor() {
 
           throw error;
         } finally {
+          signal?.removeEventListener("abort", relayAbort);
           window.clearTimeout(timeoutId);
         }
       }
@@ -616,7 +624,7 @@ export default function ProfileEditor() {
     [loadInteractions, reportProfileLoadError, supabase]
   );
 
-  const loadProfile = useCallback(async () => {
+  const loadProfile = useCallback(async (signal?: AbortSignal) => {
     let loadStage = "session";
     try {
       setLoading(true);
@@ -630,13 +638,14 @@ export default function ProfileEditor() {
         PROFILE_LOAD_TIMEOUT_MS,
         "Unable to validate session. Please refresh and try again."
       );
+      if (signal?.aborted) {
+        return;
+      }
       const sessionUser = authState.user;
       lastAuthSessionUserIdRef.current = sessionUser?.id ?? null;
       setSession(authState.session);
 
-      if (sessionUser?.id) {
-        void loadOwnRole(sessionUser.id);
-      } else {
+      if (!sessionUser?.id) {
         setIsAdmin(false);
         setViewerIsVerifiedSeller(false);
         setViewerCanAccessSmokeLounge(false);
@@ -654,18 +663,34 @@ export default function ProfileEditor() {
 
       setIsOwner(false);
       loadStage = "route-profile-fetch";
-      const lookup = await fetchProfileSnapshotWithRetry(routeUsername);
+      const lookup = await fetchProfileSnapshotWithRetry(routeUsername, signal);
+      if (signal?.aborted) {
+        return;
+      }
       const viewedProfile = lookup.profile;
 
       if (!viewedProfile) {
         if (sessionUser?.id) {
           await fetch("/api/profile/init", { method: "POST" }).catch(() => null);
-          const retryLookup = await fetchProfileSnapshotWithRetry(routeUsername);
+          const retryLookup = await fetchProfileSnapshotWithRetry(routeUsername, signal);
+          if (signal?.aborted) {
+            return;
+          }
           if (retryLookup.profile) {
             applyLoadedProfile(retryLookup.profile);
             if (retryLookup.profile.id === sessionUser.id) {
               setIsOwner(true);
               setIsAdmin(hasAdminAccess(sessionUser.id, retryLookup.profile.role ?? null));
+              setViewerIsVerifiedSeller(retryLookup.profile.verified_badge === true);
+              if (retryLookup.profile.role === "admin") {
+                setViewerCanAccessSmokeLounge(true);
+              } else if (retryLookup.profile.verified_badge === true) {
+                void loadOwnRole(sessionUser.id);
+              } else {
+                setViewerCanAccessSmokeLounge(false);
+              }
+            } else {
+              void loadOwnRole(sessionUser.id);
             }
             return;
           }
@@ -685,6 +710,16 @@ export default function ProfileEditor() {
       if (sessionUser?.id && viewedProfile.id === sessionUser.id) {
         setIsOwner(true);
         setIsAdmin(hasAdminAccess(sessionUser.id, viewedProfile.role ?? null));
+        setViewerIsVerifiedSeller(viewedProfile.verified_badge === true);
+        if (viewedProfile.role === "admin") {
+          setViewerCanAccessSmokeLounge(true);
+        } else if (viewedProfile.verified_badge === true) {
+          void loadOwnRole(sessionUser.id);
+        } else {
+          setViewerCanAccessSmokeLounge(false);
+        }
+      } else if (sessionUser?.id) {
+        void loadOwnRole(sessionUser.id);
       }
     } catch (error) {
       console.error("Failed to load profile:", error);
@@ -707,7 +742,17 @@ export default function ProfileEditor() {
   }, [applyLoadedProfile, fetchProfileSnapshotWithRetry, loadOwnRole, reportProfileLoadError, routeUsername, supabase]);
 
   useEffect(() => {
-    void loadProfile();
+    profileLookupAbortRef.current?.abort();
+    const controller = new AbortController();
+    profileLookupAbortRef.current = controller;
+    void loadProfile(controller.signal);
+
+    return () => {
+      controller.abort();
+      if (profileLookupAbortRef.current === controller) {
+        profileLookupAbortRef.current = null;
+      }
+    };
   }, [loadProfile]);
 
   useEffect(() => {
@@ -731,7 +776,7 @@ export default function ProfileEditor() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "posts", filter: `user_id=eq.${profileUserId}` },
-        (payload) => {
+        (payload: any) => {
           const newRecord = (payload.new || null) as { id?: string; deleted_at?: string | null } | null;
           const oldRecord = (payload.old || null) as { id?: string; deleted_at?: string | null } | null;
           const postId = newRecord?.id || oldRecord?.id;

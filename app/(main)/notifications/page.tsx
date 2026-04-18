@@ -43,7 +43,7 @@ export default function NotificationsPage() {
     refetch: refetchNotifications,
     isLoading: notificationsLoading,
   } = useQuery<Notification[]>({
-    queryKey: ["notificationsPage", userId],
+    queryKey: ["notifications", userId],
     queryFn: async () => {
       const body = await dedupeApiFetchJson<{ notifications?: Notification[] }>(
         "/api/notifications",
@@ -118,9 +118,6 @@ export default function NotificationsPage() {
       return;
     }
 
-    queryClient.setQueryData<Notification[]>(["notificationsPage", userId], (current) =>
-      (current || []).map((item) => ({ ...item, read: true }))
-    );
     queryClient.setQueryData<Notification[]>(["notifications", userId], (current) =>
       (current || []).map((item) => ({ ...item, read: true }))
     );
@@ -197,7 +194,7 @@ export default function NotificationsPage() {
 
       const {
         data: { subscription },
-      } = auth.onAuthStateChange((_event, session) => {
+      } = auth.onAuthStateChange((_event: string, session: any) => {
         const nextUserId = session?.user?.id || null;
 
         if ((_event === "TOKEN_REFRESHED" || _event === "INITIAL_SESSION") && nextUserId === lastAuthUserIdRef.current) {
@@ -265,9 +262,6 @@ export default function NotificationsPage() {
   const markAsRead = async (notifId: string) => {
     if (!userId) return;
 
-    queryClient.setQueryData<Notification[]>(["notificationsPage", userId], (current) =>
-      (current || []).map((item) => (item.id === notifId ? { ...item, read: true } : item))
-    );
     queryClient.setQueryData<Notification[]>(["notifications", userId], (current) =>
       (current || []).map((item) => (item.id === notifId ? { ...item, read: true } : item))
     );

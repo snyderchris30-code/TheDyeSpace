@@ -173,7 +173,7 @@ async function fetchExplorePosts({ queryKey }: { queryKey: unknown[] }) {
       .in("id", userIds);
 
     if (!profilesError) {
-      (profilesData || []).forEach((profile) => {
+      (profilesData || []).forEach((profile: any) => {
         profilesById.set(profile.id, profile as ProfileRow);
       });
     }
@@ -191,7 +191,7 @@ async function fetchExplorePosts({ queryKey }: { queryKey: unknown[] }) {
 
   const { data: sellerProfilesData } = await sellerProfilesQuery;
   const sellerProfiles = (sellerProfilesData || []) as ProfileRow[];
-  sellerProfiles.forEach((profile) => {
+  sellerProfiles.forEach((profile: ProfileRow) => {
     profilesById.set(profile.id, profile);
   });
 
@@ -394,20 +394,20 @@ export default function ExplorePage() {
     retry: 1,
   });
 
-  const postIds = useMemo(() => posts.map((post) => post.id), [posts]);
-  const postIdsKey = useMemo(() => postIds.join(","), [postIds]);
+  const interactionPostIds = useMemo(() => [...new Set(posts.map((post) => post.id))].sort(), [posts]);
+  const postIdsKey = useMemo(() => interactionPostIds.join(","), [interactionPostIds]);
 
   const { data: interactionData = EMPTY_INTERACTIONS, refetch: refetchInteractions } = useQuery({
     queryKey: ["exploreInteractions", postIdsKey],
-    queryFn: async () => {
-      if (!postIds.length) return EMPTY_INTERACTIONS;
+    queryFn: async ({ signal }) => {
+      if (!interactionPostIds.length) return EMPTY_INTERACTIONS;
       const body = await dedupeApiFetchJson<{ interactionsByPostId?: InteractionMap }>(
-        `/api/posts/interactions?postIds=${encodeURIComponent(postIds.join(","))}`,
-        { cache: "no-store" }
+        `/api/posts/interactions?postIds=${encodeURIComponent(interactionPostIds.join(","))}`,
+        { cache: "no-store", signal }
       );
       return body.interactionsByPostId || EMPTY_INTERACTIONS;
     },
-    enabled: postIds.length > 0,
+    enabled: interactionPostIds.length > 0,
     staleTime: 1000 * 15,
     refetchOnWindowFocus: false,
     refetchOnMount: false,
@@ -453,7 +453,7 @@ export default function ExplorePage() {
     };
 
     void syncAuth();
-    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event: string, nextSession: any) => {
       if (event === "SIGNED_OUT") {
         setSessionUserId(null);
         setViewerIsAdmin(false);
@@ -488,7 +488,7 @@ export default function ExplorePage() {
 
     const channel = supabase
       .channel("public:explore-posts")
-      .on("postgres_changes", { event: "*", schema: "public", table: "posts" }, (payload) => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "posts" }, (payload: any) => {
         const newRecord = (payload.new || null) as { id?: string; deleted_at?: string | null } | null;
         const oldRecord = (payload.old || null) as { id?: string; deleted_at?: string | null } | null;
         const postId = newRecord?.id || oldRecord?.id;
@@ -510,7 +510,6 @@ export default function ExplorePage() {
         }
 
         void queryClient.invalidateQueries({ queryKey: ["explorePosts"] });
-        void queryClient.invalidateQueries({ queryKey: ["exploreInteractions"] });
       })
       .subscribe();
 

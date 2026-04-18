@@ -108,13 +108,21 @@ function getCategoryMeta(content: string | null): { value: FeedCategory; label: 
   return null;
 }
 
-async function fetchPosts({ pageParam }: { pageParam?: string | null }) {
-  const url = `/api/posts/feed${pageParam ? `?before=${encodeURIComponent(pageParam)}` : ""}`;
-  const response = await fetch(url, { cache: "no-store" });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error((body as { error?: string })?.error || "Failed to load feed posts.");
+async function fetchPosts({ pageParam, signal }: { pageParam?: string | null; signal?: AbortSignal }) {
+  const query = new URLSearchParams();
+  if (pageParam) {
+    query.set("before", pageParam);
   }
+
+  const body = await dedupeApiFetchJson<{ posts?: Post[]; error?: string }>(
+    `/api/posts/feed${query.size ? `?${query.toString()}` : ""}`,
+    { cache: "no-store", signal }
+  );
+
+  if (body?.error) {
+    throw new Error(body.error);
+  }
+
   return (body.posts || []) as Post[];
 }
 
@@ -196,20 +204,20 @@ export default function MainFeedPage() {
 
   const posts = useMemo(() => (data?.pages.flat() ?? []) as Post[], [data]);
   const queryClient = useQueryClient();
-  const postIds = useMemo(() => posts.map((post) => post.id), [posts]);
-  const postIdsKey = useMemo(() => postIds.join(","), [postIds]);
+  const interactionPostIds = useMemo(() => [...new Set(posts.map((post) => post.id))].sort(), [posts]);
+  const postIdsKey = useMemo(() => interactionPostIds.join(","), [interactionPostIds]);
 
   const { data: interactionData = EMPTY_INTERACTIONS, refetch: refetchInteractions } = useQuery({
     queryKey: ["mainFeedInteractions", postIdsKey],
-    queryFn: async () => {
-      if (!postIds.length) return {};
+    queryFn: async ({ signal }) => {
+      if (!interactionPostIds.length) return {};
       const body = await dedupeApiFetchJson<{ interactionsByPostId?: InteractionMap }>(
-        `/api/posts/interactions?postIds=${encodeURIComponent(postIds.join(","))}`,
-        { cache: "no-store" }
+        `/api/posts/interactions?postIds=${encodeURIComponent(interactionPostIds.join(","))}`,
+        { cache: "no-store", signal }
       );
       return body.interactionsByPostId || {};
     },
-    enabled: postIds.length > 0,
+    enabled: interactionPostIds.length > 0,
     staleTime: 1000 * 15,
     refetchOnWindowFocus: false,
     refetchOnMount: false,
@@ -310,7 +318,7 @@ export default function MainFeedPage() {
     };
 
     void syncAuth();
-    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event: string, nextSession: any) => {
       if (event === "SIGNED_OUT") {
         setSession(null);
         setIsAdmin(false);
@@ -340,7 +348,7 @@ export default function MainFeedPage() {
 
     const channel = supabase
       .channel("public:main-feed-posts")
-      .on("postgres_changes", { event: "*", schema: "public", table: "posts" }, (payload) => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "posts" }, (payload: any) => {
         const newRecord = (payload.new || null) as { id?: string; deleted_at?: string | null } | null;
         const oldRecord = (payload.old || null) as { id?: string; deleted_at?: string | null } | null;
         const postId = newRecord?.id || oldRecord?.id;
@@ -368,14 +376,13 @@ export default function MainFeedPage() {
         }
 
         void queryClient.invalidateQueries({ queryKey: ["posts"] });
-        void refetchInteractions();
       })
       .subscribe();
 
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [queryClient, refetchInteractions]);
+  }, [queryClient]);
 
   const [postOverrides, setPostOverrides] = useState<Record<string, Partial<Pick<Post, "likes" | "comments_count">>>>({});
 

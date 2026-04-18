@@ -80,7 +80,7 @@ export default function ResetPasswordPage() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event) => {
+    } = supabase.auth.onAuthStateChange((event: string) => {
       if (!isMounted) return;
       if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") {
         router.replace("/settings?recovery=1");

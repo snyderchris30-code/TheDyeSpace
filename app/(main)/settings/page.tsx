@@ -52,7 +52,7 @@ function SettingsContent() {
   const [appUpdateError, setAppUpdateError] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data }: { data: any }) => {
       const user = data.session?.user;
       if (!user) {
         router.replace("/login?redirect=/settings");
@@ -63,7 +63,7 @@ function SettingsContent() {
         .select("username, role, ghost_ridin, verified_badge")
         .eq("id", user.id)
         .maybeSingle()
-        .then(async ({ data: profile }) => {
+        .then(async ({ data: profile }: { data: any }) => {
           setUsername(sanitizeUsernameInput(profile?.username ?? ""));
           const adminRole = hasAdminAccess(user.id, profile?.role ?? null);
           setIsAdmin(adminRole);

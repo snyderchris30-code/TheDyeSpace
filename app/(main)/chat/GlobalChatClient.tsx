@@ -151,6 +151,7 @@ function stripPhotoTokens(message: string | null | undefined) {
 
 export default function GlobalChatClient() {
   const searchParams = useSearchParams();
+  const supabase = useMemo(() => createClient(), []);
   const [messagesByRoom, setMessagesByRoom] = useState<Record<string, ChatMessage[]>>({
     smoke_room: [],
     smoke_room_2: [],
@@ -184,6 +185,9 @@ export default function GlobalChatClient() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const previousMessageCountRef = useRef<number>(0);
   const refreshTimerRef = useRef<number | null>(null);
+  const messageRequestKeyRef = useRef<string | null>(null);
+  const lastMessagesFetchRef = useRef<{ key: string; at: number } | null>(null);
+  const messagesAbortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const voiceChannelRef = useRef<any>(null);
 
@@ -418,56 +422,95 @@ export default function GlobalChatClient() {
       ...ROOM_DEFINITIONS.filter((room) => roomAccess[room.id]).map((room) => room.id),
       ...visibleVerifiedSellerRoomIds,
     ];
+    const requestKey = roomFilters.join(",");
 
     if (!roomFilters.length) {
+      messagesAbortRef.current?.abort();
+      messagesAbortRef.current = null;
+      messageRequestKeyRef.current = null;
       setMessagesByRoom({ smoke_room: [], smoke_room_2: [], psychonautics: [], admin_room: [] });
       setLoading(false);
       return;
     }
 
-    const response = await fetch(`/api/chat/messages?rooms=${encodeURIComponent(roomFilters.join(","))}`, {
-      cache: "no-store",
-    });
-    const body = await response.json().catch(() => ({}));
-
-    if (!response.ok || !Array.isArray(body?.messages)) {
-      setError("Could not load chat rooms right now. Please try again.");
-      setLoading(false);
+    const now = Date.now();
+    if (messageRequestKeyRef.current === requestKey) {
       return;
     }
 
-    setError(null);
+    const lastFetch = lastMessagesFetchRef.current;
+    if (lastFetch && lastFetch.key === requestKey && now - lastFetch.at < 1000) {
+      return;
+    }
 
-    const rows = (body.messages as ChatMessage[]).filter((msg) => roomIsAccessible(normalizeMessageRoom(msg.room)));
+    messagesAbortRef.current?.abort();
+    const controller = new AbortController();
+    messagesAbortRef.current = controller;
+    messageRequestKeyRef.current = requestKey;
 
-    const nextByRoom: Record<string, ChatMessage[]> = {
-      smoke_room: [],
-      smoke_room_2: [],
-      psychonautics: [],
-      admin_room: [],
-    };
+    try {
+      const response = await fetch(`/api/chat/messages?rooms=${encodeURIComponent(roomFilters.join(","))}`, {
+        cache: "no-store",
+        signal: controller.signal,
+      });
 
-    visibleVerifiedSellerRoomIds.forEach((roomId) => {
-      nextByRoom[roomId] = [];
-    });
+      const body = await response.json().catch(() => ({}));
 
-    rows.forEach((msg) => {
-      const roomId = normalizeMessageRoom(msg.room);
-      if (!isAdmin && msg.user_id !== user?.id && profileIsShadowBanned(msg.author)) {
+      if (!response.ok || !Array.isArray(body?.messages)) {
+        if (controller.signal.aborted) {
+          return;
+        }
+        setError("Could not load chat rooms right now. Please try again.");
+        setLoading(false);
         return;
       }
-      if (!nextByRoom[roomId]) {
-        nextByRoom[roomId] = [];
-      }
-      nextByRoom[roomId].push(msg);
-    });
 
-    setMessagesByRoom(nextByRoom);
-    setLoading(false);
+      setError(null);
+
+      const rows = (body.messages as ChatMessage[]).filter((msg) => roomIsAccessible(normalizeMessageRoom(msg.room)));
+
+      const nextByRoom: Record<string, ChatMessage[]> = {
+        smoke_room: [],
+        smoke_room_2: [],
+        psychonautics: [],
+        admin_room: [],
+      };
+
+      visibleVerifiedSellerRoomIds.forEach((roomId) => {
+        nextByRoom[roomId] = [];
+      });
+
+      rows.forEach((msg) => {
+        const roomId = normalizeMessageRoom(msg.room);
+        if (!isAdmin && msg.user_id !== user?.id && profileIsShadowBanned(msg.author)) {
+          return;
+        }
+        if (!nextByRoom[roomId]) {
+          nextByRoom[roomId] = [];
+        }
+        nextByRoom[roomId].push(msg);
+      });
+
+      setMessagesByRoom(nextByRoom);
+      lastMessagesFetchRef.current = { key: requestKey, at: Date.now() };
+      setLoading(false);
+    } catch (error: any) {
+      if (error?.name === "AbortError") {
+        return;
+      }
+      setError("Could not load chat rooms right now. Please try again.");
+      setLoading(false);
+    } finally {
+      if (messagesAbortRef.current === controller) {
+        messagesAbortRef.current = null;
+      }
+      if (messageRequestKeyRef.current === requestKey) {
+        messageRequestKeyRef.current = null;
+      }
+    }
   }, [isAdmin, roomAccess, roomIsAccessible, user?.id, visibleVerifiedSellerRoomIds]);
 
   useEffect(() => {
-    const supabase = createClient();
     let mounted = true;
 
     const bootstrap = async () => {
@@ -504,10 +547,9 @@ export default function GlobalChatClient() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [supabase]);
 
   useEffect(() => {
-    const supabase = createClient();
     let active = true;
 
     const loadVerifiedSellerChats = async () => {
@@ -536,9 +578,9 @@ export default function GlobalChatClient() {
 
     return () => {
       active = false;
-      supabase.removeChannel(channel);
+      void supabase.removeChannel(channel);
     };
-  }, []);
+  }, [supabase]);
 
   useEffect(() => {
     if (activePanel.kind === "text" && !visibleRooms.some((room) => room.id === activePanel.roomId)) {
@@ -582,8 +624,6 @@ export default function GlobalChatClient() {
   }, [fetchMessages]);
 
   useEffect(() => {
-    const supabase = createClient();
-
     const scheduleRefresh = () => {
       if (refreshTimerRef.current !== null) return;
       refreshTimerRef.current = window.setTimeout(() => {
@@ -594,7 +634,7 @@ export default function GlobalChatClient() {
 
     const channel = supabase
       .channel("public:dye_chat_workspace")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages" }, (payload) => {
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages" }, (payload: any) => {
         const next = payload.new as ChatMessage;
         const roomId = normalizeMessageRoom(next.room);
         if (!roomIsAccessible(roomId)) return;
@@ -617,9 +657,9 @@ export default function GlobalChatClient() {
         window.clearTimeout(refreshTimerRef.current);
         refreshTimerRef.current = null;
       }
-      supabase.removeChannel(channel);
+      void supabase.removeChannel(channel);
     };
-  }, [activePanel, fetchMessages, roomIsAccessible, user?.id]);
+  }, [activePanel, fetchMessages, roomIsAccessible, supabase, user?.id]);
 
   useEffect(() => {
     if (activePanel.kind === "text") {
@@ -656,7 +696,6 @@ export default function GlobalChatClient() {
   }, [activePanel]);
 
   useEffect(() => {
-    const supabase = createClient();
     if (!user?.id) {
       setVoiceParticipants([]);
       setVoiceJoined(false);
@@ -698,7 +737,13 @@ export default function GlobalChatClient() {
       setVoiceParticipants([]);
       setVoiceJoined(false);
     };
-  }, [user?.id]);
+  }, [supabase, user?.id]);
+
+  useEffect(() => {
+    return () => {
+      messagesAbortRef.current?.abort();
+    };
+  }, []);
 
   const uploadPhotos = useCallback(
     async (files: File[]) => {

@@ -308,7 +308,7 @@ export default function GlobalMusicPlayer() {
 
     void syncAuth();
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((_event: string, nextSession: any) => {
       const nextUserId = nextSession?.user?.id ?? null;
 
       if ((_event === "TOKEN_REFRESHED" || _event === "INITIAL_SESSION") && nextUserId === lastSessionUserIdRef.current) {

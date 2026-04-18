@@ -42,6 +42,7 @@ export default function MainNavbar() {
   const lastSessionUserIdRef = React.useRef<string | null>(null);
   const lastUserCountRefreshRef = React.useRef(0);
   const lastRealtimeNotificationRef = React.useRef(0);
+  const lastNotificationRefreshRef = React.useRef(0);
   const shareLinks = [
     { label: "www.thedyespace.com", url: "https://www.thedyespace.com" },
     { label: "www.thedyespace.app", url: "https://www.thedyespace.app" },
@@ -49,6 +50,7 @@ export default function MainNavbar() {
 
   const router = useRouter();
   const pathname = usePathname();
+  const supabase = React.useMemo(() => createClient(), []);
   const [session, setSession] = useState<any>(null);
   const [profileHref, setProfileHref] = useState("/login");
   const [userCount, setUserCount] = useState<number | null>(null);
@@ -61,7 +63,6 @@ export default function MainNavbar() {
   const [copiedShareUrl, setCopiedShareUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    const supabase = createClient();
     let active = true;
 
     const updateProfileHref = async (user: any | null) => {
@@ -108,7 +109,7 @@ export default function MainNavbar() {
       setSession(session);
       void updateProfileHref(user);
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event: string, nextSession: any) => {
       const nextUserId = nextSession?.user?.id || null;
 
       if (event === "SIGNED_OUT") {
@@ -143,7 +144,6 @@ export default function MainNavbar() {
   const loadUsersList = useCallback(async () => {
     setUsersLoading(true);
     try {
-      const supabase = createClient();
       let query = supabase
         .from("profiles")
         .select("id,username,display_name,verified_badge,member_number")
@@ -166,19 +166,17 @@ export default function MainNavbar() {
     } finally {
       setUsersLoading(false);
     }
-  }, [isAdmin]);
+  }, [isAdmin, supabase]);
 
   const loadUserCount = useCallback(async () => {
-    const supabase = createClient();
     const { count } = await supabase
       .from("profiles")
       .select("id", { count: "exact", head: true });
 
     setUserCount(count ?? null);
-  }, []);
+  }, [supabase]);
 
   useEffect(() => {
-    const supabase = createClient();
     let active = true;
 
     void loadUserCount();
@@ -220,7 +218,6 @@ export default function MainNavbar() {
 
   const handleSignOut = async () => {
     try {
-      const supabase = createClient();
       await supabase.auth.signOut();
       queryClient.clear();
     } finally {
@@ -232,8 +229,6 @@ export default function MainNavbar() {
 
   // Theme system removed
 
-  // Throttle notification refetch to once every 30 seconds
-  const [lastNotifFetch, setLastNotifFetch] = useState(0);
   const { data: notifications = [], refetch } = useQuery({
     queryKey: ["notifications", notificationUserId ?? "anonymous"],
     queryFn: fetchNotifications,
@@ -264,7 +259,6 @@ export default function MainNavbar() {
       return;
     }
 
-    const supabase = createClient();
     const channel = supabase
       .channel(`public:navbar-notifications:${notificationUserId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${notificationUserId}` }, () => {
@@ -273,24 +267,24 @@ export default function MainNavbar() {
           return;
         }
         lastRealtimeNotificationRef.current = now;
-        void refetch();
+        void queryClient.invalidateQueries({ queryKey: ["notifications", notificationUserId] });
       })
       .subscribe();
 
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [notificationUserId, refetch]);
+  }, [notificationUserId, queryClient, supabase]);
 
   useEffect(() => {
     if (notifDrop && notificationUserId) {
       const now = Date.now();
-      if (now - lastNotifFetch > 30000) {
-        setLastNotifFetch(now);
-        void refetch();
+      if (now - lastNotificationRefreshRef.current > 30000) {
+        lastNotificationRefreshRef.current = now;
+        void queryClient.invalidateQueries({ queryKey: ["notifications", notificationUserId] });
       }
     }
-  }, [notifDrop, notificationUserId, refetch, lastNotifFetch]);
+  }, [notifDrop, notificationUserId, queryClient]);
 
   useEffect(() => {
     if (!isLoggedIn || typeof window === "undefined") return;
@@ -355,9 +349,6 @@ export default function MainNavbar() {
     queryClient.setQueryData<NotificationItem[]>(["notifications", notificationUserId], (current) =>
       (current || []).map((item) => ({ ...item, read: true }))
     );
-    queryClient.setQueryData<NotificationItem[]>(["notificationsPage", notificationUserId], (current) =>
-      (current || []).map((item) => ({ ...item, read: true }))
-    );
   }, [notificationUserId, queryClient]);
 
   const markAllRead = useCallback(async () => {
@@ -376,11 +367,8 @@ export default function MainNavbar() {
 
     if (!response.ok) {
       void refetch();
-      void queryClient.invalidateQueries({ queryKey: ["notificationsPage", notificationUserId] });
       return;
     }
-
-    void refetch();
   }, [markNotificationsReadInCache, notificationUserId, queryClient, refetch]);
 
   const handleNotificationsToggle = useCallback(() => {
