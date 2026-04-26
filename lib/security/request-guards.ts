@@ -7,6 +7,10 @@ type RateLimitRecord = {
 };
 
 const rateLimitStore = new Map<string, RateLimitRecord>();
+const maliciousUserAgentPattern =
+  /(sqlmap|nikto|wpscan|nmap|masscan|nessus|acunetix|dirbuster|fimap|havij|gobuster|curl\/[\d.]+|python-requests|aiohttp|libwww-perl|httpclient|zgrab|jaeles|metasploit|scanner|crawler)/i;
+const blockedPathPattern =
+  /(^\/wp-admin(?:\/|$)|^\/wp-login(?:\.php)?$|^\/xmlrpc\.php$|^\/\.env(?:\.|$|\/)|^\/\.git(?:\/|$)|^\/backup(?:\.|\/|$)|^\/config(?:\.|\/|$)|^\/install\.php$|^\/phpmyadmin(?:\/|$)|^\/adminer(?:\.php)?$|^\/server-status$|^\/actuator(?:\/|$)|^\/\.DS_Store$|^\/\.vscode(?:\/|$))/i;
 
 export function getClientIp(request: NextRequest | Request) {
   const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
@@ -60,6 +64,23 @@ const XSS_PATTERN = /(<\s*script|javascript:|onerror\s*=|onload\s*=|<\s*iframe|<
 
 export function hasSuspiciousInput(value: string) {
   return SQLI_PATTERN.test(value) || XSS_PATTERN.test(value);
+}
+
+export function isSuspiciousUserAgent(userAgent: string | null) {
+  if (!userAgent) {
+    return true;
+  }
+
+  const normalized = userAgent.trim();
+  if (!normalized) {
+    return true;
+  }
+
+  return maliciousUserAgentPattern.test(normalized);
+}
+
+export function isBlockedAttackPath(pathname: string) {
+  return blockedPathPattern.test(pathname);
 }
 
 export function sanitizeUserText(value: string, maxLength = 5000) {

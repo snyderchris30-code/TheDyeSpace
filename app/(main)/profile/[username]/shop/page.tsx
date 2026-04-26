@@ -165,9 +165,8 @@ export default function ShopPage() {
         const nextPosts = await postsPromise;
         if (!active) return;
         setSalePosts(nextPosts);
-      } catch (error) {
+      } catch {
         if (!active) return;
-        console.error("Failed to load for sale posts:", error);
         setSalePosts([]);
       } finally {
         if (active) setPostsLoading(false);

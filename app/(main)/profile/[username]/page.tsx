@@ -24,6 +24,7 @@ import { hasAdminAccess, runAdminUserAction, type AdminActionName } from "@/lib/
 import { appendEmojiToText, buildCustomEmojiAsset } from "@/lib/custom-emojis";
 import { buildPostContentWithAffiliateProducts, extractAffiliateProductIds, stripAffiliateProductTokens } from "@/lib/post-affiliate-products";
 import { submitModerationReport } from "@/lib/report-client";
+import { ensureProfileBucketsReady } from "@/lib/storage/profile-buckets";
 import { buildShopListingId } from "@/lib/shop-listings";
 import { buildYoutubeEmbedUrl, extractYoutubeVideoId, normalizeMusicPlayerUrls } from "@/lib/youtube-media";
 import {
@@ -852,11 +853,7 @@ export default function ProfileEditor() {
   }, [loadContactRequestState, profileStatus?.verified_badge, profileUserId, session?.user?.id]);
 
   const ensureProfileBuckets = useCallback(async () => {
-    const response = await fetch("/api/storage/profile-buckets", { method: "POST" });
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      throw new Error(body?.error || "Storage is not ready for uploads right now.");
-    }
+    await ensureProfileBucketsReady();
   }, []);
 
   const saveProfile = useCallback(

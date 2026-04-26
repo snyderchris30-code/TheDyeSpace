@@ -67,8 +67,6 @@ type ProfileRow = {
 
 const EMPTY_INTERACTIONS: InteractionMap = Object.freeze({}) as InteractionMap;
 
-const exploreLoadPromises = new Map<string, Promise<void>>();
-
 function isShadowBanned(profile?: ProfileRow) {
   if (!profile) return false;
   if (profile.shadow_banned) return true;
@@ -157,11 +155,14 @@ async function fetchExplorePosts({ queryKey }: { queryKey: unknown[] }) {
     throw fetchError;
   }
 
-  const rows = ((data || []) as ExplorePost[]).map((post) => ({
-    ...post,
-    is_shop_listing: false,
-    image_urls: normalizePostImageUrls(post.image_urls).length ? normalizePostImageUrls(post.image_urls) : null,
-  }));
+  const rows = ((data || []) as ExplorePost[]).map((post) => {
+    const normalizedImages = normalizePostImageUrls(post.image_urls);
+    return {
+      ...post,
+      is_shop_listing: false,
+      image_urls: normalizedImages.length ? normalizedImages : null,
+    };
+  });
 
   const userIds = [...new Set(rows.map((post) => post.user_id).filter(Boolean))];
   const profilesById = new Map<string, ProfileRow>();
@@ -369,6 +370,7 @@ function ReportPostButton({ postId, isSignedIn }: { postId: string; isSignedIn: 
 
 export default function ExplorePage() {
   const LightboxModal = dynamic(() => import("../../LightboxModal"), { ssr: false });
+  const supabase = useMemo(() => createClient(), []);
   const [lightbox, setLightbox] = useState<{ open: boolean; images: string[]; index: number }>({ open: false, images: [], index: 0 });
   const [tab, setTab] = useState<FeedCategory>("all");
   const [search, setSearch] = useState("");
@@ -433,7 +435,6 @@ export default function ExplorePage() {
   }, []);
 
   useEffect(() => {
-    const supabase = createClient();
     const syncAuth = async () => {
       const authState = await resolveClientAuth(supabase);
       const nextUserId = authState.user?.id || null;
@@ -479,13 +480,11 @@ export default function ExplorePage() {
     return () => {
       listener?.subscription.unsubscribe();
     };
-  }, []);
+  }, [supabase]);
 
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    const supabase = createClient();
-
     const channel = supabase
       .channel("public:explore-posts")
       .on("postgres_changes", { event: "*", schema: "public", table: "posts" }, (payload: any) => {
@@ -516,7 +515,7 @@ export default function ExplorePage() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [queryClient]);
+  }, [queryClient, supabase]);
 
   const updatePostCounters = useCallback((postId: string, updates: Partial<Pick<ExplorePost, "likes" | "comments_count">>) => {
     queryClient.setQueryData<ExplorePost[]>(["explorePosts", tab, search.trim(), marketplaceOnly, sessionUserId, viewerIsAdmin, reloadKey], (currentPosts) =>
@@ -761,7 +760,7 @@ export default function ExplorePage() {
           <Link
             href="/chat"
             prefetch={false}
-            className="rounded-full border-4 border-red-600 bg-gradient-to-br from-red-700 via-red-500 to-red-700 px-8 py-4 text-2xl font-extrabold text-white shadow-lg hover:scale-105 hover:bg-red-700/90 transition-all ml-auto"
+            className="ml-auto rounded-full border-4 border-red-600 bg-gradient-to-br from-red-700 via-red-500 to-red-700 px-5 py-2.5 text-base font-extrabold text-white shadow-lg transition-all hover:scale-105 hover:bg-red-700/90 sm:px-8 sm:py-4 sm:text-2xl"
             style={{ boxShadow: "0 0 32px 4px rgba(239,68,68,0.25)" }}
           >
             The Dye Chat

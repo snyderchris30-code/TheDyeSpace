@@ -11,6 +11,7 @@ import { invalidateProfileLookupByUsername } from "@/lib/profile-fetch";
 import { normalizeSellerProducts } from "@/lib/verified-seller";
 import { sanitizeUsernameInput } from "@/lib/profile-identity";
 import type { SellerProduct } from "@/types/database";
+import { ensureProfileBucketsReady } from "@/lib/storage/profile-buckets";
 import VerifiedSellerShopEditor from "../../VerifiedSellerShopEditor";
 
 const MAX_SHOP_PRODUCT_PHOTOS = 6;
@@ -141,11 +142,7 @@ export default function ShopManagePage() {
   }, [username, supabase]);
 
   const ensureProfileBuckets = useCallback(async () => {
-    const response = await fetch("/api/storage/profile-buckets", { method: "POST" });
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      throw new Error(body?.error || "Storage is not ready for uploads right now.");
-    }
+    await ensureProfileBucketsReady();
   }, []);
 
   const addShopProduct = useCallback(() => {

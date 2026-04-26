@@ -35,3 +35,11 @@ If you also run the app locally via Vercel environment sync, include `Developmen
   - `NEXT_PUBLIC_VAPID_PUBLIC_KEY=REPLACE_WITH_VAPID_PUBLIC_KEY`
   - `VAPID_PRIVATE_KEY=REPLACE_WITH_VAPID_PRIVATE_KEY`
   - `VAPID_SUBJECT=mailto:you@example.com`
+
+## Security Settings In Vercel
+
+- Bot Protection:
+  - Set to at least `Log` mode in Project Settings so bot traffic is identified without blocking real users during tuning.
+- Deployment Protection:
+  - Set Production to your intended public accessibility.
+  - Keep Preview deployments protected with Vercel Authentication or Password Protection unless explicitly needed for public QA.

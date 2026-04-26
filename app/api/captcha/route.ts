@@ -166,7 +166,6 @@ export async function POST(req: NextRequest) {
         reason: "invalid",
         selectedCount: normalizedSelected.length,
       });
-      console.info("Verification result: failure");
       return NextResponse.json({ success: false, message: "Not quite... try again" }, { status: 200 });
     }
 
@@ -176,7 +175,6 @@ export async function POST(req: NextRequest) {
         reason: "expired",
         selectedCount: normalizedSelected.length,
       });
-      console.info("Verification result: failure");
       return NextResponse.json({ success: false, message: "Not quite... try again" }, { status: 200 });
     }
 
@@ -185,7 +183,6 @@ export async function POST(req: NextRequest) {
       normalizedSelected.length === normalizedCorrect.length &&
       normalizedSelected.every((value, index) => value === normalizedCorrect[index]);
 
-    console.info(`Verification result: ${isMatch ? "success" : "failure"}`);
     return NextResponse.json({ success: isMatch, message: isMatch ? "Correct!" : "Not quite... try again" }, { status: 200 });
   } catch (error) {
     logError("captcha/verify", "Unexpected CAPTCHA verification failure", error, requestContext);

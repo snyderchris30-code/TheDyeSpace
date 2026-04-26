@@ -192,6 +192,7 @@ function removePostFromInfiniteCache(cache: InfinitePostsCache | undefined, post
 
 export default function MainFeedPage() {
   const LightboxModal = dynamic(() => import("../LightboxModal"), { ssr: false });
+  const supabase = useMemo(() => createClient(), []);
   // Lightbox state
   const [lightbox, setLightbox] = useState<{ open: boolean; images: string[]; index: number }>({ open: false, images: [], index: 0 });
   const { data, isLoading, isFetchingNextPage, fetchNextPage, hasNextPage, error, refetch } = useInfiniteQuery({
@@ -305,7 +306,6 @@ export default function MainFeedPage() {
   }, []);
 
   useEffect(() => {
-    const supabase = createClient();
     const syncAuth = async () => {
       const authState = await resolveClientAuth(supabase);
       setSession(authState.session);
@@ -336,7 +336,7 @@ export default function MainFeedPage() {
       void syncAuth();
     });
     return () => { listener?.subscription.unsubscribe(); };
-  }, [loadUserRole]);
+  }, [loadUserRole, supabase]);
 
   useEffect(() => {
     const nextInteractions = interactionData ?? EMPTY_INTERACTIONS;
@@ -344,8 +344,6 @@ export default function MainFeedPage() {
   }, [interactionData]);
 
   useEffect(() => {
-    const supabase = createClient();
-
     const channel = supabase
       .channel("public:main-feed-posts")
       .on("postgres_changes", { event: "*", schema: "public", table: "posts" }, (payload: any) => {
@@ -382,7 +380,7 @@ export default function MainFeedPage() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [queryClient]);
+  }, [queryClient, supabase]);
 
   const [postOverrides, setPostOverrides] = useState<Record<string, Partial<Pick<Post, "likes" | "comments_count">>>>({});
 
@@ -625,7 +623,7 @@ export default function MainFeedPage() {
         <button
           type="button"
           onClick={() => void handleInstallApp()}
-          className="inline-flex items-center gap-2 rounded-full border-4 border-emerald-500 bg-gradient-to-br from-emerald-600 via-teal-500 to-cyan-500 px-8 py-4 text-2xl font-extrabold text-white shadow-[0_0_32px_4px_rgba(16,185,129,0.25)] transition-all hover:scale-105 hover:brightness-110"
+          className="inline-flex items-center gap-2 rounded-full border-4 border-emerald-500 bg-gradient-to-br from-emerald-600 via-teal-500 to-cyan-500 px-5 py-2.5 text-base font-extrabold text-white shadow-[0_0_32px_4px_rgba(16,185,129,0.25)] transition-all hover:scale-105 hover:brightness-110 sm:px-8 sm:py-4 sm:text-2xl"
         >
           Install App
         </button>
@@ -646,8 +644,6 @@ export default function MainFeedPage() {
           Create Post
         </Link>
       </div>
-      <p className="mb-5 text-base cosmic-subtext sm:mb-8 sm:text-xl" />
-
       {interactionStatus ? (
         <div className="mb-4 rounded-xl border border-rose-300/30 bg-rose-500/15 px-4 py-2 text-sm text-rose-100">
           {interactionStatus}

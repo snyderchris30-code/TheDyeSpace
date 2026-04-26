@@ -46,9 +46,9 @@ const nextConfig: NextConfig = {
     "172.19.192.1",
   ],
   async headers() {
-    const cspReportOnly = [
+    const csp = [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.youtube.com https://www.youtube-nocookie.com",
+      "script-src 'self' 'unsafe-inline' https://www.youtube.com https://www.youtube-nocookie.com",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "img-src 'self' data: blob: https: https://i.ytimg.com",
       "font-src 'self' data: https://fonts.gstatic.com",
@@ -57,6 +57,8 @@ const nextConfig: NextConfig = {
       "object-src 'none'",
       "base-uri 'self'",
       "frame-ancestors 'none'",
+      "form-action 'self'",
+      "upgrade-insecure-requests",
     ].join("; ");
 
     const securityHeaders = [
@@ -64,7 +66,12 @@ const nextConfig: NextConfig = {
       { key: "X-Content-Type-Options", value: "nosniff" },
       { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
       { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
-      { key: "Content-Security-Policy-Report-Only", value: cspReportOnly },
+      { key: "Cross-Origin-Resource-Policy", value: "same-site" },
+      { key: "X-DNS-Prefetch-Control", value: "off" },
+      { key: "Content-Security-Policy", value: csp },
+      ...(process.env.NODE_ENV === "production"
+        ? [{ key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains; preload" }]
+        : []),
     ];
 
     return [

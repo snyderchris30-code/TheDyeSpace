@@ -10,6 +10,7 @@ import { runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import { createClient } from "@/lib/supabase/client";
 import { canAccessSmokeLounge } from "@/lib/verified-seller";
 import { canAccessPrivateRoom, type PrivateRoomAccessProfile } from "@/lib/private-rooms";
+import { ensureProfileBucketsReady } from "@/lib/storage/profile-buckets";
 
 type ChatRoomId = "smoke_room" | "smoke_room_2" | "psychonautics" | "admin_room";
 type RoomId = ChatRoomId | `fan_chat_${string}`;
@@ -233,15 +234,17 @@ export default function GlobalChatClient() {
     [visibleVerifiedSellerChats]
   );
 
+  const visibleVerifiedSellerRoomIdSet = useMemo(() => new Set(visibleVerifiedSellerRoomIds), [visibleVerifiedSellerRoomIds]);
+
   const roomIsAccessible = useCallback(
     (roomId: RoomId) => {
       if (roomId.startsWith("fan_chat_")) {
-        return visibleVerifiedSellerRoomIds.includes(roomId);
+        return visibleVerifiedSellerRoomIdSet.has(roomId);
       }
 
       return roomAccess[roomId as ChatRoomId];
     },
-    [roomAccess, visibleVerifiedSellerRoomIds]
+    [roomAccess, visibleVerifiedSellerRoomIdSet]
   );
 
   const activeRoomId = useMemo(() => {
@@ -411,10 +414,7 @@ export default function GlobalChatClient() {
   );
 
   const ensureProfileBuckets = useCallback(async () => {
-    const response = await fetch("/api/storage/profile-buckets", { method: "POST" });
-    if (!response.ok) {
-      throw new Error("Storage is unavailable right now.");
-    }
+    await ensureProfileBucketsReady();
   }, []);
 
   const fetchMessages = useCallback(async () => {
