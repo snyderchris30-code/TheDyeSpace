@@ -12,7 +12,7 @@ import {
 const REDIRECT_IF_AUTH_ROUTES = new Set(['/signup']);
 const PUBLIC_ROUTES = new Set(['/login', '/forgot-password', '/reset-password']);
 const PROTECTED_ROUTE_PREFIXES = ['/create', '/notifications'];
-const PROTECTED_EXACT_ROUTES = new Set<string>(['/profile']);
+const PROTECTED_EXACT_ROUTES = new Set<string>(['/profile', '/suggestions']);
 const BLOCKED_ATTACK_PATHS = new Set([
   '/xmlrpc.php',
   '/wp-admin',
@@ -215,6 +215,9 @@ export async function proxy(request: NextRequest) {
   if (!user && isProtectedPath(pathname)) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('redirect', pathname);
+    if (pathname === '/suggestions') {
+      loginUrl.searchParams.set('message', 'Please log in to send suggestions and support the site.');
+    }
     const redirectResponse = NextResponse.redirect(loginUrl);
     clearSupabaseCookies(request, redirectResponse);
     return withSecurityHeaders(redirectResponse);

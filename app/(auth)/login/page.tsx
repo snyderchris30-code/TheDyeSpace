@@ -25,6 +25,9 @@ export default function LoginPage() {
     const params = new URLSearchParams(window.location.search);
     return params.get("redirect") || "/";
   });
+  const [infoMessage] = useState<string | null>(
+    typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("message") : null
+  );
   const [message, setMessage] = useState<string | null>(
     typeof window !== "undefined"
       ? (() => {
@@ -33,9 +36,11 @@ export default function LoginPage() {
             return "Password updated. Log in with your new password.";
           }
 
-          return params.get("verify") === "true"
-            ? "Please verify your email before logging in. Check your inbox."
-            : null;
+          if (params.get("verify") === "true") {
+            return "Please verify your email before logging in. Check your inbox.";
+          }
+
+          return null;
         })()
       : null
   );
@@ -236,6 +241,9 @@ export default function LoginPage() {
           New here?{' '}
           <Link href="/signup" className="underline text-pink-300 hover:text-yellow-300">Sign up</Link>
         </p>
+        {infoMessage && (
+          <div className="text-center text-cyan-300 text-sm mt-2">{infoMessage}</div>
+        )}
         {message && (
           <div className="text-center text-pink-300 font-semibold mt-2 animate-pulse">{message}</div>
         )}
