@@ -17,6 +17,7 @@ import CustomEmojiImage from "@/app/CustomEmojiImage";
 import InlineEmojiText from "@/app/InlineEmojiText";
 import PostAffiliateProducts from "@/app/PostAffiliateProducts";
 import UserIdentity from "@/app/UserIdentity";
+import LiveNowSection from "@/app/LiveNowSection";
 import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
 import { hasAdminAccess, runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import { submitModerationReport } from "@/lib/report-client";
@@ -784,6 +785,8 @@ export default function ExplorePage() {
             Marketplace only (For Sale)
           </label>
         </div>
+
+        <LiveNowSection className="mb-8" />
 
         <h2 className="mb-4 text-2xl font-semibold text-cyan-50">{title}</h2>
 

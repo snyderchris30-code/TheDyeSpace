@@ -13,6 +13,7 @@ import CustomEmojiImage from "@/app/CustomEmojiImage";
 import EmojiPicker from "@/app/EmojiPicker";
 import InlineEmojiText from "@/app/InlineEmojiText";
 import PostAffiliateProducts from "@/app/PostAffiliateProducts";
+import ProfileLiveStreamPanel from "@/app/ProfileLiveStreamPanel";
 import UserIdentity from "@/app/UserIdentity";
 import AsyncStateCard from "@/app/AsyncStateCard";
 import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
@@ -2103,6 +2104,12 @@ export default function ProfileEditor() {
                 </div>
               </div>
             </section>
+
+            <ProfileLiveStreamPanel
+              profileUserId={profileUserId}
+              profileIsVerified={profileIsVerified}
+              isOwner={isOwner}
+            />
 
             {isOwner && profileIsVerified ? (
               <section className="mt-8 rounded-[1.75rem] border border-amber-300/20 bg-slate-950/45 p-6 shadow-xl backdrop-blur-xl">

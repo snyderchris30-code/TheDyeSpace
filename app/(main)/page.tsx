@@ -19,6 +19,7 @@ import InlineEmojiText from "@/app/InlineEmojiText";
 import PostAffiliateProducts from "@/app/PostAffiliateProducts";
 import AdminActionMenu from "@/app/AdminActionMenu";
 import UserIdentity from "@/app/UserIdentity";
+import LiveNowSection from "@/app/LiveNowSection";
 import { fetchClientProfile, resolveClientAuth } from "@/lib/client-auth";
 import { hasAdminAccess, runAdminUserAction, type AdminActionName } from "@/lib/admin-actions";
 import { appendEmojiToText, buildCustomEmojiAsset } from "@/lib/custom-emojis";
@@ -644,6 +645,7 @@ export default function MainFeedPage() {
           Create Post
         </Link>
       </div>
+      <LiveNowSection className="mb-6" />
       {interactionStatus ? (
         <div className="mb-4 rounded-xl border border-rose-300/30 bg-rose-500/15 px-4 py-2 text-sm text-rose-100">
           {interactionStatus}

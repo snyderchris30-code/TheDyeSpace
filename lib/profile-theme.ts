@@ -37,6 +37,11 @@ export type ProfileAppearance = {
   seller_contact_link?: string | null;
   seller_contact_message?: string | null;
   shop_products?: SellerProduct[] | null;
+  live_status?: "live" | "offline" | null;
+  live_title?: string | null;
+  live_started_at?: string | null;
+  live_youtube_url?: string | null;
+  live_webrtc_requested?: boolean | null;
 };
 
 export type ProfilePalette = {
